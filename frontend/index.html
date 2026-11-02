@@ -1,0 +1,121 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#faf6ec">
+  <meta name="description" content="Un primer ejemplo interactivo de Rato al Sol, para encontrar terrazas al sol o a la sombra.">
+  <title>Rato al Sol — Encuentra tu terraza</title>
+  <link rel="icon" href="./favicon.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="./styles.css">
+  <script type="module" src="./app.mjs"></script>
+</head>
+<body>
+  <a class="skip-link" href="#contenido">Saltar al contenido</a>
+  <header class="site-header">
+    <a class="wordmark" href="./" aria-label="Rato al Sol, inicio">
+      <span class="brand-sun" aria-hidden="true">✳</span> Rato al Sol<span class="wordmark-dot">.</span>
+    </a>
+    <a class="header-link" href="#sobre-ejemplo">Sobre este ejemplo <span aria-hidden="true">↗</span></a>
+  </header>
+
+  <main id="contenido">
+    <section class="intro" aria-labelledby="titulo">
+      <div class="intro-copy">
+        <h1 id="titulo">Cada terraza tiene <em>su momento.</em></h1>
+        <p class="lead">Encuentra tu sitio al sol, o a la sombra, a la hora que tú elijas.</p>
+      </div>
+      <div class="intro-mark" aria-hidden="true"><span>☀</span><small>UN RATO<br>PARA TI</small></div>
+    </section>
+
+    <div class="demo-notice" role="note">
+      <span class="notice-icon" aria-hidden="true">✳</span>
+      <p><strong>Estás viendo un ejemplo interactivo.</strong> El barrio, las terrazas y los estados son inventados; no son una predicción.</p>
+    </div>
+    <noscript><p class="noscript">Activa JavaScript para poder utilizar el ejemplo interactivo.</p></noscript>
+
+    <section class="planner" aria-label="Elige tu momento">
+      <div class="planner-top">
+        <div>
+          <p class="section-kicker">HAZ UN PLAN</p>
+          <h2>¿Cuándo te apetece?</h2>
+        </div>
+        <p class="planner-hint">Mueve la hora para ver cómo funciona.</p>
+      </div>
+      <div class="planner-controls">
+        <div class="date-control">
+          <label for="date">Día</label>
+          <input type="date" id="date" name="fecha" min="1000-01-01" max="9999-12-31" required>
+        </div>
+        <div class="time-control">
+          <div class="time-label"><label for="time">Hora de ejemplo</label><output id="time-value" for="time">12:30</output></div>
+          <input type="range" id="time" name="hora" min="540" max="1200" step="30" value="750">
+          <div class="time-scale" aria-hidden="true"><span>09:00</span><span>12:00</span><span>16:00</span><span>20:00</span></div>
+        </div>
+      </div>
+      <p class="date-note">La fecha se guarda en tu plan; en este ejemplo no cambia los estados simulados.</p>
+    </section>
+
+    <section class="explore" aria-labelledby="explore-title">
+      <div class="explore-header">
+        <div><p class="section-kicker">ELIGE TU RINCÓN</p><h2 id="explore-title">Un barrio imaginario<span class="heading-dot">.</span></h2></div>
+        <fieldset class="filters">
+          <legend>¿Qué prefieres?</legend>
+          <label><input type="radio" name="filter" value="all" checked><span>Todos</span></label>
+          <label><input type="radio" name="filter" value="sun"><span><b aria-hidden="true">☀</b> Sol</span></label>
+          <label><input type="radio" name="filter" value="shade"><span><b aria-hidden="true">◒</b> Sombra</span></label>
+        </fieldset>
+      </div>
+
+      <div class="explore-grid">
+        <div class="list-column">
+          <div class="list-heading"><h3>Terrazas de ejemplo</h3><p id="result-count" aria-live="polite"></p></div>
+          <div id="place-list" class="place-list"></div>
+          <p id="empty" class="empty-state" hidden>No hay ejemplos con este filtro a esta hora. Prueba otra hora o selecciona «Todos».</p>
+          <p id="unknown-note" class="unknown-note" hidden>Las terrazas sin datos no aparecen al filtrar por sol o sombra.</p>
+
+          <aside id="details" class="details" aria-labelledby="detail-title" hidden>
+            <p class="section-kicker">TU ELECCIÓN DE EJEMPLO</p>
+            <div class="detail-title-row"><h3 id="detail-title"></h3><span id="detail-status" class="status"></span></div>
+            <p id="detail-copy"></p>
+            <button id="share" class="share-button" type="button">Compartir este ejemplo <span aria-hidden="true">↗</span></button>
+            <div id="share-panel" class="share-panel" hidden>
+              <label for="share-link">Enlace para compartir</label>
+              <div class="share-row"><input id="share-link" type="text" readonly><button id="copy" type="button">Copiar</button></div>
+              <p id="share-message" aria-live="polite">El enlace solo incluye esta selección de ejemplo.</p>
+            </div>
+          </aside>
+        </div>
+
+        <figure class="map-figure">
+          <div class="map" role="group" aria-label="Mapa ilustrativo de un barrio imaginario">
+            <svg class="map-art" viewBox="0 0 600 520" preserveAspectRatio="none" aria-hidden="true">
+              <rect width="600" height="520" fill="#e9ddc4"/>
+              <path d="M-30 110L640 355M95 -30L385 550M450 -30L210 550M-20 405L650 88" fill="none" stroke="#fffaf0" stroke-width="30"/>
+              <path d="M-30 110L640 355M95 -30L385 550M450 -30L210 550M-20 405L650 88" fill="none" stroke="#f7f2e8" stroke-width="20"/>
+              <g fill="#d6b99c" opacity=".8">
+                <path d="M0 0H104L146 78 0 31Z"/><path d="M198 0H419L375 89 231 40Z"/><path d="M475 0H600V58L433 137Z"/>
+                <path d="M0 152L126 198 82 298 0 266Z"/><path d="M266 104L357 139 322 220 306 227Z"/><path d="M448 165L600 95V247L506 211Z"/>
+                <path d="M0 455L148 385 201 483 184 520H0Z"/><path d="M378 391L600 475V520H425Z"/>
+              </g>
+              <path d="M159 256L247 214 303 245 279 310 199 347 136 319Z" fill="#b2c89d"/>
+              <path d="M379 305L442 276 490 294 462 350 402 342Z" fill="#b2c89d"/>
+              <g fill="#7a9d69"><circle cx="191" cy="270" r="14"/><circle cx="226" cy="250" r="11"/><circle cx="265" cy="278" r="16"/><circle cx="223" cy="309" r="13"/><circle cx="410" cy="315" r="12"/><circle cx="444" cy="310" r="16"/></g>
+              <g fill="#6b7a59" font-family="sans-serif" font-size="11" font-weight="700" letter-spacing="2"><text x="187" y="294">JARDÍN</text><text x="392" y="334">PLAZA</text></g>
+            </svg>
+            <div id="map-pins"></div>
+            <span class="map-north" aria-hidden="true">N <span>↑</span></span>
+          </div>
+          <figcaption><span>✳</span> Mapa ilustrativo · lugares inventados</figcaption>
+        </figure>
+      </div>
+    </section>
+
+    <section class="about" id="sobre-ejemplo" aria-labelledby="about-title">
+      <div><p class="section-kicker">LO QUE QUEREMOS CONSTRUIR</p><h2 id="about-title">Para perseguir el sol.<br><em>O escapar de él.</em></h2></div>
+      <div><p>Rato al Sol quiere ayudarte a elegir una terraza según la hora. Antes necesitamos comprobar dónde están las mesas y qué edificios les dan sombra.</p><p>Este primer ejemplo no consulta terrazas reales, nubosidad ni horarios de apertura. Los toldos, árboles y sombrillas también pueden cambiar el resultado.</p></div>
+    </section>
+  </main>
+  <footer><span class="footer-brand">Rato al Sol<span class="wordmark-dot">.</span></span><span>Hecho para los buenos ratos <span aria-hidden="true">☀</span></span></footer>
+</body>
+</html>
