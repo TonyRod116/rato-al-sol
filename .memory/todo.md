@@ -28,11 +28,11 @@ Al cambiar de etapa: resultado, evidencia, bloqueo y siguiente acción concreta.
 
 ## REPO-001 — Guardar el proyecto en GitHub
 
-- Estado: `in_progress` — pedido por Tony el 2026-11-02.
+- Estado: `done` — completado y comprobado el 2026-11-02.
 - Resultado: crear un repositorio privado en su cuenta y subir la copia completa del proyecto, con Git local enlazado.
 - Aceptación: comprobar cuenta, privacidad, archivos y sincronización entre el repositorio local y GitHub; excluir credenciales y archivos temporales según `.gitignore`.
-- Evidencia: cuenta `TonyRod116` autenticada; Git local inicializado y [repositorio privado](https://github.com/TonyRod116/rato-al-sol) creado y verificado. Las comprobaciones del proyecto y las cuatro pruebas de comportamiento pasan.
-- Siguiente acción: enlazar el remoto, subir los archivos y comprobar la sincronización.
+- Evidencia: cuenta `TonyRod116` autenticada; Git local enlazado al [repositorio privado](https://github.com/TonyRod116/rato-al-sol) y rama `main` subida. GitHub y la copia local coinciden en 34 archivos, incluidos permisos y contenido; las comprobaciones del proyecto y las cuatro pruebas de comportamiento pasan.
+- Siguiente acción: continuar la fase de datos y cálculo real descrita en APP-001.
 
 ## DOCS-002 — Orientación de producto, publicación y backend independiente
 
