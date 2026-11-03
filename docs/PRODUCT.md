@@ -10,15 +10,15 @@ Pantalla ilustrativa: «A esta terraza le quedan 47 minutos de sol». Es texto d
 
 ## Primera versión
 
-1. Una zona pequeña de Madrid, elegida por Tony, con un conjunto de terrazas revisadas. La calle de Ayala en Recoletos es la primera prueba de datos, todavía sin posiciones verificadas de mesas.
-2. Mapa y lista equivalentes, selector de fecha/hora y filtro «quiero sol / quiero sombra».
-3. Una ficha con intervalo estimado, fuente de geometría y límites que afecten al resultado.
+1. Buscar por nombre y elegir un punto exterior, o elegir hora y distancia para explorar lugares cercanos. La app nativa es prioritaria; también habrá web.
+2. Mapa, lista, selector de hora, intervalos estimados y filtro de sol; la posición de las mesas debe ser conocida o elegida por la persona.
+3. Mostrar procedencia y límites de edificios y alturas; Madrid es la primera zona con alturas municipales probadas.
 4. Diferenciar modelo geométrico de nubosidad y de cualquier observación sobre el terreno.
-5. Compartir una selección sin incluir la ubicación personal; geolocalización opcional.
+5. Geolocalización opcional y alternativa manual, sin publicar la ubicación personal en URLs.
 
 ## Fuera de la primera versión
 
-Toda España, reservas, mesas libres en directo, reconstrucción 3D nacional, fotografías sin licencia o precisión de minutos con datos incompletos.
+Reservas, mesas libres en directo, reconstrucción 3D nacional, fotografías sin licencia o precisión de minutos con datos incompletos. El objetivo geográfico es amplio, pero solo se ofrecerán estimaciones donde existan datos suficientes.
 
 ## Experiencia
 

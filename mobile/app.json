@@ -1,0 +1,24 @@
+{
+  "expo": {
+    "name": "Rato al Sol",
+    "slug": "rato-al-sol",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "userInterfaceStyle": "light",
+    "ios": {
+      "supportsTablet": true,
+      "bundleIdentifier": "com.ratoalsol.app"
+    },
+    "android": {
+      "package": "com.ratoalsol.app"
+    },
+    "plugins": [
+      [
+        "expo-location",
+        {
+          "locationWhenInUsePermission": "Rato al Sol usa tu ubicación para encontrar lugares cerca de ti cuando tú lo pides."
+        }
+      ]
+    ]
+  }
+}

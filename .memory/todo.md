@@ -31,6 +31,17 @@ Esta lista es la fuente inicial del trabajo. Beads no está configurado. No mant
 
 Al cambiar de etapa: resultado, evidencia, bloqueo y siguiente acción concreta. Cerrar una tarea solo si se cumple su aceptación, no por haber agotado una sesión.
 
+## APP-002 — App nativa y búsqueda solar por lugar o cercanía
+
+- Estado: `in_progress` — encargo de Tony del 2026-11-03; prioridad iOS/Android nativo con versión web posterior.
+- Objetivo: buscar un restaurante, terraza, plaza u otro lugar y explorar sus intervalos de luz estimados; también elegir hora y distancia para encontrar lugares cercanos con sol. La ubicación es opcional y se solicita en contexto.
+- Aceptación: aplicación móvil nativa ejecutable y verificable, búsqueda y selección de puntos, mapa y selector, cálculo solar compartido con la web, exploración cercana con radio y resultados identificados como estimaciones o desconocidos. No atribuir luz a mesas no localizadas ni confundir sol geométrico con cielo despejado. La extensión geográfica queda condicionada a datos de edificios, alturas y cobertura disponibles y derechos válidos.
+- Avance: prototipo React Native/Expo con búsqueda por nombre o proximidad, radio personalizado de 100 m a 5 km, hora, selección manual, mapa nativo y motor solar compartido. Un punto de Madrid se probó con alturas municipales reales; la búsqueda por nombre del censo funcionó al simular fallo del proveedor general. El filtro cercano se comprobó con datos sintéticos, sin tratar las entradas como mesas. La alternativa de proximidad consultó parques y alturas municipales reales para dos puntos; el punto del parque es orientativo y no se modelan árboles.
+- Hitos: (1) contrato y motor de posición/intervalos con incertidumbre y pruebas; (2) fuente de lugares y geometría acotada, sin publicar ubicación en URLs ni inferir mesas; (3) app nativa y prueba real si el dispositivo lo permite; (4) versión web conectada y comprobación visual; (5) cotejar lo conseguido contra el objetivo completo. No cerrar por entregar solo una maqueta.
+- Permisos: implementación y pruebas locales en este repositorio, consultas públicas acotadas, y actualización de la rama privada ya autorizada; sin contratar APIs, crear infraestructura o desplegar.
+- Evidencia y límites: empaquetado JavaScript de iOS/Android y vista web comprobados; falta ejecución en un dispositivo real. Overpass devolvió 406 y la alternativa agotó el plazo desde este entorno, por lo que la búsqueda general real y la cobertura fuera de Madrid no están verificadas. Las estimaciones no se han contrastado sobre el terreno; hay dos avisos altos de npm en dependencias de Expo CLI.
+- Siguiente acción: probar en iOS y Android, obtener una fuente de búsqueda fiable con derechos/capacidad adecuados, validar alturas y sombras y localizar mesas reales. El revisor automático rechazó exponer Expo en la red local; localhost sí quedó permitido. Mantener la tarea abierta.
+
 ## REPO-001 — Guardar el proyecto en GitHub
 
 - Estado: `done` — completado y comprobado el 2026-11-02.

@@ -7,6 +7,7 @@ node tests/demo.test.mjs
 node tests/solar.test.mjs
 node tests/madrid.test.mjs
 node tests/map-shadows.test.mjs
+node --test tests/mobile.test.mjs
 node --check frontend/app.mjs
 node --check frontend/demo-data.mjs
 node --check frontend/solar.mjs
@@ -20,7 +21,11 @@ python3 scripts/repo_check.py
 bash scripts/check-ai-instructions.sh
 ```
 
-Los tests de Node comprueban una posición solar de referencia con tolerancia de 0,1°, cambios de horario de Madrid, geometría analítica simple y dirección de sombra dibujada, agrupación de intervalos de 10 minutos, noche, datos ausentes, filtros, enlace compartido y contrato de la API municipal. La prueba de la biblioteca solar cubre solo ese caso, no su precisión global ni la sombra real en terrazas. Los dos últimos comandos comprueban solo documentación/configuración. El frontend es estático, sin build, compilador de tipos ni linter configurado.
+Los tests de Node comprueban una posición solar de referencia con tolerancia de 0,1°, cambios de horario de Madrid, geometría analítica simple y dirección de sombra dibujada, intervalos, noche, datos ausentes, filtros, privacidad de consultas y contratos municipales. La prueba solar cubre solo ese caso, no su precisión global ni la sombra real en terrazas. Los dos últimos comandos comprueban solo documentación/configuración. La web anterior es estática; el prototipo nativo usa Expo.
+
+Para comprobar el empaquetado nativo, desde `mobile/`: `npx expo export --platform android --output-dir /tmp/rato-android-export` y equivalente con `--platform ios`. Esto verifica el empaquetado JavaScript, no instala ni prueba una app en un dispositivo.
+
+El 2026-11-03 se probó en Chromium la vista web del prototipo: selección de un punto real en Madrid y respuesta de alturas municipales, cambio de hora con teclado, búsqueda municipal real tras fallo simulado de Overpass y filtro de sol con lugares y edificios ficticios. Con Overpass simulado como caído se consultaron el catálogo real de parques y alturas municipales para dos puntos; se verificó también la validación de un radio personalizado. Se inspeccionaron capturas de móvil y escritorio; falta QA de dispositivo iOS/Android, comprobación de accesibilidad nativa y contraste sobre el terreno. La búsqueda general no pudo validarse con datos reales por 406/timeout. El análisis npm señaló 13 avisos, dos altos en dependencias de Expo CLI; la corrección automática propone cambiar de versión mayor de Expo y queda pendiente de revisión antes de publicar.
 
 En la unificación del 2026-11-03 se consultaron 1.324 polígonos municipales y se inspeccionaron en Chromium capturas reales del mapa 3D por la mañana y la tarde y de móvil; se midieron 320, 390, 768 y 1440 px sin desbordamiento horizontal y zoom CSS del 200 %. La flecha, la iluminación y las sombras cambian con la hora, y la flecha responde al giro. Se comprobaron selección, reproducción/pausa, teclado, movimiento reducido, noche, enlace antiguo, aviso al salir de la zona y fallo/recuperación de alturas. Al bloquear MapLibre, Leaflet mostró la misma capa de sombras en 2D. No hubo errores JavaScript; no se probó en dispositivos reales ni se ha contrastado la precisión con observaciones sobre el terreno. Los tests geométricos comprueban un edificio de 10 m con sol a 45°, direcciones norte y oeste, patios y el umbral del horizonte; validan también alturas inválidas y respuestas incompletas o excesivas.
 

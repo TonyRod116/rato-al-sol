@@ -18,7 +18,7 @@ El encargo original de preparación solo autorizó esta guía y las instruccione
 Un mapa sencillo de terrazas con intervalos estimados de sol y sombra, un selector de hora y la incertidumbre visible donde cambie la decisión.
 
 - Pregunta de la persona: **¿En qué terraza tendré sol o sombra a la hora a la que quiero sentarme?**
-- Proyecto independiente: `rato-al-sol`. Hay un recorrido local con geometría ficticia y una consulta limitada al censo real de Madrid; aún no hay predicciones para terrazas reales.
+- Proyecto independiente: `rato-al-sol`. Hay una web local con sombras orientativas en Ayala y un prototipo nativo para buscar lugares y estimar la luz de puntos elegidos; la posición real de las mesas sigue sin conocerse.
 - Mantener una primera versión pequeña, útil, muy visual y con datos honestos. No importar el monorepo, credenciales, infraestructura o reglas de negocio de BuildApp/MTM.
 
 ## Lectura por tarea
@@ -77,7 +77,7 @@ Un mapa sencillo de terrazas con intervalos estimados de sol y sombra, un select
 ## Diseño y producto, adaptados de BuildApp
 
 - Construir el recorrido útil del producto, no una landing que simule la app. Primera pantalla comprensible en segundos, con un dato principal y la acción que necesita la persona.
-- Preferir web ligera, móvil primero, HTML/CSS y capacidades del navegador. Stack, proveedor y hosting se eligen con evidencia y se registran; no añadir cuentas, base de datos, IA o monorepo por costumbre.
+- Priorizar la app nativa para iOS/Android solicitada por Tony y mantener también la web. Usar React Native/Expo y el motor solar compartido; registrar cambios de stack o proveedor con evidencia. No añadir cuentas, base de datos, IA o monorepo por costumbre.
 - Tipografía fuerte, jerarquía clara, controles grandes y textos reales. Evitar relleno, tarjetas KPI decorativas, gradientes genéricos y movimiento sin propósito. Cada app necesita identidad propia.
 - Revisar teclado, tacto, foco, contraste, zoom, movimiento reducido y lectores de pantalla. Validar en móvil y escritorio; los estados de carga, vacío, fallo y dato antiguo también son producto.
 - Geolocalización opcional, permiso en contexto y alternativa manual. Nunca publicar la dirección precisa en URL, analítica, logs ni enlaces compartidos. Secretos y autenticación del proveedor solo en servidor.
@@ -87,7 +87,7 @@ Un mapa sencillo de terrazas con intervalos estimados de sol y sombra, un select
 
 - Tras editar este canon: `bash scripts/sync-ai-instructions.sh`; después `bash scripts/check-ai-instructions.sh` y `python3 scripts/repo_check.py`.
 - El comprobador verifica esta base documental, enlaces locales, sincronización y Auto Review. No acredita que una app funcione ni que una predicción sea precisa.
-- Antes de integrar código: pruebas del dominio cambiado, tipos/lint/build que existan para el stack real y QA de navegador cuando afecte a interfaz o interacción. Los comandos actuales están en [calidad](docs/QUALITY.md); la primera versión estática no necesita `package.json` ni build.
+- Antes de integrar código: pruebas del dominio cambiado, tipos/lint/build que existan para el stack real, QA de navegador cuando afecte a interfaz o interacción y pruebas de dispositivo para la app nativa cuando sean posibles. Los comandos actuales están en [calidad](docs/QUALITY.md).
 - Comprobar el consumidor final y el fallo dominante; compilar no prueba una integración real. Ejemplos y fixtures se identifican como tales; secretos y ubicaciones personales no entran en evidencias.
 - Revisar alcance del diff si hay Git propio. No force-push, `reset --hard`, eliminación de trabajo ajeno ni saltarse comprobaciones sin orden explícita.
 - Cerrar con qué cambió, por qué sirve, qué se verificó y qué falta. No declarar desplegado, conectado o validado algo que solo está documentado.

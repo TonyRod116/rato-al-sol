@@ -54,3 +54,9 @@ Documentar el motivo y la evidencia al resolverlas. No convertir una propuesta e
 - Tony pidió reunir el mapa de Madrid con el selector y las sombras. Se consultan las alturas estimadas municipales en un rectángulo fijo de Ayala; en la prueba inicial devolvió 1.324 polígonos. El mapa usa esa misma geometría para volúmenes y sombras, con respaldo en 2D.
 - Las sombras son una orientación, no una validación ni una clasificación de luz en las mesas. No se conocen sus posiciones ni se incluyen nubes, árboles o toldos. Fuera del área de consulta no hay cobertura; el sol bajo se muestra sin sombra calculada.
 - Google se mantiene fuera del selector visual hasta que el origen autorizado se pueda habilitar y se haya comprobado la integración de sombras. La clave y la cuenta siguen sin cambios.
+
+## 2026-11-03 — prioridad nativa y búsqueda solar
+
+- Tony pidió priorizar una app nativa iOS/Android, además de web, con búsqueda por nombre o por hora y distancia. Se elige React Native/Expo para compartir interfaz y motor solar sin incrustar la web; la web anterior se conserva.
+- Se calcula para puntos exteriores elegidos y para una muestra acotada de espacios públicos, nunca para mesas inferidas de la entrada de un local. Madrid proporciona alturas estimadas; OpenStreetMap es candidato para cobertura más amplia, pero el servicio público de consultas no respondió en las pruebas locales y no está validado para producción.
+- Expo SDK 57 permite la ruta de prueba con Expo Go durante la transición a SDK 58. La auditoría de npm identifica avisos en Expo CLI que deben revisarse antes de distribuir. Las pruebas de empaquetado no equivalen a probar iOS o Android en un dispositivo.

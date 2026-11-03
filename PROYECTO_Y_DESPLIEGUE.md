@@ -6,7 +6,7 @@ Actualizado: 2026-11-03. **Guía de orientación y rutas. No es un despliegue ni
 
 Un mapa y una lista de terrazas que permiten elegir dónde sentarse con sol o con sombra a una hora determinada, mostrando cuánto podría durar esa situación.
 
-**Frontend:** Mapa/lista de un barrio con datos suficientes; selector de fecha y hora; filtro sol/sombra y ficha breve. Las mesas, no solo la puerta del negocio, definen el punto que hay que calcular.
+**Frontend:** App nativa para iOS/Android prioritaria y versión web; búsqueda por lugar o por distancia y hora, mapa, lista y ficha. Las mesas, no solo la puerta del negocio, definen el punto que hay que calcular.
 
 **Backend:** Servir terrazas y geometría propias o con licencia, calcular intervalos solares con un motor único y distinguir geometría, nubosidad y ausencia de cobertura. Empezar por una zona pequeña y comprobada.
 
@@ -16,19 +16,20 @@ El detalle del MVP y sus límites está en [producto](docs/PRODUCT.md), los dato
 
 ## 2. Estado real y primera lectura de cualquier IA
 
-Hay un frontend local interactivo con un barrio ficticio y cálculo solar para un escenario simulado. También consulta, a petición del usuario, una pequeña selección del censo público de terrazas de Madrid, sin estimar sol para ellas. **No hay predicciones reales, backend compartido, credenciales de proveedor, dominios asignados ni servicios publicados por este encargo.**
+Hay una web con sombras orientativas en Ayala y un prototipo React Native/Expo que permite elegir un punto y estimar su luz usando edificios disponibles. Madrid aporta alturas municipales; la búsqueda general usa una fuente pública no garantizada. El censo aporta entradas aproximadas, no la posición de las mesas. **No hay estimaciones contrastadas sobre el terreno, backend compartido, dominios asignados ni servicios publicados.**
 
 Al entrar desde CLI: leer `AGENTS.md` (o su copia de la herramienta), este archivo, `NOTES.md` y la tarea pertinente de `.memory/todo.md`. Revisar la evidencia actual antes de decidir qué implementar; no repetir trabajo terminado ni interpretar una ruta propuesta como un servicio existente.
 
-Los nombres y las carpetas de las tres apps están confirmados. Este frontend usa HTML, CSS y JavaScript sin instalación ni build; incluye localmente SunCalc con su licencia. Los destinos externos siguen siendo **propuestas**; Vite/React y FastAPI son referencias, no requisitos ni dependencias instaladas.
+Los nombres y las carpetas de las tres apps están confirmados. La web anterior usa HTML/CSS/JavaScript sin build; `mobile/` usa React Native y Expo y comparte el motor solar. Los destinos externos siguen siendo **propuestas**; no hay API propia instalada.
 
 ## 3. Mapa de carpetas y conexiones
 
 | Elemento | Ruta / dirección | Estado y significado |
 |---|---|---|
 | Proyecto actual | `/home/tonirod/code/Cool_Projects/rato-al-sol/` | Existe; entrar aquí para las instrucciones y la documentación |
-| Código frontend propio | `/home/tonirod/code/Cool_Projects/rato-al-sol/frontend/` | Existe; demo estática y consulta limitada al censo público de Madrid |
-| Build frontend | No aplica a este ejemplo | Archivos estáticos servidos directamente; no se ha elegido Vite |
+| Código frontend propio | `/home/tonirod/code/Cool_Projects/rato-al-sol/frontend/` | Web estática y motor solar compartido |
+| App nativa | `/home/tonirod/code/Cool_Projects/rato-al-sol/mobile/` | React Native/Expo; prototipo local, sin publicación ni prueba en dispositivo todavía |
+| Build frontend | Web anterior: no aplica; app: Expo | Los comandos y límites están en el README |
 | Frontend local | `http://127.0.0.1:5182/` | Puerto usado en las pruebas locales; requiere arrancar el servidor indicado en el README |
 | Repo nuevo de API común | `/home/tonirod/code/Cool_Projects/cool-projects-api/` | Propuesto y NO creado; separado de los tres frontends y de BuildApp |
 | Backend local común | `http://127.0.0.1:8091/` | Puerto propuesto; no hay backend arrancado |

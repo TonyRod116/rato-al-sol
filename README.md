@@ -6,7 +6,9 @@ Un mapa sencillo de terrazas con intervalos estimados de sol y sombra, un select
 
 ## Estado real
 
-La pantalla reúne el mapa 3D de Ayala, los edificios con alturas estimadas del Ayuntamiento y sus sombras orientativas. El selector cambia la hora y la fecha y muestra la dirección de las sombras. Los puntos corresponden a las **entradas aproximadas de los locales**, no a sus mesas; todavía no se pueden calcular sus horas de sol. Las sombras no incluyen nubes, árboles ni toldos y no se han contrastado sobre el terreno. No hay despliegue.
+La web reúne el mapa 3D de Ayala y sombras orientativas. En `mobile/` hay un prototipo React Native para iOS y Android con búsqueda por nombre o cercanía, selector de hora, mapa y estimaciones para un punto exterior elegido. La vista web del prototipo comparte la interfaz y el motor solar; la web anterior permanece disponible.
+
+Madrid aporta alturas estimadas municipales; en otras zonas la geometría y las alturas dependen de OpenStreetMap y pueden ser insuficientes. La fuente pública de búsqueda general no respondió en las pruebas de este entorno; se ha probado una alternativa con parques municipales y nombres del censo de Madrid, además de la selección manual de un punto. Las entradas de locales **no identifican las mesas** y la sombra de los árboles no está modelada. Ni las estimaciones ni las sombras se han contrastado sobre el terreno; faltan pruebas en dispositivos nativos y no hay despliegue.
 
 ## Orientación obligatoria
 
@@ -14,13 +16,23 @@ Leer [PROYECTO_Y_DESPLIEGUE.md](PROYECTO_Y_DESPLIEGUE.md): qué construir, rutas
 
 ## Empezar
 
-Para abrir el ejemplo, desde la raíz del proyecto y con el puerto libre:
+Para abrir la web anterior, desde la raíz del proyecto y con el puerto libre:
 
 ```bash
 python3 -m http.server 5182 --bind 127.0.0.1 --directory frontend
 ```
 
 Abrir `http://127.0.0.1:5182/` y parar el servidor con `Ctrl+C`. Si el puerto está ocupado, elegir otro; no detener procesos ajenos. El frontend es estático y no necesita instalar paquetes ni ejecutar un build. El mapa, las alturas y el censo necesitan conexión a internet; las consultas municipales se hacen al abrir la página y se pueden repetir si fallan.
+
+Para desarrollar el prototipo nativo o abrir su vista web local:
+
+```bash
+cd mobile
+npm ci
+npx expo start --host localhost
+```
+
+Expo usa el puerto 8081 si está libre. `localhost` limita la conexión a este ordenador; abrir el teléfono por la red requiere configurarlo expresamente. La app usa mapas nativos de Apple o Google, no una página web incrustada. Para probarla en un dispositivo se necesita una versión compatible de Expo Go o una compilación de desarrollo; para publicar se deben configurar credenciales propias de los mapas y revisar costes y permisos.
 
 Para las comprobaciones locales se necesitan Python 3.11 o posterior y Node.js:
 
@@ -29,6 +41,7 @@ node tests/demo.test.mjs
 node tests/solar.test.mjs
 node tests/madrid.test.mjs
 node tests/map-shadows.test.mjs
+node --test tests/mobile.test.mjs
 node --check frontend/app.mjs
 python3 scripts/repo_check.py
 bash scripts/check-ai-instructions.sh
