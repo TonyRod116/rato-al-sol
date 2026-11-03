@@ -39,12 +39,19 @@
         <div class="scene-column">
           <figure class="map-figure">
             <div class="real-map-shell">
-              <div id="google-map" class="google-map" aria-label="Mapa de terrazas registradas en la calle de Ayala"></div>
+              <div id="city-map" class="google-map" aria-label="Mapa tridimensional de los alrededores de la calle de Ayala"></div>
+              <div id="google-map" class="google-map" aria-label="Mapa de Google de los alrededores de la calle de Ayala" hidden></div>
               <div id="open-map" class="google-map" aria-label="Mapa de terrazas registradas en la calle de Ayala" hidden></div>
-              <div class="real-map-tag"><span>⌖</span> MADRID · RECOLETOS</div>
+              <div class="real-map-tag"><span aria-hidden="true">⌖</span> <span class="tag-city">MADRID · </span>RECOLETOS <b id="map-dimension" hidden>3D</b></div>
+              <div id="city-controls" class="city-controls" aria-label="Controles del mapa tridimensional" hidden>
+                <button id="map-rotate" type="button" aria-label="Girar el mapa 45 grados">↻ <span>Girar</span></button>
+                <button id="map-pitch" type="button" aria-pressed="true">Vista 3D</button>
+              </div>
               <div id="map-message" class="map-message" role="status"><span aria-hidden="true">✳</span><p id="map-message-text">Preparando el mapa…</p><button id="map-retry" type="button" hidden>Reintentar mapa ↗</button></div>
             </div>
-            <figcaption><span>✳</span> Los puntos indican entradas aproximadas de los locales, no la ubicación de las mesas.</figcaption>
+            <figcaption><span>✳</span> Los puntos son entradas aproximadas, no las mesas. Los volúmenes y alturas son orientativos.</figcaption>
+            <div class="map-options"><p>Arrastra para explorar.</p><button id="map-provider" type="button" disabled>Usar Google Maps ↗</button></div>
+            <p id="map-provider-status" class="map-provider-status" role="status" aria-live="polite" hidden></p>
           </figure>
           <div class="demo-invitation"><div><span class="invitation-icon" aria-hidden="true">☀</span><div><strong>¿Y el sol?</strong><p>Descubre cómo podría cambiar la sombra a lo largo del día.</p></div></div><button id="open-demo" type="button">Ver la simulación <span aria-hidden="true">↗</span></button></div>
         </div>

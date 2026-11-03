@@ -256,6 +256,7 @@ footer { display: flex; align-items: center; justify-content: space-between; gap
 .real-list-heading { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
 .real-list-heading h3 { margin: 0; font-size: 1.35rem; }
 .real-list-heading button { min-height: 44px; padding: 0 5px; border: 0; background: transparent; color: #556353; font-size: .71rem; font-weight: 750; }
+.real-list-heading button { white-space: nowrap; }
 .madrid-status { margin: 6px 0 14px; color: #687265; font-size: .72rem; line-height: 1.45; }
 .madrid-list { margin: 0; }
 .madrid-list li { display: block; padding: 0; border-top: 1px solid #dcd8cb; }
@@ -280,6 +281,7 @@ footer { display: flex; align-items: center; justify-content: space-between; gap
   .demo-invitation { align-items: start; flex-direction: column; gap: 12px; padding: 16px; }
   .demo-invitation button { margin-left: 56px; }
 }
+@media (max-width: 400px) { .real-map-tag b, .real-map-tag .tag-city { display: none; } }
 @container (max-width: 620px) { .real-map-shell { height: clamp(300px, 82cqw, 420px); } }
 @media (max-width: 400px) {
   .view-switch { gap: 0; }
@@ -293,3 +295,26 @@ footer { display: flex; align-items: center; justify-content: space-between; gap
 #open-map { z-index: 0; }
 .map-message { z-index: 2; }
 .google-pin.is-selected, .leaflet-marker-icon.is-selected .google-pin { background: #344d3b; outline: 2px solid #344d3b; outline-offset: 2px; }
+
+/* The real neighbourhood uses the same warm palette as the illustrated example. */
+#city-map, #google-map { position: absolute; inset: 0; z-index: 0; }
+.real-map-tag { z-index: 2; }
+.real-map-tag .tag-city { color: inherit; font-size: inherit; }
+.real-map-tag b { margin-left: 6px; color: #a15b40; }
+.city-controls { position: absolute; z-index: 2; top: 18px; right: 18px; display: flex; gap: 5px; }
+.city-controls button { min-width: 48px; min-height: 44px; padding: 0 12px; border: 1px solid #e0d3bd; background: #fffcf3f2; color: #445044; font-size: .71rem; font-weight: 750; box-shadow: 0 2px 8px #5b514018; }
+.city-controls button[aria-pressed="true"] { color: #a25136; }
+.city-map-pin { padding: 0; cursor: pointer; }
+.real-map-shell .maplibregl-ctrl-group button { min-width: 36px; min-height: 36px; }
+.real-map-shell .maplibregl-ctrl-attrib { font-size: 10px; }
+.map-message { z-index: 4; }
+.map-options { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-top: 5px; }
+.map-options p { margin: 0; color: #777c6f; font-size: .7rem; }
+.map-options button { min-height: 40px; padding: 0 2px; border: 0; background: none; color: #855740; font-size: .72rem; font-weight: 750; text-align: right; }
+.map-options button:disabled { color: #85877d; cursor: default; }
+.map-provider-status { margin: 3px 0 0; color: #6e6755; font-size: .72rem; line-height: 1.5; }
+@media (max-width: 650px) {
+  .city-controls { top: 10px; right: 10px; gap: 3px; }
+  .city-controls button { min-width: 44px; padding: 0 8px; font-size: .68rem; }
+  .city-controls button span { display: none; }
+}

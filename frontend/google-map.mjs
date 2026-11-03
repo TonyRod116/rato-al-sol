@@ -1,5 +1,5 @@
 // Only the browser Maps key is used here; no Routes/Places server credential.
-export async function createMadridMap(element, onAuthFailure) {
+export async function createMadridMap(element, onAuthFailure, onCapability) {
   const response = await fetch('./maps-config.local.json', { cache: 'no-store', credentials: 'omit' });
   if (!response.ok) throw new Error('Map configuration unavailable');
   const config = await response.json();
@@ -33,9 +33,14 @@ export async function createMadridMap(element, onAuthFailure) {
   const map = new maps.Map(element, {
     center: { lat: 40.42713, lng: -3.68856 }, zoom: 17.5,
     mapId: 'DEMO_MAP_ID', renderingType: maps.RenderingType?.VECTOR,
-    tilt: 45, heading: 0, gestureHandling: 'cooperative',
+    tilt: 45, heading: 0, tiltInteractionEnabled: true, headingInteractionEnabled: true, gestureHandling: 'cooperative',
     mapTypeControl: false, streetViewControl: false, fullscreenControl: true,
   });
+  const reportCapability = () => {
+    const renderingType = map.getRenderingType?.();
+    if (renderingType && maps.RenderingType?.VECTOR) onCapability(renderingType === maps.RenderingType.VECTOR);
+  };
+  map.addListener('renderingtype_changed', reportCapability);
   let markers = [];
   return {
     showPlaces(places, onSelect) {
@@ -55,5 +60,12 @@ export async function createMadridMap(element, onAuthFailure) {
     },
     focus(position) { if (position) map.panTo(position); },
     highlight(id) { for (const entry of markers) entry.pin.classList.toggle('is-selected', entry.id === id); },
+    invalidate() { maps.event.trigger(map, 'resize'); },
+    rotate() { map.setHeading((map.getHeading() || 0) + 45); },
+    set3D(enabled) { map.setTilt(enabled ? 45 : 0); },
+    is3D() {
+      const renderingType = map.getRenderingType?.();
+      return renderingType ? renderingType === maps.RenderingType?.VECTOR : undefined;
+    },
   };
 }

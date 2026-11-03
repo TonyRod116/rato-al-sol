@@ -6,7 +6,7 @@ Un mapa sencillo de terrazas con intervalos estimados de sol y sombra, un select
 
 ## Estado real
 
-La primera pantalla muestra un mapa interactivo de Ayala, en Madrid, y las terrazas incluidas en el censo municipal. Los puntos corresponden a las **entradas aproximadas de los locales**, no a sus mesas; todavía no se calculan sus horas de sol. Si Google Maps no está disponible, se usa un mapa de OpenStreetMap. En «Prueba de sol» hay un barrio inventado con sombras que se mueven, reproducción y tramos de luz aproximados: esos resultados no describen terrazas reales. No hay despliegue.
+La primera pantalla muestra Ayala, en Madrid, con edificios en 3D, controles para girar el mapa y terrazas incluidas en el censo municipal. Sus volúmenes y alturas son orientativos. Los puntos corresponden a las **entradas aproximadas de los locales**, no a sus mesas; todavía no se calculan sus horas de sol. En «Prueba de sol» hay un barrio inventado con sombras que se mueven, reproducción y tramos de luz aproximados: esos resultados no describen terrazas reales. No hay despliegue.
 
 ## Orientación obligatoria
 
@@ -55,7 +55,7 @@ Los tests comprueban casos solares y geométricos concretos, no la precisión de
 
 ## Configuración
 
-La integración opcional de Google Maps usa exclusivamente una clave **de navegador** para Maps JavaScript, con restricciones de origen y API. Copiar `frontend/maps-config.example.json` a `frontend/maps-config.local.json` y configurar ahí la clave; el archivo local está ignorado por Git. No usar claves privadas de servidor, Routes o Places. La clave compartida de desarrollo que Tony autorizó reutilizar rechaza actualmente `http://127.0.0.1:5182/`: para activarla en este origen habría que añadirlo a sus restricciones en Google Cloud. Con clave ausente o rechazada, el mapa alternativo utiliza Leaflet y OpenStreetMap, con atribución visible. La integración real de Google todavía requiere una prueba tras autorizar el origen; `DEMO_MAP_ID` es solo para desarrollo. Véase [fuentes y contratos](docs/DATA_SOURCES.md) antes de publicar o ampliar tráfico.
+El mapa inicial utiliza MapLibre y OpenFreeMap, con datos de OpenStreetMap y atribución visible. Si no se puede abrir, se muestra un mapa 2D con Leaflet y OpenStreetMap. La integración opcional de Google Maps usa exclusivamente una clave **de navegador** para Maps JavaScript, con restricciones de origen y API. Copiar `frontend/maps-config.example.json` a `frontend/maps-config.local.json` y configurar ahí la clave; el archivo local está ignorado por Git. No usar claves privadas de servidor, Routes o Places. La clave compartida de desarrollo rechaza actualmente `http://127.0.0.1:5182/`. Tony autorizó añadir este origen, pero no había una sesión de Google Cloud con acceso a la clave para efectuar el cambio. La integración real de Google requiere una prueba tras el ajuste; `DEMO_MAP_ID` es solo para desarrollo. Véase [fuentes y contratos](docs/DATA_SOURCES.md) antes de publicar o ampliar tráfico.
 
 `.env.example` contiene nombres internos propuestos, sin credenciales. Mantener claves privadas fuera del cliente y del repositorio.
 

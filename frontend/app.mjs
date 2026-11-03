@@ -3,6 +3,7 @@ import { shadowOffset, shadowPolygons } from './solar.mjs';
 import { getMadridTerraces } from './madrid.mjs';
 import { createMadridMap } from './google-map.mjs';
 import { createOpenMap } from './open-map.mjs';
+import { createCityMap } from './city-map.mjs';
 
 const $ = (selector) => document.querySelector(selector);
 const time = $('#time');
@@ -273,7 +274,16 @@ $('#copy').addEventListener('click', async () => {
 
 let madridPlaces = [];
 let selectedMadrid = '';
+let activeMap;
+let cityMap;
 let googleMap;
+let openMap;
+let activeProvider;
+let mapLoading = false;
+let mapStarted = false;
+let googleAttempt = 0;
+let googleUnavailable = false;
+let is3D = true;
 let madridConsulted = '';
 
 function selectMadrid(id, focus = true) {
@@ -284,13 +294,13 @@ function selectMadrid(id, focus = true) {
     button.setAttribute('aria-pressed', String(selected));
   }
   const place = madridPlaces.find((entry) => entry.id === id);
-  googleMap?.highlight(id);
-  if (focus && place?.position) googleMap?.focus(place.position);
+  activeMap?.highlight(id);
+  if (focus && place?.position) activeMap?.focus(place.position);
 }
 
 function updateMadridMarkers() {
-  googleMap?.showPlaces(madridPlaces, selectMadrid);
-  googleMap?.highlight(selectedMadrid);
+  activeMap?.showPlaces(madridPlaces, selectMadrid);
+  activeMap?.highlight(selectedMadrid);
 }
 
 async function loadMadrid() {
@@ -338,25 +348,36 @@ async function loadMadrid() {
   }
 }
 
-let fallbackStarted = false;
-let mapAttempt = 0;
-async function mapFailed() {
-  ++mapAttempt;
-  if (fallbackStarted) return;
-  fallbackStarted = true;
-  googleMap = undefined;
-  $('#google-map').hidden = true;
+function activateMap(provider) {
+  activeProvider = provider;
+  activeMap = { city: cityMap, google: googleMap, open: openMap }[provider];
+  for (const name of ['city', 'google', 'open']) $(`#${name}-map`).hidden = name !== provider;
+  const has3DControls = provider === 'city' || (provider === 'google' && googleMap?.is3D() === true);
+  $('#city-controls').hidden = !has3DControls;
+  $('#map-dimension').hidden = !has3DControls || !is3D;
+  $('#map-provider').textContent = provider === 'google' ? 'Volver al mapa ilustrado ↗' : 'Usar Google Maps ↗';
+  $('#map-provider').disabled = googleUnavailable;
+  $('#map-message').hidden = true;
+  updateMadridMarkers();
+  if (has3DControls) activeMap?.set3D(is3D);
+  if (!$('#madrid').hidden) activeMap?.invalidate?.();
+}
+
+async function loadOpenMap() {
+  $('#city-map').hidden = true;
   $('#open-map').hidden = false;
-  $('#map-message').hidden = false;
-  $('#map-message-text').textContent = 'Preparando el mapa…';
   try {
-    googleMap = await createOpenMap($('#open-map'), (available) => {
+    let tilesAvailable = false;
+    openMap = await createOpenMap($('#open-map'), (available) => {
+      tilesAvailable = available;
       $('#map-message').hidden = available;
       $('#map-retry').hidden = available;
       if (!available) $('#map-message-text').textContent = 'No hemos podido cargar el mapa. Puedes consultar la lista de terrazas o volver a intentarlo.';
     });
-    updateMadridMarkers();
-    if (!$('#madrid').hidden) googleMap.invalidate();
+    activateMap('open');
+    $('#map-message').hidden = tilesAvailable;
+    $('#map-provider-status').hidden = false;
+    $('#map-provider-status').textContent = 'La vista 3D no está disponible en este momento. Te mostramos el mapa en 2D.';
   } catch {
     $('#map-message-text').textContent = 'No hemos podido cargar el mapa. Puedes consultar la lista de terrazas o volver a intentarlo.';
     $('#map-retry').hidden = false;
@@ -364,14 +385,64 @@ async function mapFailed() {
 }
 
 async function loadMap() {
-  const attempt = ++mapAttempt;
+  if (mapStarted || mapLoading) return;
+  mapStarted = true;
+  mapLoading = true;
   try {
-    const map = await createMadridMap($('#google-map'), mapFailed);
-    if (attempt !== mapAttempt) return;
+    cityMap = await createCityMap($('#city-map'));
+    activateMap('city');
+  } catch { await loadOpenMap(); }
+  finally { mapLoading = false; }
+}
+
+async function useGoogleMap() {
+  if (activeProvider === 'google') {
+    activateMap(cityMap ? 'city' : 'open');
+    $('#map-provider-status').hidden = true;
+    return;
+  }
+  if (googleMap) {
+    activateMap('google');
+    if (googleMap.is3D() === false) {
+      $('#map-provider-status').hidden = false;
+      $('#map-provider-status').textContent = 'Google Maps se ha abierto en 2D en este navegador.';
+    }
+    return;
+  }
+  const attempt = ++googleAttempt;
+  const fail = () => {
+    if (attempt !== googleAttempt) return;
+    ++googleAttempt;
+    googleUnavailable = true;
+    googleMap = undefined;
+    activateMap(cityMap ? 'city' : 'open');
+    $('#map-provider-status').hidden = false;
+    $('#map-provider-status').textContent = 'No hemos podido abrir Google Maps. Puedes seguir explorando el mapa.';
+  };
+  $('#city-map').hidden = true;
+  $('#open-map').hidden = true;
+  $('#google-map').hidden = false;
+  $('#city-controls').hidden = true;
+  $('#map-dimension').hidden = true;
+  $('#map-provider').disabled = true;
+  $('#map-message').hidden = false;
+  $('#map-message-text').textContent = 'Preparando Google Maps…';
+  const showGoogleCapability = (vector) => {
+    if (attempt !== googleAttempt || activeProvider !== 'google') return;
+    $('#city-controls').hidden = !vector;
+    $('#map-dimension').hidden = !vector || !is3D;
+    if (vector) googleMap?.set3D(is3D);
+    $('#map-provider-status').hidden = vector;
+    if (!vector) $('#map-provider-status').textContent = 'Google Maps se ha abierto en 2D en este navegador.';
+  };
+  try {
+    const map = await createMadridMap($('#google-map'), fail, showGoogleCapability);
+    if (attempt !== googleAttempt) return;
     googleMap = map;
-    $('#map-message').hidden = true;
-    updateMadridMarkers();
-  } catch { mapFailed(); }
+    activateMap('google');
+    const vector = map.is3D();
+    if (vector !== undefined) showGoogleCapability(vector);
+  } catch { fail(); }
 }
 
 function switchView(view) {
@@ -379,7 +450,10 @@ function switchView(view) {
   if (!demo) stopPlayback();
   $('#madrid').hidden = demo;
   $('#demo').hidden = !demo;
-  if (!demo) googleMap?.invalidate?.();
+  if (!demo) {
+    if (!mapStarted) loadMap();
+    activeMap?.invalidate?.();
+  }
   for (const [id, active] of [['#real-tab', !demo], ['#demo-tab', demo]]) {
     $(id).classList.toggle('is-active', active);
     $(id).setAttribute('aria-pressed', String(active));
@@ -395,10 +469,18 @@ $('#open-demo').addEventListener('click', () => {
 });
 $('#madrid-load').addEventListener('click', loadMadrid);
 $('#map-retry').addEventListener('click', () => window.location.reload());
+$('#map-provider').addEventListener('click', useGoogleMap);
+$('#map-rotate').addEventListener('click', () => activeMap?.rotate?.());
+$('#map-pitch').addEventListener('click', () => {
+  is3D = !is3D;
+  $('#map-pitch').setAttribute('aria-pressed', String(is3D));
+  $('#map-dimension').hidden = !is3D;
+  activeMap?.set3D?.(is3D);
+});
 
 render();
 // Shared links describe the fictional example; opening one should show it directly.
 const sharedParams = new URLSearchParams(window.location.search);
 if (['fecha', 'hora', 'filtro', 'terraza'].some((key) => sharedParams.has(key))) switchView('demo');
 loadMadrid();
-loadMap();
+if (!$('#madrid').hidden) loadMap();

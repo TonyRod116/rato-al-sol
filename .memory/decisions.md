@@ -42,4 +42,9 @@ Documentar el motivo y la evidencia al resolverlas. No convertir una propuesta e
 ## 2026-11-03 — mapa real con respaldo
 
 - Tony pidió utilizar Google Maps como en Hora de Salir y mejorar el recorrido. El mapa real muestra el censo de Ayala/Recoletos y sus entradas aproximadas; la simulación de sol permanece separada. La consulta municipal se inicia ahora al abrir la página y se puede actualizar.
-- Se integró la clave de navegador autorizada del proyecto hermano sin copiar claves de servidor; el origen local 5182 no está permitido por Google, así que la integración real queda pendiente de autorización y prueba. Leaflet y OpenStreetMap proporcionan un mapa alternativo con atribución. No se afirma que las sombras o mesas sean reales.
+- Se integró la clave de navegador autorizada del proyecto hermano sin copiar claves de servidor; el origen local 5182 no está permitido por Google. Tony autorizó después añadirlo, pero falta acceso a la cuenta para hacer el cambio y probarlo. Leaflet y OpenStreetMap proporcionan un mapa alternativo con atribución. No se afirma que las sombras o mesas sean reales.
+
+## 2026-11-03 — perspectiva real con volúmenes orientativos
+
+- Tony prefiere la estética de la simulación. La vista inicial usa MapLibre y OpenFreeMap para mostrar edificios en perspectiva con una paleta próxima al ejemplo; permite girar la vista y alternar entre 2D y 3D. Google queda como opción y Leaflet como respaldo 2D si el 3D falla.
+- Los volúmenes se emplean solo para visualización: pueden incluir alturas estimadas o valores por defecto y no identifican dónde están las mesas. No se usan para inferir sombra, intervalos de sol ni precisión de una terraza real.
