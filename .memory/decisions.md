@@ -15,7 +15,7 @@
 
 ## Decisiones abiertas
 
-Ciudad/barrio, posición real de terrazas, dataset de geometría/alturas, biblioteca solar, tolerancia del modelo y hosting del mapa pendientes de comprobación.
+Posición real de terrazas, dataset de geometría/alturas, tolerancia del modelo y hosting del mapa pendientes de comprobación.
 
 Documentar el motivo y la evidencia al resolverlas. No convertir una propuesta en decisión aprobada por copiarla desde una conversación o desde otro repo.
 
@@ -33,3 +33,8 @@ Documentar el motivo y la evidencia al resolverlas. No convertir una propuesta e
 - Tony pidió empezar a construir la app. Se elige un frontend estático, sin dependencias ni servicios, para probar fecha, hora, filtro, mapa, lista y selección compartida.
 - Los intervalos y los cuatro lugares son inventados y están marcados como ejemplo. No se implementa ni valida un motor solar, ni se infiere sombra real de la entrada de un local.
 - El censo municipal de Madrid es un candidato útil, pero sus coordenadas describen aproximadamente la puerta del negocio. El municipio también publica datos de edificios y alturas estimadas; falta verificar la posición de las mesas y la cobertura y precisión de esos datos antes de presentar resultados reales. Ver [fuentes](../docs/DATA_SOURCES.md).
+
+## 2026-11-03 — primera consulta de Madrid y escenario solar
+
+- Tony eligió Madrid para probar terrazas reales. Se seleccionó Ayala/Recoletos como muestra pequeña y reversible: el navegador consulta el censo municipal solo al pulsar un botón, sin claves ni ubicación personal. Se atribuye la fuente y no se infiere la posición de las mesas ni la apertura real.
+- Se incluye SunCalc 2.0.2 con licencia y una comprobación frente a un caso independiente; el motor geométrico se aplica únicamente a edificios y lugares inventados. Se separan noche, horizonte bajo y ausencia de geometría. No se ha validado la precisión sobre terrazas reales.

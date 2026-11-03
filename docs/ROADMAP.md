@@ -2,7 +2,7 @@
 
 ## Base documental inicial
 
-Se prepararon instrucciones, contratos iniciales, memoria y comprobaciones. Después se inició un recorrido interactivo local con contenido ficticio; no constituye el piloto con datos reales.
+Se prepararon instrucciones, contratos iniciales, memoria y comprobaciones. El recorrido local usa geometría ficticia; una consulta separada ya muestra registros reales de una calle de Madrid, todavía sin predicción solar ni validación sobre el terreno.
 
 ## Primer recorrido útil
 

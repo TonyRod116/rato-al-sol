@@ -18,7 +18,7 @@ El encargo original de preparación solo autorizó esta guía y las instruccione
 Un mapa sencillo de terrazas con intervalos estimados de sol y sombra, un selector de hora y la incertidumbre visible donde cambie la decisión.
 
 - Pregunta de la persona: **¿En qué terraza tendré sol o sombra a la hora a la que quiero sentarme?**
-- Proyecto independiente: `rato-al-sol`. Hay un primer recorrido local con datos ficticios; no hay proveedor conectado ni predicciones reales.
+- Proyecto independiente: `rato-al-sol`. Hay un recorrido local con geometría ficticia y una consulta limitada al censo real de Madrid; aún no hay predicciones para terrazas reales.
 - Mantener una primera versión pequeña, útil, muy visual y con datos honestos. No importar el monorepo, credenciales, infraestructura o reglas de negocio de BuildApp/MTM.
 
 ## Lectura por tarea

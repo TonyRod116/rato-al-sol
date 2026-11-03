@@ -30,7 +30,7 @@
 
     <div class="demo-notice" role="note">
       <span class="notice-icon" aria-hidden="true">✳</span>
-      <p><strong>Estás viendo un ejemplo interactivo.</strong> El barrio, las terrazas y los estados son inventados; no son una predicción.</p>
+      <p><strong>Estás viendo un ejemplo interactivo.</strong> Las terrazas y los edificios son inventados. Los resultados no sirven para elegir una terraza real. <a href="#madrid">Ver la prueba con datos reales de Madrid ↓</a></p>
     </div>
     <noscript><p class="noscript">Activa JavaScript para poder utilizar el ejemplo interactivo.</p></noscript>
 
@@ -45,7 +45,7 @@
       <div class="planner-controls">
         <div class="date-control">
           <label for="date">Día</label>
-          <input type="date" id="date" name="fecha" min="1000-01-01" max="9999-12-31" required>
+          <input type="date" id="date" name="fecha" min="2000-01-01" max="2099-12-31" required>
         </div>
         <div class="time-control">
           <div class="time-label"><label for="time">Hora de ejemplo</label><output id="time-value" for="time">12:30</output></div>
@@ -53,7 +53,7 @@
           <div class="time-scale" aria-hidden="true"><span>09:00</span><span>12:00</span><span>16:00</span><span>20:00</span></div>
         </div>
       </div>
-      <p class="date-note">La fecha se guarda en tu plan; en este ejemplo no cambia los estados simulados.</p>
+      <p class="date-note">La luz cambia con la fecha y la hora de Madrid, usando edificios imaginarios.</p>
     </section>
 
     <section class="explore" aria-labelledby="explore-title">
@@ -72,7 +72,7 @@
           <div class="list-heading"><h3>Terrazas de ejemplo</h3><p id="result-count" aria-live="polite"></p></div>
           <div id="place-list" class="place-list"></div>
           <p id="empty" class="empty-state" hidden>No hay ejemplos con este filtro a esta hora. Prueba otra hora o selecciona «Todos».</p>
-          <p id="unknown-note" class="unknown-note" hidden>Las terrazas sin datos no aparecen al filtrar por sol o sombra.</p>
+          <p id="unknown-note" class="unknown-note" hidden>Al filtrar por sol o sombra se ocultan los casos sin datos y de noche.</p>
 
           <aside id="details" class="details" aria-labelledby="detail-title" hidden>
             <p class="section-kicker">TU ELECCIÓN DE EJEMPLO</p>
@@ -93,11 +93,7 @@
               <rect width="600" height="520" fill="#e9ddc4"/>
               <path d="M-30 110L640 355M95 -30L385 550M450 -30L210 550M-20 405L650 88" fill="none" stroke="#fffaf0" stroke-width="30"/>
               <path d="M-30 110L640 355M95 -30L385 550M450 -30L210 550M-20 405L650 88" fill="none" stroke="#f7f2e8" stroke-width="20"/>
-              <g fill="#d6b99c" opacity=".8">
-                <path d="M0 0H104L146 78 0 31Z"/><path d="M198 0H419L375 89 231 40Z"/><path d="M475 0H600V58L433 137Z"/>
-                <path d="M0 152L126 198 82 298 0 266Z"/><path d="M266 104L357 139 322 220 306 227Z"/><path d="M448 165L600 95V247L506 211Z"/>
-                <path d="M0 455L148 385 201 483 184 520H0Z"/><path d="M378 391L600 475V520H425Z"/>
-              </g>
+              <g id="map-buildings" fill="#d6b99c" opacity=".8"></g>
               <path d="M159 256L247 214 303 245 279 310 199 347 136 319Z" fill="#b2c89d"/>
               <path d="M379 305L442 276 490 294 462 350 402 342Z" fill="#b2c89d"/>
               <g fill="#7a9d69"><circle cx="191" cy="270" r="14"/><circle cx="226" cy="250" r="11"/><circle cx="265" cy="278" r="16"/><circle cx="223" cy="309" r="13"/><circle cx="410" cy="315" r="12"/><circle cx="444" cy="310" r="16"/></g>
@@ -111,9 +107,24 @@
       </div>
     </section>
 
+    <section class="madrid-pilot" id="madrid" aria-labelledby="madrid-title">
+      <div class="madrid-intro">
+        <p class="section-kicker">PRIMERA PRUEBA CON DATOS REALES</p>
+        <h2 id="madrid-title">Una calle de Madrid<span class="heading-dot">.</span></h2>
+        <p>Estamos empezando por la calle de Ayala, en Recoletos. Consulta las terrazas que aparecen en el registro municipal.</p>
+        <p>El registro no indica dónde están las mesas: todavía no podemos decir si allí habrá sol o sombra. Tampoco confirma que abran hoy.</p>
+        <button id="madrid-load" class="madrid-button" type="button">Ver terrazas de Ayala <span aria-hidden="true">↗</span></button>
+      </div>
+      <div class="madrid-results">
+        <p id="madrid-status" class="madrid-status" role="status" aria-live="polite">La consulta se hará al pulsar el botón.</p>
+        <ul id="madrid-list" class="madrid-list" aria-label="Terrazas registradas en la calle de Ayala"></ul>
+        <p class="madrid-source">Fuente: <a href="https://datos.madrid.es/dataset/200085-0-censo-locales/information">Ayuntamiento de Madrid, censo de terrazas</a> · <a href="https://creativecommons.org/licenses/by/4.0/">CC BY 4.0</a>. Se seleccionan registros y campos; la fecha de consulta no garantiza la actualidad de cada dato.</p>
+      </div>
+    </section>
+
     <section class="about" id="sobre-ejemplo" aria-labelledby="about-title">
       <div><p class="section-kicker">LO QUE QUEREMOS CONSTRUIR</p><h2 id="about-title">Para perseguir el sol.<br><em>O escapar de él.</em></h2></div>
-      <div><p>Rato al Sol quiere ayudarte a elegir una terraza según la hora. Antes necesitamos comprobar dónde están las mesas y qué edificios les dan sombra.</p><p>Este primer ejemplo no consulta terrazas reales, nubosidad ni horarios de apertura. Los toldos, árboles y sombrillas también pueden cambiar el resultado.</p></div>
+      <div><p>Rato al Sol quiere ayudarte a elegir una terraza según la hora. Antes necesitamos comprobar dónde están las mesas y qué edificios les dan sombra.</p><p>El mapa superior es imaginario; la consulta de Madrid muestra registros reales sin cálculo de sol. Todavía no consultamos nubosidad ni horarios. Los toldos, árboles y sombrillas también pueden cambiar el resultado.</p></div>
     </section>
   </main>
   <footer><span class="footer-brand">Rato al Sol<span class="wordmark-dot">.</span></span><span>Hecho para los buenos ratos <span aria-hidden="true">☀</span></span></footer>

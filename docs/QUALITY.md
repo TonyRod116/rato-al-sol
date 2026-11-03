@@ -4,13 +4,19 @@
 
 ```bash
 node tests/demo.test.mjs
+node tests/solar.test.mjs
+node tests/madrid.test.mjs
 node --check frontend/app.mjs
 node --check frontend/demo-data.mjs
+node --check frontend/solar.mjs
+node --check frontend/madrid.mjs
 python3 scripts/repo_check.py
 bash scripts/check-ai-instructions.sh
 ```
 
-Los tests de Node comprueban intervalos ficticios, datos ausentes, filtros y validación del enlace compartido. Los dos últimos comandos comprueban solo documentación/configuración. El frontend es HTML/CSS/JavaScript estático, sin build, compilador de tipos ni linter configurado. Nada de esto valida un cálculo solar: todavía no existe.
+Los tests de Node comprueban una posición solar de referencia con tolerancia de 0,1°, cambios de horario de Madrid, geometría analítica simple, noche, datos ausentes, filtros, enlace compartido y contrato de la API municipal. La prueba de la biblioteca solar cubre solo ese caso, no su precisión global ni la sombra real en terrazas. Los dos últimos comandos comprueban solo documentación/configuración. El frontend es estático, sin build, compilador de tipos ni linter configurado.
+
+El 2026-11-03 se probó en Chromium a 320, 390, 768 y 1440 px: cambio de fecha y hora, noche, filtros, mapa/lista/detalle, enlace y teclado. La consulta municipal se probó con una respuesta real (tres registros) y con respuestas sintéticas válidas, vacías, fallidas y con texto malicioso; no consulta antes de pulsar ni envía el plan. Se inspeccionaron capturas de cada tamaño. Falta prueba en dispositivos reales, validación geométrica con datos reales y contraste sobre el terreno.
 
 El 2026-11-02 se probaron con Chromium y datos inventados las anchuras 320, 390, 768 y 1440 px: filtros, lista y mapa sincronizados, caso vacío, enlace compartido, teclado, movimiento reducido y consola/red. Se inspeccionaron capturas y se corrigió la distribución en pantalla intermedia y con ampliación CSS al 200 %. Sin JavaScript se comprobó el aviso. No sustituye una auditoría completa de accesibilidad ni la prueba en dispositivos reales.
 

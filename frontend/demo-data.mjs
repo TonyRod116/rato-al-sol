@@ -1,28 +1,43 @@
-// Estos intervalos son inventados para probar la interfaz; no son un modelo solar.
-export const places = [
-  { id: 'la-parra', number: 1, name: 'La Parra', description: 'Junto a la plaza', x: 25, y: 25,
-    windows: [[540, 900, 'sun'], [900, 1230, 'shade']] },
-  { id: 'el-mirador', number: 2, name: 'El Mirador', description: 'En la calle tranquila', x: 72, y: 33,
-    windows: [[540, 780, 'shade'], [780, 1140, 'sun'], [1140, 1230, 'shade']] },
-  { id: 'la-plaza', number: 3, name: 'La Plaza', description: 'Frente al jardín', x: 38, y: 69,
-    windows: [[540, 960, 'shade'], [960, 1170, 'sun'], [1170, 1230, 'shade']] },
-  { id: 'el-olivo', number: 4, name: 'El Olivo', description: 'Al final del paseo', x: 78, y: 76,
-    windows: [] },
+import { civilTimeToUtc, sunPosition, classifyLight } from './solar.mjs';
+
+// Barrio imaginario, con norte hacia arriba. Una unidad del dibujo equivale a
+// un metro: ni las fachadas ni las alturas corresponden a edificios reales.
+export const buildings = [
+  { footprint: [[0, 0], [104, 0], [146, 78], [0, 31]], height: 42 },
+  { footprint: [[198, 0], [419, 0], [375, 89], [231, 40]], height: 50 },
+  { footprint: [[475, 0], [600, 0], [600, 58], [433, 137]], height: 45 },
+  { footprint: [[0, 152], [126, 198], [82, 298], [0, 266]], height: 45 },
+  { footprint: [[266, 104], [357, 139], [322, 220], [306, 227]], height: 40 },
+  { footprint: [[448, 165], [600, 95], [600, 247], [506, 211]], height: 45 },
+  { footprint: [[0, 455], [148, 385], [201, 483], [184, 520], [0, 520]], height: 40 },
+  { footprint: [[378, 391], [600, 475], [600, 520], [425, 520]], height: 40 },
 ];
 
-export function outcomeFor(place, minutes) {
-  if (!Number.isInteger(minutes) || minutes < 540 || minutes > 1200) return 'unknown';
-  return place?.windows?.find(([start, end]) => minutes >= start && minutes < end)?.[2] ?? 'unknown';
+export const places = [
+  { id: 'la-parra', number: 1, name: 'La Parra', description: 'Junto a la plaza', x: 25, y: 25, hasTables: true },
+  { id: 'el-mirador', number: 2, name: 'El Mirador', description: 'En la calle tranquila', x: 72, y: 33, hasTables: true },
+  { id: 'la-plaza', number: 3, name: 'La Plaza', description: 'Frente al jardín', x: 38, y: 69, hasTables: true },
+  { id: 'el-olivo', number: 4, name: 'El Olivo', description: 'Al final del paseo', x: 78, y: 76, hasTables: false },
+];
+
+export function demoSun(date, minutes) {
+  const instant = civilTimeToUtc(date, minutes);
+  // Posición aproximada de Madrid para probar el reloj; el barrio es ficticio.
+  return instant ? sunPosition(instant, 40.4, -3.7) : null;
 }
 
-export function visiblePlaces(filter, minutes) {
-  return places.filter((place) => filter === 'all' || outcomeFor(place, minutes) === filter);
+export function outcomeFor(place, sun) {
+  if (!place) return 'unknown';
+  const point = place.hasTables ? [place.x * 6, place.y * 5.2] : null;
+  return classifyLight({ sun, point, buildings, coverage: true });
+}
+
+export function visiblePlaces(filter, sun) {
+  return places.filter((place) => filter === 'all' || outcomeFor(place, sun) === filter);
 }
 
 function validDate(value) {
-  if (!/^\d{4}-\d{2}-\d{2}$/.test(value) || Number(value.slice(0, 4)) < 1000) return false;
-  const parsed = new Date(`${value}T12:00:00Z`);
-  return !Number.isNaN(parsed.valueOf()) && parsed.toISOString().slice(0, 10) === value;
+  return civilTimeToUtc(value, 720) !== null;
 }
 
 export function parseSharedState(search, defaults) {

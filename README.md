@@ -6,7 +6,7 @@ Un mapa sencillo de terrazas con intervalos estimados de sol y sombra, un select
 
 ## Estado real
 
-Existe un primer ejemplo interactivo local de mapa, lista, fecha, hora y filtros. **El barrio, las terrazas y sus estados están inventados: no son predicciones ni sirven todavía para elegir una terraza real.** No hay proveedor conectado, motor solar validado ni despliegue.
+Existe un ejemplo interactivo de mapa, lista, fecha, hora y filtros. La posición del sol se calcula para Madrid, pero **el barrio y los edificios del mapa son inventados**: sus resultados no sirven para elegir una terraza real. También hay una consulta independiente al censo del Ayuntamiento para mostrar las primeras terrazas registradas en la calle de Ayala; no calcula su sol o sombra porque falta comprobar dónde están las mesas. No hay despliegue.
 
 ## Orientación obligatoria
 
@@ -20,12 +20,14 @@ Para abrir el ejemplo, desde la raíz del proyecto y con el puerto libre:
 python3 -m http.server 5182 --bind 127.0.0.1 --directory frontend
 ```
 
-Abrir `http://127.0.0.1:5182/` y parar el servidor con `Ctrl+C`. Si el puerto está ocupado, elegir otro; no detener procesos ajenos. El ejemplo es estático y no necesita instalar paquetes ni ejecutar un build.
+Abrir `http://127.0.0.1:5182/` y parar el servidor con `Ctrl+C`. Si el puerto está ocupado, elegir otro; no detener procesos ajenos. El frontend es estático y no necesita instalar paquetes ni ejecutar un build. La consulta real de Madrid necesita conexión a internet y solo se realiza al pulsar su botón.
 
 Para las comprobaciones locales se necesitan Python 3.11 o posterior y Node.js:
 
 ```bash
 node tests/demo.test.mjs
+node tests/solar.test.mjs
+node tests/madrid.test.mjs
 node --check frontend/app.mjs
 python3 scripts/repo_check.py
 bash scripts/check-ai-instructions.sh
@@ -38,7 +40,7 @@ bash scripts/sync-ai-instructions.sh
 bash scripts/check-ai-instructions.sh
 ```
 
-Los tests verifican el comportamiento del ejemplo, no la exactitud solar. Las comprobaciones de documentación y configuración no prueban la interfaz; el alcance de las pruebas está en [calidad](docs/QUALITY.md).
+Los tests comprueban casos solares y geométricos concretos, no la precisión de predicciones reales. Las comprobaciones de documentación y configuración no prueban la interfaz; el alcance de las pruebas está en [calidad](docs/QUALITY.md). La biblioteca solar [SunCalc 2.0.2](https://github.com/mourner/suncalc/tree/v2.0.2) se incluye localmente con su licencia BSD-2-Clause en `frontend/vendor/`.
 
 ## Guías
 

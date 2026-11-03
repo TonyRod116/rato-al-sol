@@ -86,6 +86,7 @@ input[type="range"] { display: block; width: 100%; height: 22px; margin: 0; acce
 .status { display: inline-flex; align-items: center; justify-content: center; gap: .3rem; padding: 7px 9px; border-radius: 3px; font-size: .71rem; font-weight: 750; line-height: 1.15; white-space: nowrap; }
 .status-sun { background: #ffebaf; color: #604600; }
 .status-shade { background: #dbe8e9; color: #294d55; }
+.status-night { background: #e0dfee; color: #37315a; }
 .status-unknown { background: #e8e7df; color: #555b51; }
 .place-arrow { color: #697161; font-size: .95rem; }
 .empty-state { padding: 20px 0; color: var(--muted); line-height: 1.5; }
@@ -107,6 +108,7 @@ input[type="range"] { display: block; width: 100%; height: 22px; margin: 0; acce
 .map-pin { position: absolute; z-index: 1; display: grid; place-items: center; width: 44px; height: 44px; padding: 0; border: 3px solid #fffdf8; border-radius: 50% 50% 50% 5px; transform: translate(-50%, -75%) rotate(-45deg); box-shadow: 0 3px 5px #36382a33; background: #e5b63d; color: var(--ink); font-size: 0; }
 .map-pin::after { content: attr(data-number); transform: rotate(45deg); font: 700 1rem/1 Georgia, serif; }
 .map-pin.pin-shade { background: #56818b; color: white; }
+.map-pin.pin-night { background: #565175; color: white; }
 .map-pin.pin-unknown { background: #858b7c; color: white; }
 .map-pin.is-selected { z-index: 2; outline: 3px solid #303d2f; outline-offset: 2px; }
 .map-pin:focus-visible { outline-color: #244b85; }
@@ -114,6 +116,25 @@ input[type="range"] { display: block; width: 100%; height: 22px; margin: 0; acce
 .map-north span { font-size: 1rem; line-height: 1; }
 .map-figure figcaption { margin-top: 10px; color: #6b7063; font-size: .76rem; }
 .map-figure figcaption span { margin-right: .25rem; color: var(--rust); }
+
+.madrid-pilot { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: clamp(28px, 5vw, 72px); margin-top: 86px; padding: 38px; background: #edf1e4; border: 1px solid #d5ddc7; }
+.madrid-intro h2 { margin: 0; font-size: clamp(2rem, 3.4vw, 3rem); line-height: 1.1; }
+.madrid-intro p:not(.section-kicker) { max-width: 36rem; color: #4d5b4c; line-height: 1.6; }
+.madrid-button { margin-top: 4px; padding: 13px 16px; border: 0; border-radius: 3px; background: var(--ink); color: white; font: inherit; font-weight: 700; cursor: pointer; }
+.madrid-button:disabled { cursor: wait; opacity: .65; }
+.madrid-status { margin: 0; color: #4d5b4c; font-size: .9rem; line-height: 1.5; }
+.madrid-list { list-style: none; margin: 16px 0; padding: 0; }
+.madrid-list li { display: flex; justify-content: space-between; align-items: center; gap: 14px; padding: 14px 0; border-top: 1px solid #cbd5c2; }
+.madrid-list strong, .madrid-list small { display: block; }
+.madrid-list strong { font-size: .9rem; overflow-wrap: anywhere; }
+.madrid-list small { margin-top: 5px; color: #4d5b4c; }
+.madrid-source { color: #4d5b4c; font-size: .75rem; line-height: 1.55; }
+.madrid-source a { color: inherit; text-underline-offset: 2px; }
+.demo-notice a { color: inherit; font-weight: 700; text-underline-offset: 2px; }
+
+@media (max-width: 767px) {
+  .madrid-pilot { grid-template-columns: 1fr; gap: 28px; margin-top: 58px; padding: 24px 18px; }
+}
 .about { display: grid; grid-template-columns: 1fr 1fr; gap: 9%; padding: 50px 0 70px; border-top: 1px solid var(--line); }
 .about h2 { margin-bottom: 0; font-size: clamp(1.9rem, 3.4vw, 3rem); line-height: 1.15; }
 .about p:not(.section-kicker) { max-width: 560px; color: #596052; font-size: .94rem; line-height: 1.7; }

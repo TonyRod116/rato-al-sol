@@ -1,4 +1,5 @@
-import { places, outcomeFor, visiblePlaces, parseSharedState, shareUrl } from './demo-data.mjs';
+import { buildings, places, demoSun, outcomeFor, visiblePlaces, parseSharedState, shareUrl } from './demo-data.mjs';
+import { getMadridTerraces } from './madrid.mjs';
 
 const $ = (selector) => document.querySelector(selector);
 const time = $('#time');
@@ -10,11 +11,20 @@ const details = $('#details');
 const sharePanel = $('#share-panel');
 const shareLink = $('#share-link');
 
-const today = new Date();
-const localDate = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`;
+const todayParts = Object.fromEntries(new Intl.DateTimeFormat('en-GB', {
+  timeZone: 'Europe/Madrid', year: 'numeric', month: '2-digit', day: '2-digit',
+}).formatToParts(new Date()).map(({ type, value }) => [type, value]));
+const localDate = `${todayParts.year}-${todayParts.month}-${todayParts.day}`;
 const state = parseSharedState(window.location.search, { date: localDate, minutes: 750, filter: 'all', selected: 'la-parra' });
-const labels = { sun: 'Sol de ejemplo', shade: 'Sombra de ejemplo', unknown: 'Sin datos' };
-const icons = { sun: '☀', shade: '◒', unknown: '?' };
+const labels = { sun: 'Sol de ejemplo', shade: 'Sombra de ejemplo', night: 'De noche', unknown: 'Sin datos' };
+const icons = { sun: '☀', shade: '◒', night: '☾', unknown: '?' };
+
+// Use the very same footprints for the illustration and the shadow calculation.
+for (const building of buildings) {
+  const polygon = document.createElementNS('http://www.w3.org/2000/svg', 'polygon');
+  polygon.setAttribute('points', building.footprint.map((point) => point.join(',')).join(' '));
+  $('#map-buildings').append(polygon);
+}
 
 function formattedTime(minutes) {
   return `${String(Math.floor(minutes / 60)).padStart(2, '0')}:${String(minutes % 60).padStart(2, '0')}`;
@@ -51,7 +61,8 @@ function selectPlace(id) {
 }
 
 function render() {
-  const visible = visiblePlaces(state.filter, state.minutes);
+  const sun = demoSun(state.date, state.minutes);
+  const visible = visiblePlaces(state.filter, sun);
   if (!visible.some((place) => place.id === state.selected)) state.selected = visible[0]?.id ?? '';
   const selected = places.find((place) => place.id === state.selected);
   const clock = formattedTime(state.minutes);
@@ -66,7 +77,7 @@ function render() {
   $('#unknown-note').hidden = state.filter === 'all';
 
   for (const place of places) {
-    const outcome = outcomeFor(place, state.minutes);
+    const outcome = outcomeFor(place, sun);
     const shown = visible.some((entry) => entry.id === place.id);
     const active = place.id === state.selected;
     const item = list.querySelector(`[data-place="${place.id}"]`);
@@ -84,13 +95,19 @@ function render() {
 
   details.hidden = !selected;
   if (selected) {
-    const outcome = outcomeFor(selected, state.minutes);
+    const outcome = outcomeFor(selected, sun);
     $('#detail-title').textContent = selected.name;
     $('#detail-status').className = `status status-${outcome}`;
     $('#detail-status').textContent = `${icons[outcome]} ${labels[outcome]}`;
-    $('#detail-copy').textContent = outcome === 'unknown'
-      ? 'Este ejemplo muestra qué ocurre cuando no tenemos información suficiente para decir si habrá sol o sombra.'
-      : 'Este estado está inventado para mostrar el funcionamiento de la app. No describe una terraza real.';
+    const descriptions = {
+      sun: 'El cálculo encuentra sol en este lugar imaginario. No incluye nubes, toldos ni árboles.',
+      shade: 'Un edificio simulado tapa el sol en este lugar imaginario. No incluye nubes, toldos ni árboles.',
+      night: 'A esta hora el sol está bajo el horizonte. Este lugar es imaginario.',
+      unknown: !selected.hasTables
+        ? 'No conocemos la posición de las mesas de este lugar imaginario, así que no podemos calcular su sombra.'
+        : 'El sol está demasiado cerca del horizonte o faltan datos para calcular el resultado con confianza.',
+    };
+    $('#detail-copy').textContent = descriptions[outcome];
     if (!sharePanel.hidden) shareLink.value = shareUrl(window.location.href, state);
   }
 }
@@ -135,6 +152,46 @@ $('#copy').addEventListener('click', async () => {
     shareLink.focus();
     shareLink.select();
     $('#share-message').textContent = 'Copia el enlace seleccionado para compartirlo.';
+  }
+});
+
+$('#madrid-load').addEventListener('click', async () => {
+  const button = $('#madrid-load');
+  const status = $('#madrid-status');
+  const results = $('#madrid-list');
+  button.disabled = true;
+  results.replaceChildren();
+  status.textContent = 'Consultando el censo municipal…';
+  try {
+    const terraces = await getMadridTerraces();
+    if (!terraces.length) {
+      status.textContent = 'El censo no devuelve terrazas para esta selección. Prueba de nuevo más tarde.';
+    } else {
+      for (const terrace of terraces) {
+        const item = document.createElement('li');
+        const identity = document.createElement('span');
+        const name = document.createElement('strong');
+        const address = document.createElement('small');
+        const light = document.createElement('span');
+        name.textContent = terrace.name;
+        address.textContent = terrace.address;
+        identity.append(name, address);
+        light.className = 'status status-unknown';
+        light.textContent = '? Sin datos de sol';
+        item.append(identity, light);
+        results.append(item);
+      }
+      const consulted = new Intl.DateTimeFormat('es-ES', {
+        timeZone: 'Europe/Madrid', dateStyle: 'short', timeStyle: 'short',
+      }).format(new Date());
+      status.textContent = `${terraces.length} ${terraces.length === 1 ? 'registro' : 'registros'} · Consulta: ${consulted}, hora de Madrid.`;
+    }
+    button.textContent = 'Actualizar consulta ↗';
+  } catch {
+    status.textContent = 'Ahora no podemos consultar el censo de Madrid. Comprueba tu conexión y vuelve a intentarlo.';
+    button.textContent = 'Reintentar consulta ↗';
+  } finally {
+    button.disabled = false;
   }
 });
 

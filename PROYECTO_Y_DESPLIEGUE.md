@@ -1,6 +1,6 @@
 # Rato al Sol — qué construir y cómo se publicaría
 
-Actualizado: 2026-11-02. **Guía de orientación y rutas. No es un despliegue ni autoriza ejecutar uno ahora.**
+Actualizado: 2026-11-03. **Guía de orientación y rutas. No es un despliegue ni autoriza ejecutar uno ahora.**
 
 ## 1. Qué queremos hacer
 
@@ -16,18 +16,18 @@ El detalle del MVP y sus límites está en [producto](docs/PRODUCT.md), los dato
 
 ## 2. Estado real y primera lectura de cualquier IA
 
-Hay un primer frontend local e interactivo, con un barrio y estados completamente ficticios. **No hay predicciones reales, backend compartido, credenciales de proveedor, dominios asignados ni servicios publicados por este encargo.**
+Hay un frontend local interactivo con un barrio ficticio y cálculo solar para un escenario simulado. También consulta, a petición del usuario, una pequeña selección del censo público de terrazas de Madrid, sin estimar sol para ellas. **No hay predicciones reales, backend compartido, credenciales de proveedor, dominios asignados ni servicios publicados por este encargo.**
 
 Al entrar desde CLI: leer `AGENTS.md` (o su copia de la herramienta), este archivo, `NOTES.md` y la tarea pertinente de `.memory/todo.md`. Revisar la evidencia actual antes de decidir qué implementar; no repetir trabajo terminado ni interpretar una ruta propuesta como un servicio existente.
 
-Los nombres y las carpetas de las tres apps están confirmados. Este frontend inicial usa HTML, CSS y JavaScript sin dependencias ni build. Los destinos externos siguen siendo **propuestas**; Vite/React y FastAPI son referencias, no requisitos ni dependencias instaladas.
+Los nombres y las carpetas de las tres apps están confirmados. Este frontend usa HTML, CSS y JavaScript sin instalación ni build; incluye localmente SunCalc con su licencia. Los destinos externos siguen siendo **propuestas**; Vite/React y FastAPI son referencias, no requisitos ni dependencias instaladas.
 
 ## 3. Mapa de carpetas y conexiones
 
 | Elemento | Ruta / dirección | Estado y significado |
 |---|---|---|
 | Proyecto actual | `/home/tonirod/code/Cool_Projects/rato-al-sol/` | Existe; entrar aquí para las instrucciones y la documentación |
-| Código frontend propio | `/home/tonirod/code/Cool_Projects/rato-al-sol/frontend/` | Existe; ejemplo estático sin datos reales |
+| Código frontend propio | `/home/tonirod/code/Cool_Projects/rato-al-sol/frontend/` | Existe; demo estática y consulta limitada al censo público de Madrid |
 | Build frontend | No aplica a este ejemplo | Archivos estáticos servidos directamente; no se ha elegido Vite |
 | Frontend local | `http://127.0.0.1:5182/` | Puerto usado en las pruebas locales; requiere arrancar el servidor indicado en el README |
 | Repo nuevo de API común | `/home/tonirod/code/Cool_Projects/cool-projects-api/` | Propuesto y NO creado; separado de los tres frontends y de BuildApp |

@@ -10,7 +10,7 @@ Pantalla ilustrativa: «A esta terraza le quedan 47 minutos de sol». Es texto d
 
 ## Primera versión
 
-1. Un barrio de una ciudad por escoger según datos disponibles, con un conjunto pequeño de terrazas revisadas.
+1. Una zona pequeña de Madrid, elegida por Tony, con un conjunto de terrazas revisadas. La calle de Ayala en Recoletos es la primera prueba de datos, todavía sin posiciones verificadas de mesas.
 2. Mapa y lista equivalentes, selector de fecha/hora y filtro «quiero sol / quiero sombra».
 3. Una ficha con intervalo estimado, fuente de geometría y límites que afecten al resultado.
 4. Diferenciar modelo geométrico de nubosidad y de cualquier observación sobre el terreno.
