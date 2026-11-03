@@ -56,20 +56,23 @@ export async function getMadridBuildings(fetchFn = fetch, bounds = AYALA_BOUNDS)
     if (!raw.length) throw new Error('No building geometry available');
     if (raw.length > 8000) throw new Error('Acerca el mapa para cargar edificios.');
     const seen = new Set();
-    const features = raw.map((feature) => normalize(feature, bounds)).filter((feature) => {
-      if (!feature) return false;
+    const features = [];
+    let omitted = 0;
+    for (const item of raw) {
+      const feature = normalize(item, bounds);
+      if (!feature) { omitted++; continue; }
       const id = feature.properties.id;
-      if (id !== undefined && seen.has(id)) return false;
+      if (id !== undefined && seen.has(id)) continue;
       if (id !== undefined) seen.add(id);
-      return true;
-    });
+      features.push(feature);
+    }
     if (!features.length) throw new Error('No valid building heights');
     const vertices = features.reduce((total, feature) => {
       const polygons = feature.geometry.type === 'Polygon' ? [feature.geometry.coordinates] : feature.geometry.coordinates;
       return total + polygons.reduce((count, polygon) => count + polygon.reduce((sum, ring) => sum + ring.length, 0), 0);
     }, 0);
     if (vertices > 200000) throw new Error('Acerca el mapa para cargar edificios.');
-    return { type: 'FeatureCollection', features, bounds, omitted: raw.filter((feature) => !normalize(feature, bounds)).length };
+    return { type: 'FeatureCollection', features, bounds, omitted };
   } finally { clearTimeout(timeout); }
 }
 

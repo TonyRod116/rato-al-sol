@@ -16,7 +16,8 @@ import { sunPosition } from '../frontend/solar.mjs';
 import { buildingShadows, shadowDirection } from '../frontend/map-shadows.mjs';
 import { getViewportBuildings, viewportBounds } from '../frontend/viewport-buildings.mjs';
 import { DEFAULT_LOCATION } from '../frontend/shared/default-location.mjs';
-import { shadowsFitNativeBudget } from './src/viewport.mjs';
+import { createViewportLoader, expandedMadridViewport, shadowsFitNativeBudget } from './src/viewport.mjs';
+import { unionShadows } from './src/shadow-union.mjs';
 import { firstWithResults } from './src/first-results.mjs';
 import { initialSelectedTime, TIME_END, TIME_START } from '../frontend/shared/time-selection.mjs';
 import { isLanguage, languageKey, translate, translateDirection } from '../frontend/shared/i18n.mjs';
@@ -112,6 +113,9 @@ function Main() {
   const request = useRef(0);
   const pendingCamera = useRef(null);
   const myLocation = useRef(null);
+  const viewportLoader = useRef(null);
+  if (!viewportLoader.current) viewportLoader.current = createViewportLoader(getViewportBuildings, Date.now,
+    Platform.OS === 'web' ? undefined : expandedMadridViewport);
 
   const searchRadius = radius;
 
@@ -125,10 +129,19 @@ function Main() {
   useEffect(() => {
     if (!mapBounds) return;
     let cancelled = false;
-    setMapBuildings(null); setMapIssue(false);
+    const cached = viewportLoader.current.find(mapBounds);
+    if (cached) {
+      setMapBuildings(cached);
+      setMapIssue(Boolean(cached.omitted));
+      setMapStatus(cached.omitted
+        ? msg('Sombras aproximadas; algunos edificios no tienen altura disponible.', 'Approximate shadows; some buildings have no available height.')
+        : msg('Sombras aproximadas de los edificios de la zona visible.', 'Approximate building shadows in the visible area.'));
+      return;
+    }
+    setMapBuildings(null); setMapIssue(true);
     setMapStatus(msg('Cargando edificios de la zona…', 'Loading buildings in this area…'));
     const timer = setTimeout(() => {
-      getViewportBuildings(mapBounds).then((geometry) => {
+      viewportLoader.current.get(mapBounds).then((geometry) => {
         if (!cancelled) {
           setMapBuildings(geometry);
           setMapIssue(Boolean(geometry.omitted));
@@ -161,6 +174,17 @@ function Main() {
   }, [center, instant]);
   const shadows = useMemo(() => mapBuildings ? buildingShadows(mapBuildings, mapSun, visibleBounds) : emptyShadows, [mapBuildings, mapSun, visibleBounds]);
   const nativeShadowsOverBudget = useMemo(() => Platform.OS !== 'web' && !shadowsFitNativeBudget(shadows), [shadows]);
+  const [nativeShadowResult, setNativeShadowResult] = useState(null);
+  useEffect(() => {
+    if (Platform.OS === 'web' || nativeShadowsOverBudget || !shadows.features.length) return;
+    // Wait for the map and time control to settle before performing the union.
+    // Never draw a result from an older viewport or selected time.
+    const timer = setTimeout(() => setNativeShadowResult({ input: shadows, result: unionShadows(shadows) }), 250);
+    return () => clearTimeout(timer);
+  }, [shadows, nativeShadowsOverBudget]);
+  const shadowPending = Platform.OS !== 'web' && !nativeShadowsOverBudget && shadows.features.length > 0 && nativeShadowResult?.input !== shadows;
+  const shadowFailed = Platform.OS !== 'web' && nativeShadowResult?.input === shadows && nativeShadowResult.result === null;
+  const visibleShadows = Platform.OS === 'web' ? shadows : nativeShadowsOverBudget || shadowPending || shadowFailed ? emptyShadows : nativeShadowResult?.result || emptyShadows;
   const direction = useMemo(() => shadowDirection(mapSun), [mapSun]);
   const choices = useMemo(() => selected && scene ? nearbyOutdoorScenes(scene, buildings).map((choice) => ({ ...choice, windows: solarWindows(choice.scene, day) })) : [], [selected, scene, buildings, day]);
   const nearbyScenes = useMemo(() => {
@@ -391,18 +415,23 @@ function Main() {
     <StatusBar style="dark" />
     <View style={styles.app} accessibilityElementsHidden={searchOpen} importantForAccessibility={searchOpen ? 'no-hide-descendants' : 'auto'} {...(Platform.OS === 'web' ? { 'aria-hidden': searchOpen, inert: searchOpen } : {})}>
       <View style={[styles.mapArea, { bottom: sheetHeight }]}>
-        <MapCanvas camera={camera} places={resultsAreForMode ? visiblePlaces : []} selected={selected ? { ...selected, name: pointName(selected) } : null} language={language} shadows={nativeShadowsOverBudget ? emptyShadows : shadows} sun={mapSun} view3D={view3D} on3DAvailable={(available) => { setMap3DAvailable(available); if (!available) setView3D(false); }} onMove={(point) => {
+        <MapCanvas camera={camera} places={resultsAreForMode ? visiblePlaces : []} selected={selected ? { ...selected, name: pointName(selected) } : null} language={language} shadows={visibleShadows} sun={mapSun} view3D={view3D} on3DAvailable={(available) => { setMap3DAvailable(available); if (!available) setView3D(false); }} onMove={(point) => {
           const pending = pendingCamera.current;
           if (pending && Date.now() < pending.until && distanceMetres(pending, point) > 40) return;
           pendingCamera.current = null;
           const bounds = viewportBounds(point.bounds);
+          if (!bounds) {
+            setMapBuildings(null);
+            setMapIssue(true);
+            setMapStatus(msg('Acerca el mapa para cargar las sombras.', 'Zoom in to load shadows.'));
+          }
           setCenter({ latitude: point.latitude, longitude: point.longitude });
           setMapBounds((previous) => bounds?.join(',') === previous?.join(',') ? previous : bounds);
           setVisibleBounds((previous) => point.visibleBounds?.join(',') === previous?.join(',') ? previous : point.visibleBounds);
           setOriginLabel(myLocation.current && distanceMetres(myLocation.current, point) < 25 ? 'Tu ubicación' : 'Zona del mapa');
         }} onPick={choosePoint} onPlace={choosePoint} />
         {!map3DAvailable && <Text style={styles.mapFallback}>{t('3D no disponible · mapa en 2D', '3D unavailable · showing 2D map')}</Text>}
-        {(mapIssue || nativeShadowsOverBudget) && <Text style={[styles.mapFallback, { top: map3DAvailable ? 115 : 150 }]}>{nativeShadowsOverBudget ? t('Acerca el mapa para ver todas las sombras.', 'Zoom in to see all shadows.') : localized(mapStatus)}</Text>}
+        {(mapIssue || nativeShadowsOverBudget || shadowPending || shadowFailed) && <Text style={[styles.mapFallback, { top: map3DAvailable ? 115 : 150 }]}>{nativeShadowsOverBudget ? t('Acerca el mapa para ver todas las sombras.', 'Zoom in to see all shadows.') : shadowFailed ? t('No se han podido dibujar las sombras de esta zona.', 'Could not draw shadows in this area.') : shadowPending ? t('Calculando sombras de la zona…', 'Calculating shadows in this area…') : localized(mapStatus)}</Text>}
       </View>
       <View pointerEvents="box-none" style={styles.topControls}>
         <View style={styles.brandRow}>

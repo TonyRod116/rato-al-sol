@@ -18,6 +18,15 @@ const nightMap = [
 ];
 const defaultMap = [];
 
+// The rest of the screen updates frequently (for example while the user
+// searches). Reuse the native overlays until the actual shadow geometry changes.
+const ShadowPolygons = React.memo(function ShadowPolygons({ shadows }) {
+  return shadows.features.flatMap((feature, featureIndex) => feature.geometry.coordinates.map((polygon, polygonIndex) => <Polygon
+    key={`${featureIndex}-${polygonIndex}`} coordinates={polygon[0].map(([longitude, latitude]) => ({ latitude, longitude }))}
+    holes={polygon.slice(1).map((ring) => ring.map(([longitude, latitude]) => ({ latitude, longitude })))}
+    fillColor="rgba(48,67,73,0.26)" strokeColor="transparent" strokeWidth={0} tappable={false} />));
+});
+
 export default function MapCanvas({ camera, places, selected, language, shadows, sun, view3D, onMove, onPick, onPlace, style }) {
   const map = useRef(null), viewRequest = useRef(0);
   const atmosphere = mapAtmosphere(sun);
@@ -39,10 +48,7 @@ export default function MapCanvas({ camera, places, selected, language, shadows,
       customMapStyle={Platform.OS === 'android' ? atmosphere.isNight ? nightMap : defaultMap : undefined}
       onRegionChangeComplete={move}
       onPress={(event) => onPick(event.nativeEvent.coordinate)} accessibilityLabel={translate(language, 'Mapa. Toca para elegir un punto exterior.', 'Map. Tap to choose an outdoor point.')}>
-      {shadows.features.flatMap((feature, featureIndex) => feature.geometry.coordinates.map((polygon, polygonIndex) => <Polygon
-        key={`${featureIndex}-${polygonIndex}`} coordinates={polygon[0].map(([longitude, latitude]) => ({ latitude, longitude }))}
-        holes={polygon.slice(1).map((ring) => ring.map(([longitude, latitude]) => ({ latitude, longitude })))}
-        fillColor="rgba(48,67,73,0.26)" strokeColor="transparent" strokeWidth={0} tappable={false} />))}
+      <ShadowPolygons shadows={shadows} />
       {places.slice(0, 30).map((place) => <Marker key={place.id} coordinate={place} title={place.name} pinColor="#cf7554"
         onPress={(event) => { event.stopPropagation(); onPlace(place); }} />)}
       {selected && <Marker coordinate={selected} title={selected.name} pinColor="#273e33" />}
