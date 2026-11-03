@@ -102,6 +102,15 @@ Al cambiar de etapa: resultado, evidencia, bloqueo y siguiente acción concreta.
 - Límites: no hay APK, AAB, IPA, firma ni proyecto EAS verificado y no se han probado teléfonos. Android requiere una clave de mapas propia con restricciones. La auditoría npm encontró 14 avisos, dos altos en herramientas de Expo; falta evaluar la solución antes de distribuir. La fuente general, las sombras y las mesas continúan pendientes de validación según APP-002 y APP-006. El alojamiento de la URL elegida sigue sin identificar y sin modificar.
 - Siguiente acción: continuar las tareas de producto, probar Android/iPhone reales y, cuando se autorice la distribución, completar las cuentas, firma, clave de mapas, privacidad, revisión de dependencias y destino aislado descritos en [publicación](../docs/RELEASE.md).
 
+## APP-009 — Icono y repaso final de UX/UI
+
+- Estado: `in_progress` — petición de Tony del 2026-11-03.
+- Objetivo: proponer cinco variantes del icono y, con su visto bueno, mejorar la experiencia y la interfaz existente con `redesign-existing-projects` mediante el flujo `frontend-ui-engineering`.
+- Aceptación: cinco propuestas visuales comparables y reconocibles en pequeño, conservando el icono actual hasta que se elija uno; después del visto bueno, revisar y mejorar los recorridos reales y comprobar el resultado en navegador y, para cambios nativos, en un dispositivo o emulador.
+- Alcance: preparar las propuestas en el repositorio. Tony pidió conocer la skill antes de dar el OK al repaso general; no empezarlo antes de su respuesta.
+- Evidencia: cinco diseños vectoriales y una comparativa local inspeccionada en Chromium a 320, 390 y 1600 píxeles, también a tamaño reducido. No se han aplicado al icono de la app ni se ha comprobado su apariencia en teléfonos reales.
+- Siguiente acción: presentar las opciones y esperar su elección y visto bueno.
+
 ## REPO-001 — Guardar el proyecto en GitHub
 
 - Estado: `done` — completado y comprobado el 2026-11-02.
