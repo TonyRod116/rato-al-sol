@@ -1,10 +1,11 @@
 import { civilTimeToUtc, sunPosition } from './solar.mjs';
 import { getMadridTerraces } from './madrid.mjs';
-import { AYALA_CENTER, getMadridBuildings, insideAyala } from './madrid-buildings.mjs';
+import { AYALA_CENTER } from './madrid-buildings.mjs';
 import { buildingShadows, shadowDirection } from './map-shadows.mjs';
-import { createOpenMap } from './open-map.mjs?v=20261103-7';
-import { createCityMap } from './city-map.mjs?v=20261103-7';
-import { createExplorer } from './explore-search.mjs?v=20261103-7';
+import { getViewportBuildings, viewportBounds } from './viewport-buildings.mjs';
+import { createOpenMap } from './open-map.mjs?v=20261103-8';
+import { createCityMap } from './city-map.mjs?v=20261103-8';
+import { createExplorer } from './explore-search.mjs?v=20261103-8';
 
 const $ = (selector) => document.querySelector(selector);
 const today = Object.fromEntries(new Intl.DateTimeFormat('en-GB', {
@@ -17,7 +18,7 @@ let buildings, activeMap, madridPlaces = [], selectedMadrid = '', madridConsulte
 let mapStarted = false, mapLoading = false, is3D = true, playback, pendingFrame;
 let view = { bearing: 0, pitch: 0, center: AYALA_CENTER };
 let currentDirection = null;
-let buildingsLoading = false, buildingsError = false;
+let buildingsLoading = false, buildingsError = '', buildingRequest = 0, buildingKey = '', buildingTimer;
 let searchPins;
 let searchTimeEdited = false;
 const explorer = createExplorer({
@@ -33,6 +34,21 @@ const explorer = createExplorer({
 
 function formattedTime(minutes) {
   return `${String(Math.floor(minutes / 60)).padStart(2, '0')}:${String(minutes % 60).padStart(2, '0')}`;
+}
+
+function updateNearbyControls() {
+  const start = $('#nearby-start'), end = $('#nearby-end'), radius = $('#nearby-radius');
+  const from = start.valueAsNumber;
+  end.min = String(from + 10);
+  if (end.valueAsNumber <= from) end.value = String(Math.min(1440, from + 60));
+  $('#nearby-start-value').value = formattedTime(from);
+  $('#nearby-end-value').value = formattedTime(end.valueAsNumber);
+  $('#nearby-radius-value').value = radius.valueAsNumber < 1000 ? `${radius.valueAsNumber} m` : `${(radius.valueAsNumber / 1000).toFixed(1).replace('.', ',').replace(',0', '')} km`;
+  $('#nearby-end-control').hidden = !$('#nearby-end-enabled').checked;
+  for (const input of [start, end, radius]) {
+    input.style.setProperty('--progress', `${(input.valueAsNumber - Number(input.min)) / (Number(input.max) - Number(input.min) || 1) * 100}%`);
+    input.setAttribute('aria-valuetext', input === radius ? $('#nearby-radius-value').value : formattedTime(input.valueAsNumber));
+  }
 }
 
 function updateCompass() {
@@ -51,11 +67,11 @@ function updateShadowStatus() {
   const status = $('#shadow-status');
   $('#shadows-retry').hidden = !buildingsError;
   if (buildingsLoading) status.textContent = 'Cargando alturas de edificios…';
-  else if (buildingsError) status.textContent = 'No hemos podido cargar las alturas. No se pueden mostrar las sombras; inténtalo de nuevo.';
+  else if (buildingsError) status.textContent = buildingsError;
   else if (!buildings) status.textContent = 'Las sombras aún no están disponibles.';
-  else if (!insideAyala(view.center)) status.textContent = 'Fuera de la zona estudiada: las sombras solo se calculan en el entorno de Ayala.';
-  else if (buildings.omitted) status.textContent = 'Sombras orientativas en Ayala; faltan alturas válidas para algunos edificios.';
-  else status.textContent = 'Sombras orientativas · alturas municipales del entorno de Ayala.';
+  else if (buildings.source === 'osm') status.textContent = 'Sombras orientativas · OpenStreetMap. Pueden faltar edificios y alturas.';
+  else if (buildings.omitted) status.textContent = 'Sombras orientativas · alturas municipales. Faltan algunas alturas.';
+  else status.textContent = 'Sombras orientativas · alturas municipales de la zona visible.';
 }
 
 function updateSolar() {
@@ -63,7 +79,8 @@ function updateSolar() {
   const sun = sunPosition(instant, view.center.lat, view.center.lng);
   currentDirection = shadowDirection(sun);
   const clock = formattedTime(state.minutes);
-  if (!searchTimeEdited) $('#nearby-start').value = clock;
+  if (!searchTimeEdited) $('#nearby-start').value = String(state.minutes);
+  updateNearbyControls();
   $('#date').value = state.date;
   $('#time').value = state.minutes;
   $('#time-value').value = clock;
@@ -95,17 +112,34 @@ function stopPlayback() {
   $('#play-day').textContent = '▶ Ver pasar el día';
 }
 
-async function loadBuildings() {
-  if (buildingsLoading) return;
-  buildingsLoading = true; buildingsError = false; updateShadowStatus();
-  try {
-    buildings = await getMadridBuildings();
-    activeMap?.setBuildings(buildings);
-    updateSolar();
-  } catch {
-    buildings = null; buildingsError = true;
-    activeMap?.setShadows(empty);
-  } finally { buildingsLoading = false; updateShadowStatus(); }
+function loadBuildings(force = false) {
+  const bounds = viewportBounds(view.shadowBounds);
+  if (!activeMap || !bounds) return;
+  const key = bounds.join(',');
+  if (!force && key === buildingKey) return;
+  buildingKey = key;
+  const request = ++buildingRequest;
+  clearTimeout(buildingTimer);
+  buildings = null; buildingsLoading = true; buildingsError = '';
+  activeMap.setBuildings(empty);
+  activeMap.setShadows(empty, bounds);
+  updateShadowStatus();
+  buildingTimer = setTimeout(async () => {
+    try {
+      const result = await getViewportBuildings(bounds);
+      if (request !== buildingRequest) return;
+      buildings = result;
+      activeMap?.setBuildings(buildings);
+      updateSolar();
+    } catch (error) {
+      if (request !== buildingRequest) return;
+      buildings = null;
+      buildingsError = error?.message?.startsWith('Acerca el mapa') ? error.message : 'No hemos podido cargar las alturas de esta zona. Prueba de nuevo.';
+      activeMap?.setShadows(empty, bounds);
+    } finally {
+      if (request === buildingRequest) { buildingsLoading = false; updateShadowStatus(); }
+    }
+  }, 350);
 }
 
 function selectMadrid(id, focus = true) {
@@ -171,7 +205,7 @@ function onViewChange(next) {
   view = next;
   updateCompass();
   updateShadowStatus();
-  if (next.settled && activeMap) updateSolar();
+  if (next.settled && activeMap) { updateSolar(); loadBuildings(); }
 }
 
 function activateMap(map, isCity) {
@@ -191,6 +225,7 @@ function activateMap(map, isCity) {
   if (buildings) activeMap.setBuildings(buildings);
   updateSolar();
   activeMap.invalidate();
+  loadBuildings();
 }
 
 function updateBasemapButtons(aerial) {
@@ -235,7 +270,9 @@ async function loadMap() {
 }
 
 $('#time').addEventListener('input', (event) => { stopPlayback(); state.minutes = Number(event.target.value); updateSolar(); });
-$('#nearby-start').addEventListener('input', () => { searchTimeEdited = true; });
+$('#nearby-start').addEventListener('input', () => { searchTimeEdited = true; updateNearbyControls(); });
+for (const id of ['nearby-end', 'nearby-radius']) $(`#${id}`).addEventListener('input', updateNearbyControls);
+$('#nearby-end-enabled').addEventListener('change', updateNearbyControls);
 $('#nearby-form').addEventListener('submit', () => { searchTimeEdited = true; });
 $('#select-map-center').addEventListener('click', () => explorer.selectPoint({ latitude: view.center.lat, longitude: view.center.lng }));
 $('#use-location').addEventListener('click', () => {
@@ -274,7 +311,7 @@ $('#play-day').addEventListener('click', () => {
   }, 450);
 });
 $('#madrid-load').addEventListener('click', loadMadrid);
-$('#shadows-retry').addEventListener('click', loadBuildings);
+$('#shadows-retry').addEventListener('click', () => loadBuildings(true));
 $('#map-retry').addEventListener('click', () => window.location.reload());
 $('#map-rotate').addEventListener('click', () => activeMap?.rotate?.());
 function setView3D(enabled) {
@@ -301,6 +338,5 @@ for (const [id, kind] of [['basemap-street', 'street'], ['basemap-aerial', 'aeri
 const oldParams = new URLSearchParams(window.location.search);
 if (['fecha', 'hora', 'filtro', 'terraza'].some((key) => oldParams.has(key))) $('#old-link-note').hidden = false;
 updateSolar();
-loadBuildings();
 loadMadrid();
 loadMap();

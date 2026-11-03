@@ -25,8 +25,10 @@ export async function getMadridScene(point, fetchFn = fetch) {
     if (data?.type !== 'FeatureCollection' || !Array.isArray(data.features) || !data.features.length || data.features.length >= MAX_FEATURES || data.exceededTransferLimit) throw new Error('Geometría incompleta');
     const buildings = []; let vertices = 0;
     for (const feature of data.features) {
-      const height = feature?.properties?.ALTURA, geometry = feature?.geometry;
-      if (!Number.isFinite(height) || height <= 0 || height > 500) throw new Error('Altura no válida');
+      const reportedHeight = feature?.properties?.ALTURA, geometry = feature?.geometry;
+      // Keep the footprint even without a usable height: it can still obstruct
+      // the sun, but must never be treated as a known-height building.
+      const height = Number.isFinite(reportedHeight) && reportedHeight > 0 && reportedHeight <= 500 ? reportedHeight : null;
       const polygons = geometry?.type === 'Polygon' ? [geometry.coordinates] : geometry?.type === 'MultiPolygon' ? geometry.coordinates : null;
       if (!Array.isArray(polygons) || !polygons.length) throw new Error('Geometría no válida');
       for (const polygon of polygons) {

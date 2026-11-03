@@ -78,8 +78,6 @@ export async function createCityMap(element, onViewChange = () => {}, onBasemapE
     throw error;
   }
 
-  const [west, south, east, north] = AYALA_BOUNDS;
-  const coverage = { type: 'Polygon', coordinates: [[[west, south], [east, south], [east, north], [west, north], [west, south]]] };
   const empty = { type: 'FeatureCollection', features: [] };
   map.addSource('ayala-buildings', { type: 'geojson', data: empty, maxzoom: 17 });
   const shadowCanvas = document.createElement('canvas');
@@ -96,16 +94,18 @@ export async function createCityMap(element, onViewChange = () => {}, onBasemapE
   map.addLayer({ id: 'ayala-buildings-3d', type: 'fill-extrusion', source: 'ayala-buildings', minzoom: 13,
     paint: { 'fill-extrusion-color': '#d8a993', 'fill-extrusion-height': ['get', 'height'],
       'fill-extrusion-base': 0, 'fill-extrusion-opacity': .8 } }, below3d);
-  // Replace the schematic tile buildings only within the municipal coverage area.
-  function useMunicipalBuildings() {
+  const originalBuildingFilters = new Map(['building', 'building-3d'].filter((id) => map.getLayer(id)).map((id) => [id, map.getFilter(id)]));
+  // Replace schematic tile buildings only inside the loaded municipal area.
+  function useMunicipalBuildings(bounds) {
+    const [west, south, east, north] = bounds || [];
+    const coverage = bounds && { type: 'Polygon', coordinates: [[[west, south], [east, south], [east, north], [west, north], [west, south]]] };
     for (const id of ['building', 'building-3d']) {
       if (!map.getLayer(id)) continue;
-      const original = map.getFilter(id);
-      const outside = ['!', ['within', coverage]];
-      map.setFilter(id, original ? ['all', original, outside] : outside);
+      const original = originalBuildingFilters.get(id);
+      const outside = coverage && ['!', ['within', coverage]];
+      map.setFilter(id, outside ? original ? ['all', original, outside] : outside : original || null);
     }
   }
-  let usingMunicipal = false;
   if (map.getLayer('building-3d')) map.setLayerZoomRange('building-3d', 13, 24);
   if (map.getLayer('building')) {
     map.setLayerZoomRange('building', 13, 24);
@@ -139,8 +139,9 @@ export async function createCityMap(element, onViewChange = () => {}, onBasemapE
   const duration = () => window.matchMedia('(prefers-reduced-motion: reduce)').matches ? 0 : 350;
   return {
     setBuildings(buildings) {
-      map.getSource('ayala-buildings').setData(buildings);
-      if (!usingMunicipal) { useMunicipalBuildings(); usingMunicipal = true; }
+      const municipal = buildings?.source === 'madrid' && buildings?.bounds;
+      map.getSource('ayala-buildings').setData(municipal ? buildings : empty);
+      useMunicipalBuildings(municipal || null);
     },
     setShadows(shadows, bounds = AYALA_BOUNDS) {
       const size = Math.max(element.clientWidth, element.clientHeight) * (window.devicePixelRatio || 1) * 1.4;

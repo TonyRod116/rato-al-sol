@@ -6,6 +6,58 @@ const MAX_BUILDINGS = 4000;
 const recent = new Map();
 let pauseUntil = 0;
 
+const fold = (text) => text.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLocaleLowerCase('es').trim();
+
+function editDistance(a, b) {
+  let previous = Array.from({ length: b.length + 1 }, (_, i) => i);
+  for (let i = 1; i <= a.length; i++) {
+    const current = [i];
+    for (let j = 1; j <= b.length; j++) current[j] = Math.min(current[j - 1] + 1, previous[j] + 1, previous[j - 1] + (a[i - 1] === b[j - 1] ? 0 : 1));
+    previous = current;
+  }
+  return previous[b.length];
+}
+
+const categories = [
+  { names: ['restaurante', 'restaurantes', 'restaurant'], filter: '["amenity"~"^(restaurant|fast_food)$"]', kind: 'business' },
+  { names: ['terraza', 'terrazas'], filter: '["amenity"~"^(restaurant|cafe|bar|pub|ice_cream)$"]["outdoor_seating"="yes"]', kind: 'business' },
+  { names: ['bar', 'bares'], filter: '["amenity"~"^(bar|pub)$"]', kind: 'business' },
+  { names: ['cafe', 'cafeteria', 'cafeterias'], filter: '["amenity"="cafe"]', kind: 'business' },
+  { names: ['parque', 'parques', 'jardin', 'jardines'], filter: '["leisure"~"^(park|garden|playground|recreation_ground)$"]', kind: 'public' },
+  { names: ['plaza', 'plazas'], filter: '["place"="square"]', kind: 'public' },
+];
+
+export function searchCategory(text) {
+  const query = typeof text === 'string' ? fold(text) : '';
+  if (!query || query.includes(' ') || !/^[a-z]+$/.test(query)) return null;
+  return categories.find((category) => category.names.some((name) =>
+    name === query || (query.length >= 5 && Math.abs(name.length - query.length) <= 2 && editDistance(name, query) <= (query.length >= 8 ? 2 : 1)))) || null;
+}
+
+export function matchesName(text, name) {
+  const query = fold(text), candidate = fold(name);
+  if (candidate.includes(query)) return true;
+  if (query.length < 4 || query.length > 40) return false;
+  const words = candidate.split(/\s+/), count = query.split(/\s+/).length;
+  const tolerance = query.length >= 8 ? 2 : 1;
+  return words.some((_, i) => {
+    const part = words.slice(i, i + count).join(' ');
+    return Math.abs(part.length - query.length) <= tolerance && editDistance(query, part) <= tolerance;
+  });
+}
+
+function namePattern(name) {
+  const escape = (value) => value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  if (name.length < 4 || name.length > 40 || !/^[\p{L}\p{N} ]+$/u.test(name)) return escape(name);
+  const chars = [...name], variants = [escape(name)];
+  for (let i = 0; i < chars.length; i++) {
+    const before = escape(chars.slice(0, i).join('')), after = escape(chars.slice(i + 1).join(''));
+    variants.push(before + after, before + '.' + after, before + '.' + escape(chars.slice(i).join('')));
+    if (i + 1 < chars.length) variants.push(before + escape(chars[i + 1] + chars[i]) + escape(chars.slice(i + 2).join('')));
+  }
+  return `(${[...new Set(variants)].join('|')})`;
+}
+
 export function validCoordinate(point) {
   return point && Number.isFinite(point.latitude) && Math.abs(point.latitude) <= 85 &&
     Number.isFinite(point.longitude) && Math.abs(point.longitude) <= 180;
@@ -78,9 +130,11 @@ function normalizePlaces(elements, origin) {
 export async function searchPlaces(text, center, radius = 5000, fetchFn = fetch) {
   const name = typeof text === 'string' ? text.trim() : '';
   if (name.length < 2 || name.length > 80 || /[\x00-\x1f]/.test(name)) throw new Error('Escribe entre 2 y 80 caracteres.');
-  // Treat user input as literal text in both the Overpass string and its regex.
-  const literal = name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&').replace(/\\/g, '\\\\').replace(/"/g, '\\"');
-  const elements = await queryOverpass(`nwr(around:${around(center, radius)})["name"~"${literal}",i];out center tags ${MAX_PLACES};`, fetchFn);
+  const category = searchCategory(name);
+  // Escape both the regex and Overpass string; only our bounded alternatives are operators.
+  const literal = namePattern(name).replace(/\\/g, '\\\\').replace(/"/g, '\\"');
+  const filter = category ? `${category.filter}["name"]` : `["name"~"${literal}",i]`;
+  const elements = await queryOverpass(`nwr(around:${around(center, radius)})${filter};out center tags ${MAX_PLACES};`, fetchFn);
   return normalizePlaces(elements, center);
 }
 

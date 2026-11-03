@@ -1,4 +1,4 @@
-import React, { useMemo, useRef, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { ActivityIndicator, Linking, Platform, Pressable, ScrollView, StyleSheet, Text, TextInput, useWindowDimensions, View } from 'react-native';
 import { SafeAreaProvider, SafeAreaView } from 'react-native-safe-area-context';
 import Slider from '@react-native-community/slider';
@@ -7,16 +7,31 @@ import { StatusBar } from 'expo-status-bar';
 import MapCanvas from './src/MapCanvas';
 import { distanceMetres, searchNearby, searchPlaces, validCoordinate } from '../frontend/shared/places.mjs';
 import { getScenes } from '../frontend/shared/scene-provider.mjs';
-import { getAyalaFallback, searchMadridFallback, searchMadridParks } from '../frontend/shared/ayala-fallback.mjs';
-import { atMinutes, formatTime, lightAt, lightForInterval, prepareScene, shadowShapes, solarWindows } from '../frontend/shared/estimate.mjs';
+import { searchMadridFallback, searchMadridParks } from '../frontend/shared/ayala-fallback.mjs';
+import { inMadridArea } from '../frontend/shared/madrid-scene.mjs';
+import { atMinutes, formatTime, lightAt, lightForInterval, nearbyOutdoorScenes, prepareScene, sceneInsideBuilding, shadowShapes, solarWindows } from '../frontend/shared/estimate.mjs';
 import { sunPosition } from '../frontend/solar.mjs';
 import { shadowDirection } from '../frontend/map-shadows.mjs';
 
 const MADRID = { latitude: 40.42785, longitude: -3.6873 };
-const RADIUS = [500, 1000, 2000, 5000];
 const statusText = { sun: 'Sol estimado', shade: 'Sombra estimada', night: 'Es de noche', unknown: 'Sin datos suficientes' };
 const statusColor = { sun: '#a45b24', shade: '#536b74', night: '#536b74', unknown: '#777a70' };
+const barColor = { sun: '#eeb54f', shade: '#718991', night: '#3f5062', unknown: '#c8cbc1' };
 const shortDistance = (metres) => metres < 1000 ? `${Math.round(metres / 10) * 10} m` : `${(metres / 1000).toFixed(1).replace('.', ',')} km`;
+const clockTime = (minutes) => minutes === 1440 ? '24:00' : formatTime(minutes);
+
+// Show the first useful catalogue while a slow provider continues independently.
+function firstWithResults(tasks) {
+  return new Promise((resolve, reject) => {
+    let waiting = tasks.length, successes = 0, lastError;
+    for (const task of tasks) task.then((result) => {
+      successes++;
+      if (result.places.length) resolve(result);
+    }, (error) => { lastError = error; }).finally(() => {
+      if (--waiting === 0) successes ? resolve({ places: [], source: 'empty' }) : reject(lastError);
+    });
+  });
+}
 
 function Action({ children, onPress, secondary = false, disabled = false, style }) {
   return <Pressable accessibilityRole="button" disabled={disabled} onPress={onPress} style={({ pressed }) => [styles.button, secondary && styles.buttonSecondary, disabled && styles.disabled, pressed && styles.pressed, style]}>
@@ -31,28 +46,41 @@ function Chip({ children, selected, onPress }) {
 function Loading({ text }) {
   return <View style={styles.loading}><ActivityIndicator color="#bd6547" /><Text style={styles.muted}>{text}</Text></View>;
 }
+function Range({ label, value, min, max, step, onChange, valueText }) {
+  return Platform.OS === 'web' ? <input type="range" aria-label={label} aria-valuetext={valueText} min={min} max={max} step={step} value={value} onChange={(event) => onChange(Number(event.target.value))} style={{ width: '100%', height: 42, marginTop: 4, accentColor: '#30463a', cursor: 'pointer' }} /> :
+    <Slider style={styles.slider} accessibilityLabel={label} accessibilityValue={{ min, max, now: value, text: valueText }} minimumValue={min} maximumValue={max} step={step} value={value} onValueChange={onChange} minimumTrackTintColor="#eeb342" maximumTrackTintColor="#d9d7cb" thumbTintColor="#30463a" />;
+}
 
 function Main() {
   const { width } = useWindowDimensions();
   const [mode, setMode] = useState('place');
   const [center, setCenter] = useState(MADRID), [camera, setCamera] = useState(null);
   const [originLabel, setOriginLabel] = useState('Zona del mapa');
-  const [query, setQuery] = useState(''), [radius, setRadius] = useState(1000);
-  const [customRadius, setCustomRadius] = useState('');
+  const [query, setQuery] = useState(''), [radius, setRadius] = useState(500);
   const [dayOffset, setDayOffset] = useState(0);
   const [minutes, setMinutes] = useState(() => { const now = new Date(); return Math.floor((now.getHours() * 60 + now.getMinutes()) / 15) * 15; });
-  const [endTime, setEndTime] = useState('');
+  const [endEnabled, setEndEnabled] = useState(false), [endMinutes, setEndMinutes] = useState(900);
   const [places, setPlaces] = useState([]), [resultsType, setResultsType] = useState(null);
   const [selected, setSelected] = useState(null), [buildings, setBuildings] = useState([]), [coverage, setCoverage] = useState([]);
   const [busy, setBusy] = useState(''), [notice, setNotice] = useState(''), [error, setError] = useState('');
   const [sunOnly, setSunOnly] = useState(false);
+  const [mapBuildings, setMapBuildings] = useState([]), [mapStatus, setMapStatus] = useState('');
   const request = useRef(0);
   const myLocation = useRef(null);
 
-  const radiusText = customRadius.trim();
-  const radiusNumber = Number(radiusText.replace(',', '.'));
-  const validRadius = !radiusText || (/^\d{1,2}(?:[.,]\d{1,2})?$/.test(radiusText) && radiusNumber >= 0.1 && radiusNumber <= 5);
-  const searchRadius = radiusText && validRadius ? Math.round(radiusNumber * 1000) : radius;
+  const searchRadius = radius;
+
+  useEffect(() => {
+    let cancelled = false;
+    setMapBuildings([]);
+    setMapStatus('Cargando edificios de la zona…');
+    const timer = setTimeout(() => {
+      getScenes([center]).then((geometry) => {
+        if (!cancelled) { setMapBuildings(geometry.buildings); setMapStatus('Sombras aproximadas: hasta 45 edificios cercanos.'); }
+      }).catch(() => { if (!cancelled) setMapStatus('No hay alturas disponibles para dibujar las sombras de esta zona.'); });
+    }, 600);
+    return () => { cancelled = true; clearTimeout(timer); };
+  }, [center.latitude, center.longitude]);
 
   const day = useMemo(() => { const value = new Date(); value.setHours(12, 0, 0, 0); value.setDate(value.getDate() + dayOffset); return value; }, [dayOffset]);
   const instant = useMemo(() => atMinutes(day, minutes), [day, minutes]);
@@ -62,12 +90,12 @@ function Main() {
   }, [selected, buildings, coverage]);
   const state = useMemo(() => scene ? lightAt(scene, instant) : 'unknown', [scene, instant]);
   const windows = useMemo(() => scene ? solarWindows(scene, day) : [], [scene, day]);
-  const shadows = useMemo(() => scene ? shadowShapes(buildings, selected, instant) : [], [scene, buildings, selected, instant]);
+  const shadows = useMemo(() => shadowShapes(mapBuildings, center, instant), [mapBuildings, center, instant]);
   const mapSun = useMemo(() => {
-    const point = selected || center;
-    return sunPosition(instant, point.latitude, point.longitude);
-  }, [selected, center, instant]);
+    return sunPosition(instant, center.latitude, center.longitude);
+  }, [center, instant]);
   const direction = useMemo(() => shadowDirection(mapSun), [mapSun]);
+  const choices = useMemo(() => selected?.kind === 'business' && scene ? nearbyOutdoorScenes(scene, buildings).map((choice) => ({ ...choice, windows: solarWindows(choice.scene, day) })) : [], [selected, scene, buildings, day]);
   const nearbyScenes = useMemo(() => {
     const scenes = {};
     if (resultsType !== 'nearby') return scenes;
@@ -77,75 +105,73 @@ function Main() {
     }
     return scenes;
   }, [places, buildings, coverage, resultsType]);
-  const endMatch = /^(\d{2}):(\d{2})$/.exec(endTime.trim());
-  const endMinutes = endMatch ? Number(endMatch[1]) * 60 + Number(endMatch[2]) : NaN;
-  const validEnd = !endTime.trim() || (!!endMatch && Number(endMatch[1]) < 24 && Number(endMatch[2]) < 60 && endMinutes > minutes);
   const nearbyStates = useMemo(() => Object.fromEntries(Object.entries(nearbyScenes).map(([id, item]) => {
-    if (!validEnd) return [id, 'unknown'];
-    return [id, lightForInterval(item, day, minutes, endTime.trim() ? endMinutes : minutes)];
-  })), [nearbyScenes, instant, day, endTime, endMinutes, minutes, validEnd]);
+    return [id, lightForInterval(item, day, minutes, endEnabled ? endMinutes : minutes)];
+  })), [nearbyScenes, day, endEnabled, endMinutes, minutes]);
   const visiblePlaces = sunOnly && resultsType === 'nearby' ? places.filter((place) => !nearbyStates[place.id] || ['sun', 'unknown'].includes(nearbyStates[place.id])).sort((a, b) => Number(nearbyStates[b.id] === 'sun') - Number(nearbyStates[a.id] === 'sun')) : places;
 
   async function search() {
     const seq = ++request.current; setBusy('Buscando lugares…'); setError(''); setNotice('');
-    setSelected(null); setBuildings([]); setCoverage([]); setSunOnly(false); setResultsType(null);
-    try {
-      const found = await searchPlaces(query, center);
-      if (request.current !== seq) return;
-      setPlaces(found); setResultsType('search');
-      setNotice(found.length ? `Lugares encontrados en un radio de 5 km del mapa.` : 'No hay coincidencias cerca del mapa. Prueba una ciudad o mueve el mapa.');
-    } catch (err) {
-      if (query.trim().length >= 2 && query.trim().length <= 80) {
-        try {
-          const sources = await Promise.allSettled([searchMadridFallback(center, 5000, query), searchMadridParks(center, 5000, query)]);
-          const fallback = sources.flatMap((source) => source.status === 'fulfilled' ? source.value : []).sort((a, b) => a.distance - b.distance);
-          if (request.current !== seq) return;
-          if (fallback.length) { setPlaces(fallback); setResultsType('search'); setNotice('La búsqueda general no está disponible; mostramos coincidencias de los catálogos municipales de Madrid.'); return; }
-        } catch { /* Preserve the original search error. */ }
-      }
-      if (request.current === seq) { setPlaces([]); setError(err?.message || 'No se ha podido buscar.'); }
+    setSelected(null); setBuildings([]); setCoverage([]); setSunOnly(false); setResultsType(null); setPlaces([]);
+    const name = query.trim();
+    if (name.length < 2 || name.length > 80 || /[\x00-\x1f]/.test(name)) {
+      setBusy(''); setError('Escribe entre 2 y 80 caracteres para buscar.'); return;
     }
-    finally { if (request.current === seq) setBusy(''); }
+    const sources = [searchPlaces(name, center)];
+    if (inMadridArea(center)) sources.push(searchMadridFallback(center, 5000, name), searchMadridParks(center, 5000, name));
+    let waiting = sources.length, successes = 0, merged = [];
+    await Promise.all(sources.map(async (source) => {
+      try {
+        const found = await source; successes++;
+        for (const place of found) if (!merged.some((other) => other.id === place.id ||
+          (other.name.toLocaleLowerCase('es') === place.name.toLocaleLowerCase('es') && distanceMetres(other, place) < 20))) merged.push(place);
+        merged = merged.sort((a, b) => a.distance - b.distance).slice(0, 80);
+      } catch { /* Other providers can still return results. */ }
+      finally {
+        waiting--;
+        if (request.current !== seq) return;
+        if (merged.length) {
+          setPlaces([...merged]); setResultsType('search'); setBusy('');
+          setNotice(`Lugares encontrados hasta 5 km del mapa${waiting ? ' · buscando más…' : '.'}`);
+        } else if (!waiting) {
+          setPlaces([]); setBusy('');
+          if (successes) setNotice('No hay coincidencias cerca del mapa. Prueba una ciudad o mueve el mapa.');
+          else setError('No se han podido consultar los lugares. Vuelve a intentarlo.');
+        }
+      }
+    }));
   }
 
   async function findNearby() {
-    if (!validRadius) return;
     const seq = ++request.current; setBusy('Buscando lugares cercanos…'); setError(''); setNotice('');
     setSelected(null); setBuildings([]); setCoverage([]); setSunOnly(true); setResultsType(null);
     try {
-      const found = await searchNearby(center, searchRadius);
+      const sources = [searchNearby(center, searchRadius).then((places) => ({ places, source: 'osm' }))];
+      if (inMadridArea(center)) sources.push(Promise.allSettled([
+        searchMadridFallback(center, searchRadius, ''), searchMadridParks(center, searchRadius),
+      ]).then((results) => {
+        if (results.every((result) => result.status === 'rejected')) throw new Error('Catálogos municipales no disponibles.');
+        return { places: results.flatMap((result) => result.status === 'fulfilled' ? result.value : []).sort((a, b) => a.distance - b.distance), source: 'madrid' };
+      }));
+      const { places: found, source } = await firstWithResults(sources);
       if (request.current !== seq) return;
       setPlaces(found); setResultsType('nearby');
-      const points = found.filter((place) => place.kind === 'public').slice(0, 6);
+      const points = found.filter((place) => place.kind === 'public').slice(0, source === 'madrid' ? 2 : 6);
       if (!points.length) { setNotice(found.length ? 'Hemos encontrado locales, pero no conocemos la posición de sus mesas.' : 'No se han encontrado lugares en esta búsqueda.'); return; }
       setBusy('Calculando la luz de los lugares exteriores…');
       try {
-        const geometry = await getScenes(points);
+        const geometry = source === 'madrid' ? await Promise.allSettled(points.map((point) => getScenes([point]))) : null;
+        const combined = source === 'madrid' ? null : await getScenes(points);
         if (request.current !== seq) return;
-        setBuildings(geometry.buildings); setCoverage(points.map((point) => ({ ...point, radius: geometry.radius, source: geometry.source })));
-        setNotice(`Analizados hasta ${points.length} ${points.length === 1 ? 'espacio exterior cercano' : 'espacios exteriores cercanos'}. Los locales necesitan una posición de mesas.`);
+        const usable = geometry?.flatMap((result, index) => result.status === 'fulfilled' ? [{ point: points[index], ...result.value }] : []);
+        setBuildings(combined ? combined.buildings : usable.flatMap((item) => item.buildings));
+        setCoverage(combined ? points.map((point) => ({ ...point, radius: combined.radius, source: combined.source })) : usable.map((item) => ({ ...item.point, radius: item.radius, source: item.source })));
+        const count = combined ? points.length : usable.length;
+        setNotice(`Analizados ${count} ${count === 1 ? 'espacio exterior cercano' : 'espacios exteriores cercanos'}. Los locales necesitan una posición de mesas; no se incluyen árboles.`);
       } catch {
         if (request.current === seq) setNotice('Encontramos lugares, pero no hemos podido obtener los edificios para calcular su luz.');
       }
     } catch (err) {
-      try {
-        const sources = await Promise.allSettled([getAyalaFallback(center, searchRadius), searchMadridParks(center, searchRadius)]);
-        const fallback = sources.flatMap((source) => source.status === 'fulfilled' ? source.value : []).sort((a, b) => a.distance - b.distance);
-        if (request.current !== seq) return;
-        if (fallback.length) {
-          setPlaces(fallback); setResultsType('nearby');
-          const points = fallback.filter((place) => place.kind === 'public').slice(0, 2);
-          if (!points.length) { setNotice('Mostramos el censo de Ayala. No conocemos la posición de sus mesas.'); return; }
-          setBusy('Calculando la luz de parques cercanos…');
-          const geometry = await Promise.allSettled(points.map((point) => getScenes([point])));
-          if (request.current !== seq) return;
-          const usable = geometry.flatMap((result, index) => result.status === 'fulfilled' ? [{ point: points[index], ...result.value }] : []);
-          setBuildings(usable.flatMap((item) => item.buildings));
-          setCoverage(usable.map((item) => ({ ...item.point, radius: item.radius, source: item.source })));
-          setNotice(`Búsqueda municipal alternativa: ${usable.length} puntos de parques analizados. La sombra de árboles no está incluida; las mesas de locales no están localizadas.`);
-          return;
-        }
-      } catch { /* Preserve the original search error. */ }
       if (request.current === seq) { setPlaces([]); setError(err?.message || 'No se ha podido buscar cerca.'); }
     }
     finally { if (request.current === seq) setBusy(''); }
@@ -168,6 +194,15 @@ function Main() {
       setNotice(selectedPoint.kind === 'business' ? 'La marca es la ubicación aproximada del local, no la posición de las mesas. Toca las mesas en el mapa para una estimación de ese punto.' : 'Cálculo aproximado para el punto elegido, no para todo el recinto.');
     } catch { if (request.current === seq) setError('No hay edificios suficientes disponibles para calcular la luz de este punto.'); }
     finally { if (request.current === seq) setBusy(''); }
+  }
+
+  function selectOutdoor(choice) {
+    const seq = ++request.current;
+    const point = { ...choice.point, id: `outside-${choice.direction}`, kind: 'approx', name: `Punto al ${choice.direction.toLocaleLowerCase('es')} de ${selected.name}` };
+    const area = coverage.find((item) => distanceMetres(item, selected) < 5);
+    setCoverage((previous) => [...previous, { ...point, radius: choice.scene.radius, source: area?.source }]);
+    setSelected(point); setCamera({ ...point, key: seq }); setError(''); setBusy('');
+    setNotice('Punto exterior aproximado; confirma en el mapa dónde están las mesas.');
   }
 
   async function useLocation() {
@@ -221,17 +256,20 @@ function Main() {
       <View style={styles.searchPanel}>
         {mode === 'place' ? <>
           <Text style={styles.label}>¿DÓNDE QUIERES SENTARTE?</Text>
-          <View style={styles.searchRow}><TextInput accessibilityLabel="Nombre del lugar, ciudad o dirección" value={query} onChangeText={setQuery} onSubmitEditing={search} placeholder="Una terraza, plaza, parque…" placeholderTextColor="#9b9b90" returnKeyType="search" style={styles.input} /><Action onPress={search} disabled={!!busy}>Buscar</Action></View>
+          <View style={styles.searchRow}><TextInput accessibilityLabel="Nombre o tipo de lugar" value={query} onChangeText={setQuery} onSubmitEditing={search} placeholder="Restaurante, parque, Soho…" placeholderTextColor="#9b9b90" returnKeyType="search" style={styles.input} /><Action onPress={search} disabled={!!busy}>Buscar</Action></View>
           <Pressable accessibilityRole="button" onPress={findCity} disabled={!!busy} style={styles.textAction}><Text style={styles.textActionLabel}>Buscar ciudad o dirección con el teléfono ↗</Text></Pressable>
         </> : <>
           <View style={styles.rowBetween}><Text style={styles.label}>DISTANCIA DESDE {originLabel.toUpperCase()}</Text><Pressable accessibilityRole="button" onPress={useLocation} disabled={!!busy}><Text style={styles.textActionLabel}>⌖  Mi ubicación</Text></Pressable></View>
-          <View style={styles.chips}>{RADIUS.map((r) => <Chip key={r} selected={!radiusText && radius === r} onPress={() => { setRadius(r); setCustomRadius(''); }}>{r < 1000 ? `${r} m` : `${r / 1000} km`}</Chip>)}</View>
-          <View style={styles.customDistance}><Text style={styles.distanceLabel}>Otra distancia (km)</Text><TextInput accessibilityLabel="Otra distancia en kilómetros, entre 0,1 y 5" value={customRadius} onChangeText={setCustomRadius} placeholder="0,1 a 5" placeholderTextColor="#9b9b90" keyboardType="decimal-pad" maxLength={6} style={styles.distanceInput} /></View>
-          {!validRadius && <Text style={styles.distanceError}>Introduce una distancia entre 0,1 y 5 km.</Text>}
-          <View style={styles.customDistance}><Text style={styles.distanceLabel}>Hasta (opcional, HH:MM)</Text><TextInput accessibilityLabel="Hora final opcional en formato HH:MM" value={endTime} onChangeText={setEndTime} placeholder="Ej. 16:30" placeholderTextColor="#9b9b90" keyboardType="numbers-and-punctuation" maxLength={5} style={styles.distanceInput} /></View>
-          <Text style={styles.small}>La hora inicial es la que elijas en el mapa. Sin hora final, buscamos a esa hora.</Text>
-          {!validEnd && <Text style={styles.distanceError}>Introduce una hora final posterior a la del mapa, en formato HH:MM.</Text>}
-          <Action onPress={findNearby} disabled={!!busy || !validRadius || !validEnd}>Encontrar lugares cerca  ↗</Action>
+          <View style={styles.rowBetween}><Text style={styles.distanceLabel}>Distancia máxima</Text><Text style={styles.rangeValue}>{shortDistance(radius)}</Text></View>
+          <Range label="Distancia máxima" value={radius} min={500} max={5000} step={500} valueText={shortDistance(radius)} onChange={setRadius} />
+          <View style={styles.rowBetween}><Text style={styles.scale}>500 m</Text><Text style={styles.scale}>5 km</Text></View>
+          <View style={[styles.rowBetween, styles.nearbyRange]}><Text style={styles.distanceLabel}>Hora de inicio</Text><Text style={styles.rangeValue}>{formatTime(minutes)}</Text></View>
+          <Range label="Hora inicial de búsqueda" value={minutes} min={0} max={1425} step={15} valueText={formatTime(minutes)} onChange={(value) => { setMinutes(value); setEndMinutes((previous) => Math.max(previous, value + 15)); }} />
+          <View style={styles.rowBetween}><Text style={styles.scale}>00:00</Text><Text style={styles.scale}>12:00</Text><Text style={styles.scale}>23:45</Text></View>
+          <Pressable accessibilityRole="checkbox" accessibilityState={{ checked: endEnabled }} onPress={() => { setEndEnabled(!endEnabled); setEndMinutes((previous) => Math.max(previous, minutes + 15)); }} style={styles.rangeToggle}><Text style={styles.rangeToggleText}>{endEnabled ? '☑' : '☐'}  Buscar durante una franja</Text></Pressable>
+          {endEnabled && <><View style={styles.rowBetween}><Text style={styles.distanceLabel}>Hasta</Text><Text style={styles.rangeValue}>{clockTime(endMinutes)}</Text></View>
+            <Range label="Hora final de búsqueda" value={endMinutes} min={minutes + 15} max={1440} step={15} valueText={clockTime(endMinutes)} onChange={setEndMinutes} /></>}
+          <Action onPress={findNearby} disabled={!!busy} style={styles.nearbyAction}>Encontrar lugares cerca  ↗</Action>
         </>}
         <Text style={styles.privacy}>Al buscar se consulta OpenStreetMap y, en Madrid, el Ayuntamiento. Tu ubicación solo se usa si la eliges.</Text>
       </View>
@@ -239,12 +277,21 @@ function Main() {
       {!!error && <View accessibilityRole="alert" style={[styles.alert, styles.feedback]}><Text style={styles.alertText}>{error}</Text></View>}
       {!!notice && <View style={[styles.note, styles.feedback]}><Text style={styles.noteText}>{notice}</Text></View>}
       <View style={styles.mapSection}><MapCanvas camera={camera} places={visiblePlaces} selected={selected} shadows={shadows} sun={mapSun} onMove={(point) => { setCenter(point); setOriginLabel(myLocation.current && distanceMetres(myLocation.current, point) < 25 ? 'Tu ubicación' : 'Zona del mapa'); }} onPick={selectPoint} onPlace={selectPoint} />
-        <Text style={styles.mapCaption}>✳  Toca el punto exacto donde te sentarías. Las sombras son orientativas.</Text></View>
+        <Text style={styles.mapCaption}>✳  Toca el punto exacto donde te sentarías. {mapStatus}</Text></View>
+      <View style={styles.daylight}>
+        <Text style={styles.eyebrow}>DE UN VISTAZO</Text><Text style={styles.sectionTitle}>Sol y sombra durante el día</Text>
+        <Text style={styles.daylightLabel}>{!selected ? 'Toca un punto del mapa para ver sus horas de luz.' : !scene ? 'Sin datos suficientes para este punto.' : sceneInsideBuilding(scene) ? `${selected.name} · Elige un punto exterior.` : `${selected.name} · ${statusText[state]} a las ${formatTime(minutes)}`}</Text>
+        <View accessible accessibilityLabel={windows.length ? windows.map((window) => `${statusText[window.state]} de ${clockTime(window.from)} a ${clockTime(window.to)}`).join('. ') : 'Aún sin horas disponibles'} style={styles.daylightTrack}>{windows.map((window) => <View key={window.from} style={{ flex: window.to - window.from, backgroundColor: barColor[window.state] }} />)}</View>
+        <View style={styles.rowBetween}><Text style={styles.scale}>00 h</Text><Text style={styles.scale}>06 h</Text><Text style={styles.scale}>12 h</Text><Text style={styles.scale}>18 h</Text><Text style={styles.scale}>24 h</Text></View>
+        <View style={styles.daylightLegend}>{[['sun','Sol'],['shade','Sombra'],['night','Noche'],['unknown','Sin datos']].map(([key, label]) => <View key={key} style={styles.legendItem}><View style={[styles.legendSwatch, { backgroundColor: barColor[key] }]} /><Text style={styles.scale}>{label}</Text></View>)}</View>
+        <View style={styles.daylightHighlights}>{windows.filter((window) => ['sun','shade'].includes(window.state)).map((window) => <Text key={window.from} style={[styles.daylightHighlight, { color: statusColor[window.state] }]}>{window.state === 'sun' ? '☼ Sol' : '◒ Sombra'} · ≈ {clockTime(window.from)} – {clockTime(window.to)}</Text>)}</View>
+        <Text style={styles.small}>Horas aproximadas, calculadas cada 30 minutos. Sin nubes, árboles ni toldos.</Text>
+        {!!choices.length && <View style={styles.outdoorChoices}><Text style={styles.distanceLabel}>Elige un punto exterior cercano</Text><Text style={styles.small}>La referencia está dentro del edificio. Estas opciones son aproximadas; no sabemos dónde están las mesas.</Text>{choices.map((choice) => <Pressable key={choice.direction} accessibilityRole="button" onPress={() => selectOutdoor(choice)} style={styles.outdoorChoice}><Text style={styles.resultName}>{choice.direction} · a unos {choice.metres} m ↗</Text><Text style={styles.resultMeta}>{choice.windows.filter((window) => ['sun','shade'].includes(window.state)).map((window) => `${statusText[window.state]} ${clockTime(window.from)}–${clockTime(window.to)}`).join(' · ') || 'Sin horas suficientes para estimar'}</Text></Pressable>)}</View>}
+      </View>
       <View style={styles.timePanel}>
         <View style={styles.rowBetween}><View><Text style={styles.eyebrow}>DESCUBRE CÓMO CAMBIA LA LUZ</Text><Text style={styles.sectionTitle}>Mueve la hora <Text style={styles.accent}>↗</Text></Text></View><Text style={styles.clock}>{formatTime(minutes)}</Text></View>
         <View style={styles.dayRow}><View style={styles.chips}><Chip selected={dayOffset === 0} onPress={() => setDayOffset(0)}>Hoy</Chip><Chip selected={dayOffset === 1} onPress={() => setDayOffset(1)}>Mañana</Chip></View><Text style={styles.dayText}>{day.toLocaleDateString('es-ES', { day: 'numeric', month: 'short' })}</Text></View>
-        {Platform.OS === 'web' ? <input type="range" aria-label="Hora para consultar el sol" aria-valuetext={formatTime(minutes)} min="0" max="1425" step="15" value={minutes} onChange={(event) => setMinutes(Number(event.target.value))} style={{ width: '100%', height: 42, marginTop: 4, accentColor: '#30463a', cursor: 'pointer' }} />
-          : <Slider style={styles.slider} accessibilityLabel="Hora para consultar el sol" accessibilityValue={{ min: 0, max: 1425, now: minutes, text: formatTime(minutes) }} minimumValue={0} maximumValue={1425} step={15} value={minutes} onValueChange={setMinutes} minimumTrackTintColor="#eeb342" maximumTrackTintColor="#d9d7cb" thumbTintColor="#30463a" />}
+        <Range label="Hora para consultar el sol" value={minutes} min={0} max={1425} step={15} valueText={formatTime(minutes)} onChange={(value) => { setMinutes(value); setEndMinutes((previous) => Math.max(previous, value + 15)); }} />
         <View style={styles.rowBetween}><Text style={styles.scale}>00:00</Text><Text style={styles.scale}>06:00</Text><Text style={styles.scale}>12:00</Text><Text style={styles.scale}>18:00</Text><Text style={styles.scale}>23:45</Text></View>
         <Text style={styles.timezone}>Hora de tu teléfono · {timezone}</Text>
         {!instant && <Text style={styles.distanceError}>Esta hora no existe por el cambio al horario de verano. Elige otra hora.</Text>}
@@ -265,7 +312,7 @@ function Main() {
         {visiblePlaces.length ? visiblePlaces.slice(0, 30).map((place) => {
           const resultState = nearbyStates[place.id] || (resultsType === 'nearby' ? 'unknown' : null);
           return <Pressable key={place.id} accessibilityRole="button" onPress={() => selectPoint(place)} style={({ pressed }) => [styles.result, pressed && styles.pressed]}>
-            <View style={styles.resultIcon}><Text style={styles.resultIconText}>{place.kind === 'public' ? '✳' : '↗'}</Text></View><View style={styles.resultBody}><Text style={styles.resultName}>{place.name}</Text><Text style={styles.resultMeta}>{shortDistance(place.distance)} · {place.kind === 'business' ? 'Posición de mesas desconocida' : place.kind === 'public' ? 'Punto aproximado' : 'Lugar aproximado'}</Text>{resultState && <Text style={[styles.resultStatus, { color: statusColor[resultState] }]}>{statusText[resultState]} {endTime.trim() && validEnd ? `de ${formatTime(minutes)} a ${endTime}` : `a las ${formatTime(minutes)}`}</Text>}</View><Text style={styles.arrow}>↗</Text>
+            <View style={styles.resultIcon}><Text style={styles.resultIconText}>{place.kind === 'public' ? '✳' : '↗'}</Text></View><View style={styles.resultBody}><Text style={styles.resultName}>{place.name}</Text><Text style={styles.resultMeta}>{shortDistance(place.distance)} · {place.categoryUnknown ? 'Terraza registrada · tipo sin confirmar' : place.kind === 'business' ? 'Posición de mesas desconocida' : place.kind === 'public' ? 'Punto aproximado' : 'Lugar aproximado'}</Text>{resultState && <Text style={[styles.resultStatus, { color: statusColor[resultState] }]}>{statusText[resultState]} {endEnabled ? `de ${formatTime(minutes)} a ${clockTime(endMinutes)}` : `a las ${formatTime(minutes)}`}</Text>}</View><Text style={styles.arrow}>↗</Text>
           </Pressable>;
         }) : <Text style={styles.body}>{sunOnly ? 'No hay lugares con sol estimado entre los que hemos podido analizar.' : 'Todavía no hay resultados. Prueba otra zona o búsqueda.'}</Text>}
         {resultsType === 'nearby' && <Text style={styles.small}>El filtro conserva los lugares sin datos identificados como tales. Se calculan como máximo 6 puntos exteriores por consulta; en la alternativa municipal, 2. La franja se estima con muestras cada 30 minutos y no se modela la sombra de árboles.</Text>}
@@ -288,7 +335,9 @@ const styles = StyleSheet.create({
   textAction: { alignSelf: 'flex-start', paddingVertical: 11 }, textActionLabel: { color: '#ad654b', fontSize: 12, fontWeight: '700' }, privacy: { color: '#8c9185', fontSize: 11, lineHeight: 16, marginTop: 4 },
   rowBetween: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', gap: 10 }, chips: { flexDirection: 'row', gap: 7, flexWrap: 'wrap' }, chip: { minHeight: 38, paddingHorizontal: 13, alignItems: 'center', justifyContent: 'center', borderWidth: 1, borderColor: '#d9d6c9', borderRadius: 20, backgroundColor: '#fffdf8' }, chipSelected: { borderColor: '#354c3e', backgroundColor: '#354c3e' }, chipText: { color: '#667269', fontSize: 12, fontWeight: '700' }, chipSelectedText: { color: '#fffdf8' },
   customDistance: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 10, marginVertical: 12 }, distanceLabel: { color: '#667269', fontSize: 12, fontWeight: '700' }, distanceInput: { width: 112, minHeight: 42, paddingHorizontal: 10, backgroundColor: '#fffdf8', borderWidth: 1, borderColor: '#d9d5c9', borderRadius: 3, color: '#263c32', fontSize: 14 }, distanceError: { color: '#9e543f', fontSize: 12, marginBottom: 10 },
+  rangeValue: { color: '#ad654b', fontFamily: Platform.OS === 'ios' ? 'Georgia' : 'serif', fontSize: 19, fontWeight: '700' }, nearbyRange: { marginTop: 18 }, rangeToggle: { minHeight: 48, justifyContent: 'center' }, rangeToggleText: { color: '#435b4a', fontSize: 13, fontWeight: '700' }, nearbyAction: { marginTop: 15 },
   mapSection: { marginBottom: 16 }, mapCaption: { color: '#7c877a', fontSize: 11, lineHeight: 16, paddingTop: 7 },
+  daylight: { padding: 16, borderWidth: 1, borderColor: '#e4dece', backgroundColor: '#fffdf8', marginBottom: 16 }, daylightLabel: { marginTop: 10, marginBottom: 12, color: '#617164', fontSize: 12, lineHeight: 18 }, daylightTrack: { height: 20, borderRadius: 3, overflow: 'hidden', backgroundColor: '#e2e1d8', flexDirection: 'row', marginBottom: 6 }, daylightLegend: { flexDirection: 'row', flexWrap: 'wrap', gap: 12, marginTop: 12 }, legendItem: { flexDirection: 'row', alignItems: 'center', gap: 5 }, legendSwatch: { width: 9, height: 9, borderRadius: 2 }, daylightHighlights: { flexDirection: 'row', flexWrap: 'wrap', gap: 10, marginTop: 12 }, daylightHighlight: { fontSize: 12, fontWeight: '700', lineHeight: 18 }, outdoorChoices: { marginTop: 17, paddingTop: 13, borderTopWidth: 1, borderColor: '#e8e1d4' }, outdoorChoice: { minHeight: 54, paddingVertical: 10, borderBottomWidth: 1, borderColor: '#e8e1d4' },
   timePanel: { padding: 16, borderWidth: 1, borderColor: '#e4dece', backgroundColor: '#fffdf8' }, sectionTitle: { color: '#293f34', fontFamily: Platform.OS === 'ios' ? 'Georgia' : 'serif', fontSize: 22, fontWeight: '700', letterSpacing: -0.5 }, clock: { color: '#c9704f', fontFamily: Platform.OS === 'ios' ? 'Georgia' : 'serif', fontWeight: '700', fontSize: 30 }, dayRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginTop: 18 }, dayText: { color: '#879084', fontSize: 12 }, slider: { width: '100%', height: 42, marginTop: 4 }, scale: { color: '#939b8e', fontSize: 10 }, timezone: { marginTop: 12, color: '#889287', fontSize: 11 }, direction: { marginTop: 14, padding: 11, backgroundColor: '#edf0e7', flexDirection: 'row', alignItems: 'center', gap: 10 }, directionArrow: { color: '#bd6849', fontSize: 22, fontWeight: '700', width: 24, textAlign: 'center' }, directionText: { flex: 1, color: '#536c5d', fontSize: 12, fontWeight: '700', lineHeight: 17 },
   loading: { flexDirection: 'row', gap: 10, alignItems: 'center', paddingVertical: 18 }, muted: { color: '#788579', fontSize: 13 }, alert: { backgroundColor: '#f7e4da', padding: 13 }, alertText: { color: '#9e543f', lineHeight: 19, fontSize: 13 }, note: { backgroundColor: '#e7ebe0', padding: 13 }, feedback: { marginBottom: 14 }, noteText: { color: '#596f61', lineHeight: 19, fontSize: 12 },
   detail: { backgroundColor: '#f0ecdf', marginTop: 15, padding: 17 }, detailTitle: { color: '#273c32', fontFamily: Platform.OS === 'ios' ? 'Georgia' : 'serif', fontWeight: '700', fontSize: 24, marginBottom: 13 }, status: { borderLeftWidth: 3, paddingLeft: 10, paddingVertical: 5, marginBottom: 17 }, statusText: { fontSize: 14, fontWeight: '800' }, windows: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 }, window: { backgroundColor: '#f7dfad', paddingVertical: 8, paddingHorizontal: 10, color: '#8b572e', fontWeight: '800', fontSize: 13 }, body: { fontSize: 13, lineHeight: 20, color: '#617164' }, small: { fontSize: 11, lineHeight: 17, color: '#7c887c', marginTop: 12 },

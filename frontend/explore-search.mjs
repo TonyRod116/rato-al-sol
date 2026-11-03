@@ -1,15 +1,14 @@
 import { searchNearby, searchPlaces, validCoordinate } from './shared/places.mjs';
-import { getAyalaFallback, searchMadridFallback, searchMadridParks } from './shared/ayala-fallback.mjs';
+import { searchMadridFallback, searchMadridParks } from './shared/ayala-fallback.mjs';
 import { inMadridArea } from './shared/madrid-scene.mjs';
 import { getScenes } from './shared/scene-provider.mjs';
-import { lightAt, lightForInterval, prepareScene, solarWindows } from './shared/estimate.mjs';
+import { lightAt, lightForInterval, nearbyOutdoorScenes, prepareScene, sceneInsideBuilding, solarWindows } from './shared/estimate.mjs';
 import { civilTimeToUtc } from './solar.mjs';
 
 const $ = (id) => document.getElementById(id);
 const MAX_ANALYSED = 4;
 const labels = { sun: 'Sol estimado', shade: 'Sombra estimada', night: 'Noche', unknown: 'Sin datos suficientes' };
 const time = (minutes) => `${String(Math.floor(minutes / 60)).padStart(2, '0')}:${String(minutes % 60).padStart(2, '0')}`;
-const parseTime = (value) => /^\d{2}:\d{2}$/.test(value) ? Number(value.slice(0, 2)) * 60 + Number(value.slice(3)) : NaN;
 const distance = (metres) => metres < 1000 ? `${Math.round(metres / 10) * 10} m` : `${(metres / 1000).toFixed(1).replace('.', ',')} km`;
 
 export function createExplorer({ getCenter, getDate, getTime, onPlaces, onPoint }) {
@@ -28,9 +27,18 @@ export function createExplorer({ getCenter, getDate, getTime, onPlaces, onPoint 
   function pointNote(point, source) {
     const position = point.kind === 'business' ? 'Es la posición aproximada del local, no de sus mesas. Para una terraza, marca en el mapa dónde están las mesas. ' :
       point.kind === 'public' ? 'Es un punto de referencia, no una estimación para todo el parque o plaza. ' :
-      point.kind === 'place' ? 'Es una ubicación aproximada; para mayor precisión marca el punto exterior en el mapa. ' : '';
+      point.kind === 'place' ? 'Es una ubicación aproximada; para mayor precisión marca el punto exterior en el mapa. ' :
+      point.kind === 'approx' ? 'Es un punto exterior aproximado, no la posición confirmada de las mesas. ' : '';
     const attribution = source === 'madrid' ? 'Alturas: Ayuntamiento de Madrid (CC BY 4.0).' : 'Edificios: OpenStreetMap y colaboradores.';
     return `${position}Muestras cada 30 minutos; horas aproximadas, hora de Madrid. No incluye nubes, árboles, toldos ni sombrillas. ${attribution}`;
+  }
+
+  function resetTimeline(message) {
+    $('daylight-place').textContent = message;
+    $('daylight-segments').replaceChildren(); $('daylight-readable').replaceChildren(); $('daylight-highlights').replaceChildren();
+    $('daylight-highlights').hidden = true;
+    $('daylight-now').hidden = true; $('outdoor-options').hidden = true;
+    $('outdoor-list').replaceChildren();
   }
 
   function renderPoint() {
@@ -40,11 +48,18 @@ export function createExplorer({ getCenter, getDate, getTime, onPlaces, onPoint 
     if (!selected.scene) return;
     if (selected.windowsDate !== getDate()) {
       selected.windows = solarWindows(selected.scene, getDate(), civilTimeToUtc);
+      for (const choice of selected.choices || []) choice.windows = solarWindows(choice.scene, getDate(), civilTimeToUtc);
       selected.windowsDate = getDate();
     }
     const windows = selected.windows;
     const current = lightAt(selected.scene, civilTimeToUtc(getDate(), getTime()));
-    $('point-status').textContent = `${labels[current]} a las ${time(getTime())} · transiciones aproximadas`;
+    const inside = sceneInsideBuilding(selected.scene);
+    $('point-status').textContent = inside ? 'La referencia cae dentro de un edificio. Elige un punto exterior.' : `${labels[current]} a las ${time(getTime())} · transiciones aproximadas`;
+    $('daylight-place').textContent = inside ? `${selected.name} · Elige un punto exterior para consultar su luz.` : `${selected.name} · ${labels[current]} a las ${time(getTime())}`;
+    const bar = $('daylight-segments'), readable = $('daylight-readable'), highlights = $('daylight-highlights');
+    bar.replaceChildren(); readable.replaceChildren(); highlights.replaceChildren(); highlights.hidden = true;
+    $('daylight-now').hidden = false;
+    $('daylight-now').style.left = `${getTime() / 1440 * 100}%`;
     for (const window of windows) {
       const item = document.createElement('li');
       item.className = `light-window is-${window.state}`;
@@ -53,12 +68,39 @@ export function createExplorer({ getCenter, getDate, getTime, onPlaces, onPoint 
       name.textContent = labels[window.state];
       hours.textContent = `≈ ${time(window.from)} – ${time(window.to)}`;
       item.append(name, hours); list.append(item);
+      const segment = document.createElement('span');
+      segment.className = `daylight-segment is-${window.state}`;
+      segment.style.flexGrow = String(window.to - window.from);
+      segment.style.flexBasis = '0';
+      bar.append(segment);
+      const description = document.createElement('li');
+      description.textContent = `${labels[window.state]} aproximadamente de ${time(window.from)} a ${time(window.to)}.`;
+      readable.append(description);
+      if (window.state === 'sun' || window.state === 'shade') {
+        const highlight = document.createElement('li'), name = document.createElement('span'), hours = document.createElement('strong');
+        highlight.className = `is-${window.state}`;
+        name.textContent = window.state === 'sun' ? '☼ Sol' : '◒ Sombra';
+        hours.textContent = `≈ ${time(window.from)} – ${time(window.to)}`;
+        highlight.append(name, hours); highlights.append(highlight); highlights.hidden = false;
+      }
+    }
+    const choices = $('outdoor-list'); choices.replaceChildren();
+    $('outdoor-options').hidden = !inside || !(selected.choices?.length);
+    for (const choice of selected.choices || []) {
+      const item = document.createElement('li'), button = document.createElement('button');
+      const title = document.createElement('strong'), detail = document.createElement('small');
+      button.type = 'button';
+      title.textContent = `${choice.direction} · a unos ${choice.metres} m`;
+      const useful = choice.windows.filter((window) => window.state === 'sun' || window.state === 'shade');
+      detail.textContent = useful.length ? useful.map((window) => `${labels[window.state]} ${time(window.from)}–${time(window.to)}`).join(' · ') : 'Sin horas suficientes para estimar';
+      button.append(title, detail); item.append(button); choices.append(item);
+      button.addEventListener('click', () => selectPoint({ ...choice.point, name: `Punto al ${choice.direction.toLocaleLowerCase('es')} de ${selected.name}`, kind: 'approx' }, true, { scene: choice.scene, source: selected.source }));
     }
     $('point-note').hidden = false;
     $('point-note').textContent = pointNote(selected, selected.source);
   }
 
-  async function selectPoint(point, focus = false) {
+  async function selectPoint(point, focus = false, prepared = null) {
     if (!validCoordinate(point)) return;
     const request = ++pointRequest;
     selected = { ...point, name: point.name || 'Punto elegido en el mapa', kind: point.kind || 'point', scene: null };
@@ -67,18 +109,21 @@ export function createExplorer({ getCenter, getDate, getTime, onPlaces, onPoint 
     $('point-title').textContent = selected.name;
     $('point-status').textContent = 'Consultando los edificios de alrededor…';
     $('point-windows').replaceChildren();
+    resetTimeline('Consultando los edificios de este punto…');
     $('point-note').hidden = false;
     $('point-note').textContent = selected.kind === 'business' ? 'La marca es la ubicación aproximada del local; puedes tocar las mesas en el mapa.' : 'Calculamos la luz de este punto, no de toda la zona.';
     try {
-      const geometry = await getScenes([selected]);
+      const geometry = prepared || await getScenes([selected]);
       if (request !== pointRequest) return;
-      selected.scene = prepareScene(selected, geometry.buildings, geometry.radius);
+      selected.scene = geometry.scene || prepareScene(selected, geometry.buildings, geometry.radius);
       selected.source = geometry.source;
       if (!selected.scene) throw new Error('Sin geometría');
+      selected.choices = geometry.buildings && selected.kind === 'business' ? nearbyOutdoorScenes(selected.scene, geometry.buildings) : [];
       renderPoint();
     } catch {
       if (request !== pointRequest) return;
       $('point-status').textContent = 'No hay datos suficientes de edificios para calcular la luz de este punto.';
+      resetTimeline('No hay datos suficientes de edificios para calcular este punto.');
       $('point-note').hidden = false;
       $('point-note').textContent = 'Prueba otro punto o vuelve a intentarlo. Las nubes, los árboles y los toldos no están incluidos.';
     }
@@ -106,7 +151,7 @@ export function createExplorer({ getCenter, getDate, getTime, onPlaces, onPoint 
 
   function renderPlaces() {
     const list = $('place-results'); list.replaceChildren();
-    for (const place of places.slice(0, 20)) list.append(placeButton(place, place.kind === 'business' ? 'Local · mesas sin localizar' : 'Ubicación aproximada'));
+    for (const place of places.slice(0, 20)) list.append(placeButton(place, place.categoryUnknown ? 'Terraza registrada · tipo sin confirmar' : place.kind === 'business' ? 'Local · mesas sin localizar' : 'Ubicación aproximada'));
     if (places.length) mapPlaces(places.slice(0, 20));
   }
 
@@ -189,10 +234,10 @@ export function createExplorer({ getCenter, getDate, getTime, onPlaces, onPoint 
 
   $('nearby-form').addEventListener('submit', (event) => {
     event.preventDefault();
-    const center = getCenter(), radius = Math.round($('nearby-radius').valueAsNumber * 1000);
-    const from = parseTime($('nearby-start').value), endValue = $('nearby-end').value, to = endValue ? parseTime(endValue) : from;
-    if (!validCoordinate(center) || !Number.isInteger(radius) || radius < 100 || radius > 5000 || !Number.isInteger(from) || !Number.isInteger(to) || to < from || (endValue && to === from)) {
-      $('nearby-status').textContent = 'Elige una distancia de 0,1 a 5 km y, si añades una hora final, que sea posterior a la inicial.'; return;
+    const center = getCenter(), radius = $('nearby-radius').valueAsNumber;
+    const from = $('nearby-start').valueAsNumber, to = $('nearby-end-enabled').checked ? $('nearby-end').valueAsNumber : from;
+    if (!validCoordinate(center) || !Number.isInteger(radius) || radius < 500 || radius > 5000 || !Number.isInteger(from) || !Number.isInteger(to) || to < from || ($('nearby-end-enabled').checked && to === from)) {
+      $('nearby-status').textContent = 'Elige una distancia de 500 m a 5 km y una hora final posterior al inicio.'; return;
     }
     const request = ++nearbyRequest; ++placeRequest;
     hasSearch = true; places = []; nearby = []; criteria = { from, to }; sceneByPlace = new Map(); pending = new Set();
@@ -201,7 +246,7 @@ export function createExplorer({ getCenter, getDate, getTime, onPlaces, onPoint 
     onPlaces([], () => {});
     $('nearby-results').replaceChildren(); $('nearby-status').textContent = 'Buscando lugares y consultando edificios…';
     const sources = [searchNearby(center, radius)];
-    if (inMadridArea(center)) sources.push(searchMadridParks(center, radius), getAyalaFallback(center, radius));
+    if (inMadridArea(center)) sources.push(searchMadridParks(center, radius), searchMadridFallback(center, radius, ''));
     let waiting = sources.length, successes = 0;
     for (const source of sources) source.then((found) => {
       if (request !== nearbyRequest) return;

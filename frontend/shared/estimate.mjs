@@ -1,4 +1,4 @@
-import { classifyLight, shadowOffset, sunPosition } from '../solar.mjs';
+import { classifyLight, pointInOrOnPolygon, shadowOffset, sunPosition } from '../solar.mjs';
 import { distanceMetres, validCoordinate } from './places.mjs';
 
 const METRES_PER_DEGREE = 111319.49079327358;
@@ -39,6 +39,36 @@ export function lightAt(scene, instant) {
   if (actual === 'unknown' || missing === 'unknown') return 'unknown';
   if (actual === 'shade') return 'shade';
   return missing === 'shade' ? 'unknown' : 'sun';
+}
+
+export function sceneInsideBuilding(scene) {
+  return !!scene?.buildings?.some((building) => pointInOrOnPolygon([0, 0], building.footprint));
+}
+
+// The business point can lie inside its building. Offer several explicitly
+// approximate exterior references rather than silently choosing a sidewalk.
+export function nearbyOutdoorScenes(scene, buildings) {
+  if (!sceneInsideBuilding(scene) || !Array.isArray(buildings)) return [];
+  const directions = [
+    { direction: 'Norte', east: 0, north: 1 }, { direction: 'Este', east: 1, north: 0 },
+    { direction: 'Sur', east: 0, north: -1 }, { direction: 'Oeste', east: -1, north: 0 },
+  ];
+  const east = METRES_PER_DEGREE * Math.cos(scene.point.latitude * Math.PI / 180);
+  const choices = [];
+  for (const entry of directions) {
+    let outside = false;
+    for (let metres = 5; metres <= 40; metres += 5) {
+      const point = { latitude: scene.point.latitude + entry.north * metres / METRES_PER_DEGREE,
+        longitude: scene.point.longitude + entry.east * metres / east };
+      const candidate = prepareScene(point, buildings, scene.radius - metres);
+      if (!candidate || sceneInsideBuilding(candidate)) { outside = false; continue; }
+      // Leave a small buffer beyond the estimated building outline.
+      if (!outside && metres < 40) { outside = true; continue; }
+      choices.push({ direction: entry.direction, metres, point, scene: candidate });
+      break;
+    }
+  }
+  return choices;
 }
 
 export function atMinutes(day, minutes) {
@@ -94,7 +124,9 @@ export function shadowShapes(buildings, point, instant) {
   if (!validCoordinate(point) || !Array.isArray(buildings)) return [];
   const sun = sunPosition(instant, point.latitude, point.longitude);
   const east = METRES_PER_DEGREE * Math.cos(point.latitude * Math.PI / 180);
-  const nearby = buildings.filter((b) => b.height && b.footprint.some((p) => distanceMetres(point, p) < 250)).slice(0, 45);
+  const nearby = buildings.filter((b) => b.height).map((building) => ({ building,
+    distance: building.footprint.reduce((min, vertex) => Math.min(min, distanceMetres(point, vertex)), Infinity) }))
+    .filter((entry) => entry.distance < 250).sort((a, b) => a.distance - b.distance).slice(0, 45).map((entry) => entry.building);
   const shapes = [];
   for (const building of nearby) {
     const offset = shadowOffset(sun, building.height);

@@ -70,7 +70,7 @@ export function shadowPolygons(sun, building) {
   })];
 }
 
-function pointInOrOnPolygon(point, polygon) {
+export function pointInOrOnPolygon(point, polygon) {
   let inside = false;
   for (let i = 0, j = polygon.length - 1; i < polygon.length; j = i++) {
     const a = polygon[j], b = polygon[i];

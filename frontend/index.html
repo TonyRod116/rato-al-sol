@@ -4,11 +4,11 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="theme-color" content="#faf6ec">
-  <meta name="description" content="Explora las sombras estimadas a lo largo del día en la calle de Ayala, Madrid.">
+  <meta name="description" content="Explora las horas estimadas de sol y sombra para un lugar o un punto del mapa.">
   <title>Rato al Sol — Explora la luz en Madrid</title>
   <link rel="icon" href="./favicon.svg" type="image/svg+xml">
-  <link rel="stylesheet" href="./styles.css?v=20261103-7">
-  <script type="module" src="./app.mjs?v=20261103-7"></script>
+  <link rel="stylesheet" href="./styles.css?v=20261103-9">
+  <script type="module" src="./app.mjs?v=20261103-9"></script>
 </head>
 <body>
   <a class="skip-link" href="#contenido">Saltar al contenido</a>
@@ -27,8 +27,8 @@
         <div class="scene-column">
           <figure class="map-figure">
             <div class="real-map-shell">
-              <div id="city-map" class="google-map" aria-label="Mapa tridimensional de los alrededores de la calle de Ayala"></div>
-              <div id="open-map" class="google-map" aria-label="Mapa de los alrededores de la calle de Ayala" hidden></div>
+              <div id="city-map" class="google-map" aria-label="Mapa tridimensional interactivo"></div>
+              <div id="open-map" class="google-map" aria-label="Mapa interactivo" hidden></div>
               <div class="real-map-tag"><span aria-hidden="true">⌖</span> EXPLORAR MAPA <b id="map-dimension" hidden>3D</b></div>
               <span class="map-center-crosshair" aria-hidden="true">⌖</span>
               <div id="city-controls" class="city-controls" aria-label="Controles del mapa tridimensional" hidden>
@@ -39,7 +39,18 @@
               <a class="map-selection-link" id="map-selection" href="#point-info" hidden>⌖ Punto marcado · Ver sus horas ↓</a>
               <div id="map-message" class="map-message" role="status"><span aria-hidden="true">✳</span><p id="map-message-text">Preparando el mapa…</p><button id="map-retry" type="button" hidden>Reintentar mapa ↗</button></div>
             </div>
-            <figcaption><span>✳</span> Toca el lugar exacto donde quieres estar para consultar sus horas de luz. Las sombras dibujadas cubren el entorno de Ayala.</figcaption>
+            <section class="daylight-summary" aria-labelledby="daylight-title">
+              <div class="daylight-heading"><div><p class="section-kicker">DE UN VISTAZO</p><h2 id="daylight-title">Sol y sombra durante el día</h2></div><span aria-hidden="true">☼</span></div>
+              <p id="daylight-place" class="daylight-place" role="status">Toca un punto del mapa para ver sus horas de luz.</p>
+              <div class="daylight-track" aria-hidden="true"><div id="daylight-segments" class="daylight-segments"></div><span id="daylight-now" class="daylight-now" hidden></span></div>
+              <div class="daylight-scale" aria-hidden="true"><span>00 h</span><span>06 h</span><span>12 h</span><span>18 h</span><span>24 h</span></div>
+              <div class="daylight-legend" aria-label="Leyenda"><span class="legend-sun">Sol</span><span class="legend-shade">Sombra</span><span class="legend-night">Noche</span><span class="legend-unknown">Sin datos</span></div>
+              <ul id="daylight-highlights" class="daylight-highlights" aria-label="Horas aproximadas de sol y sombra" hidden></ul>
+              <p class="daylight-note">Horas aproximadas en Madrid, calculadas cada 30 minutos. Sin nubes, árboles ni toldos.</p>
+              <ul id="daylight-readable" class="visually-hidden" aria-label="Horas estimadas de luz y sombra"></ul>
+              <div id="outdoor-options" class="outdoor-options" hidden><p class="outdoor-title">Elige un punto exterior cercano</p><p>La referencia está dentro del edificio. Son opciones aproximadas, no la posición confirmada de las mesas.</p><ul id="outdoor-list"></ul></div>
+            </section>
+            <figcaption><span>✳</span> Toca el lugar exacto donde quieres estar para consultar sus horas de luz.</figcaption>
             <div id="map-basemaps" class="map-basemaps" role="group" aria-label="Fondo del mapa" hidden>
               <span>Fondo del mapa</span><div><button id="basemap-street" type="button" aria-pressed="true">Plano</button><button id="basemap-aerial" type="button" aria-pressed="false">Foto aérea</button></div>
             </div>
@@ -65,8 +76,8 @@
           <section class="explorer-section" aria-labelledby="search-title">
             <h3 id="search-title">Un lugar concreto</h3>
             <form id="place-form" class="place-form">
-              <label for="place-query">Nombre del lugar</label>
-              <div class="search-line"><input id="place-query" type="search" placeholder="Terraza, parque, plaza…" minlength="2" maxlength="80" required><button type="submit">Buscar ↗</button></div>
+              <label for="place-query">Nombre o tipo de lugar</label>
+              <div class="search-line"><input id="place-query" type="search" placeholder="Restaurante, parque, Soho…" minlength="2" maxlength="80" required><button type="submit">Buscar ↗</button></div>
             </form>
             <p id="place-status" class="explorer-status" role="status" aria-live="polite">Buscamos cerca del centro del mapa, hasta 5 km.</p>
             <ul id="place-results" class="explorer-list" aria-label="Lugares encontrados"></ul>
@@ -84,9 +95,15 @@
             <p class="explorer-intro">Elige una hora o añade una hora final para buscar durante una franja.</p>
             <button id="use-location" class="use-location" type="button" disabled>⌖ Centrar en mi ubicación</button>
             <form id="nearby-form" class="nearby-form">
-              <div class="nearby-fields"><label>Desde <input id="nearby-start" type="time" required></label><label>Hasta <span>(opcional)</span><input id="nearby-end" type="time"></label></div>
-              <label for="nearby-radius">Distancia desde el centro del mapa (km)</label>
-              <div class="search-line"><input id="nearby-radius" type="number" value="1" min="0.1" max="5" step="0.1" inputmode="decimal" required><button type="submit">Buscar sol ↗</button></div>
+              <div class="range-heading"><label for="nearby-start">Hora de inicio</label><output id="nearby-start-value" for="nearby-start">12:30</output></div>
+              <input id="nearby-start" type="range" min="0" max="1430" step="10" value="750">
+              <div class="range-ends" aria-hidden="true"><span>00:00</span><span>12:00</span><span>23:50</span></div>
+              <label class="range-toggle"><input id="nearby-end-enabled" type="checkbox"> Buscar durante una franja</label>
+              <div id="nearby-end-control" hidden><div class="range-heading"><label for="nearby-end">Hasta</label><output id="nearby-end-value" for="nearby-end">14:30</output></div><input id="nearby-end" type="range" min="10" max="1440" step="10" value="870"><div class="range-ends" aria-hidden="true"><span>Después del inicio</span><span>24:00</span></div></div>
+              <div class="range-heading range-distance"><label for="nearby-radius">Distancia máxima</label><output id="nearby-radius-value" for="nearby-radius">500 m</output></div>
+              <input id="nearby-radius" type="range" min="500" max="5000" step="500" value="500">
+              <div class="range-ends" aria-hidden="true"><span>500 m</span><span>5 km</span></div>
+              <button class="nearby-submit" type="submit">Buscar sitios con sol ↗</button>
             </form>
             <p id="nearby-status" class="explorer-status" role="status" aria-live="polite">Busca parques y terrazas para la fecha seleccionada.</p>
             <ul id="nearby-results" class="explorer-list" aria-label="Lugares cercanos"></ul>
@@ -104,7 +121,7 @@
     </section>
     <section class="about" id="como-funciona" aria-labelledby="about-title">
       <div><p class="section-kicker">CÓMO FUNCIONA</p><h2 id="about-title">Para perseguir el sol.<br><em>O escapar de él.</em></h2></div>
-      <div><p>Calculamos la posición del sol para la fecha y la hora elegidas y dibujamos una sombra aproximada a partir de las alturas municipales de los edificios de Ayala.</p><p>El mapa es una orientación, no una predicción de sol en una mesa. Las alturas pueden tener omisiones y no tenemos en cuenta nubes, árboles, toldos ni sombrillas.</p></div>
+      <div><p>Calculamos la posición del sol para la fecha y la hora elegidas y dibujamos sombras aproximadas a partir de los edificios disponibles en la zona.</p><p>El mapa es una orientación, no una predicción de sol en una mesa. Las alturas pueden tener omisiones y no tenemos en cuenta nubes, árboles, toldos ni sombrillas.</p></div>
     </section>
   </main>
   <footer><span class="footer-brand">Rato al Sol<span class="wordmark-dot">.</span></span><span>Hecho para los buenos ratos <span aria-hidden="true">☀</span></span></footer>

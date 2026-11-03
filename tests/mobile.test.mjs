@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { distanceMetres, getBuildings, searchNearby, searchPlaces } from '../frontend/shared/places.mjs';
-import { atMinutes, lightAt, prepareScene, solarWindows } from '../frontend/shared/estimate.mjs';
+import { atMinutes, lightAt, nearbyOutdoorScenes, prepareScene, solarWindows } from '../frontend/shared/estimate.mjs';
 import { getMadridScene } from '../frontend/shared/madrid-scene.mjs';
 import { searchMadridFallback, searchMadridParks } from '../frontend/shared/ayala-fallback.mjs';
 import { sunPosition } from '../frontend/solar.mjs';
@@ -21,6 +21,29 @@ test('place search sends literal bounded input in POST, never in the URL', async
   assert.ok(query.includes('parque\\\\.\\\\*\\";out;'));
   await assert.rejects(() => searchPlaces('x', madrid, 1000, fetch));
   await assert.rejects(() => searchPlaces('parque', madrid, 100000, fetch));
+});
+
+test('a misspelled category finds nearby restaurants by type, not only by their names', async () => {
+  const fetch = async (_url, options) => {
+    const query = decodeURIComponent(options.body.slice(5));
+    const elements = query.includes('amenity') && query.includes('restaurant')
+      ? [{ type: 'node', id: 7, lat: madrid.latitude, lon: madrid.longitude, tags: { name: 'Casa Pepa', amenity: 'restaurant' } }] : [];
+    return { ok: true, json: async () => ({ elements }) };
+  };
+  assert.equal((await searchPlaces('reiaurante', madrid, 1000, fetch))[0]?.name, 'Casa Pepa');
+});
+
+test('municipal category fallback returns nearby terraces without inventing their business type', async () => {
+  const fetch = async (_url, options) => {
+    const body = JSON.parse(options.body);
+    assert.ok(!body.q, 'a category is not a literal business name');
+    return { ok: true, json: async () => ({ success: true, result: { total: 1, records: [
+      { id_terraza: '42', rotulo: 'Casa cercana', coordenada_x_local: '441830.59', coordenada_y_local: '4475475.52', desc_tipo_acceso_local: 'Puerta Calle' },
+    ] } }) };
+  };
+  const places = await searchMadridFallback(madrid, 5000, 'reiaurante', fetch);
+  assert.equal(places[0]?.name, 'Casa cercana');
+  assert.equal(places[0]?.categoryUnknown, true);
 });
 
 test('nearby results are real entries within the requested radius and restaurants are not terrace points', async () => {
@@ -51,7 +74,7 @@ test('building heights remain unknown when absent and incomplete geometry is rej
   await assert.rejects(() => getBuildings([madrid], reply([])));
 });
 
-test('Madrid building lookup puts its coordinates in a POST and rejects missing heights', async () => {
+test('Madrid building lookup puts its coordinates in a POST and preserves missing heights as unknown', async () => {
   let request;
   const feature = { type: 'Feature', properties: { ALTURA: 20 }, geometry: { type: 'Polygon', coordinates: [[[-3.6874, 40.4278], [-3.6873, 40.4278], [-3.6873, 40.4279], [-3.6874, 40.4278]]] } };
   const fetch = async (url, options) => { request = { url, ...options }; return { ok: true, json: async () => ({ type: 'FeatureCollection', features: [feature] }) }; };
@@ -60,7 +83,18 @@ test('Madrid building lookup puts its coordinates in a POST and rejects missing 
   assert.equal(request.method, 'POST');
   assert.ok(!request.url.includes(String(madrid.latitude)));
   feature.properties.ALTURA = null;
-  await assert.rejects(() => getMadridScene(madrid, fetch));
+  assert.equal((await getMadridScene(madrid, fetch))[0].height, null);
+});
+
+test('a building of unknown height can obstruct the sun without making every direction unknown', () => {
+  const instant = new Date('2026-06-21T11:00:00Z');
+  const azimuth = sunPosition(instant, madrid.latitude, madrid.longitude).azimuth * Math.PI / 180;
+  const x = Math.sin(azimuth) * 30, y = -Math.cos(azimuth) * 30;
+  const square = (cx, cy) => [[cx - 5, cy - 5], [cx + 5, cy - 5], [cx + 5, cy + 5], [cx - 5, cy + 5]];
+  const scene = { point: madrid, radius: 400, buildings: [{ footprint: square(x, y), height: null }] };
+  assert.equal(lightAt(scene, instant), 'unknown');
+  scene.buildings[0].footprint = square(-x, -y);
+  assert.equal(lightAt(scene, instant), 'sun');
 });
 
 test('Madrid name fallback searches the public register via POST and keeps entrances distinct', async () => {
@@ -116,6 +150,26 @@ test('unknown obstruction is not sunshine; known obstruction and open ray are di
   scene.buildings[0] = { footprint: square(0, 0), height: 110 };
   assert.equal(lightAt(scene, instant), 'unknown');
   assert.equal(lightAt(scene, new Date('2026-06-21T00:00:00Z')), 'night');
+});
+
+test('a restaurant point inside a building offers distinct outside reference points, without assigning tables', () => {
+  const d = 0.00009;
+  const building = { height: 12, footprint: [
+    { latitude: madrid.latitude - d, longitude: madrid.longitude - d },
+    { latitude: madrid.latitude - d, longitude: madrid.longitude + d },
+    { latitude: madrid.latitude + d, longitude: madrid.longitude + d },
+    { latitude: madrid.latitude + d, longitude: madrid.longitude - d },
+    { latitude: madrid.latitude - d, longitude: madrid.longitude - d },
+  ] };
+  const scene = prepareScene(madrid, [building], 250);
+  const choices = nearbyOutdoorScenes(scene, [building]);
+  assert.equal(choices.length, 4);
+  assert.equal(new Set(choices.map((choice) => choice.direction)).size, 4);
+  for (const choice of choices) {
+    assert.ok(distanceMetres(madrid, choice.point) > 10 && distanceMetres(madrid, choice.point) <= 40);
+    assert.notEqual(lightAt(choice.scene, new Date('2026-06-21T11:00:00Z')), 'unknown');
+  }
+  assert.deepEqual(nearbyOutdoorScenes(choices[0].scene, [building]), []);
 });
 
 test('solar intervals cover the day in labelled samples and empty coverage remains unknown', () => {

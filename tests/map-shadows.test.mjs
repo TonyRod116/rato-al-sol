@@ -2,6 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { buildingShadows, shadowDirection } from '../frontend/map-shadows.mjs';
 import { getMadridBuildings, insideAyala } from '../frontend/madrid-buildings.mjs';
+import { getViewportBuildings, viewportBounds } from '../frontend/viewport-buildings.mjs';
 
 const square = [[-3.688, 40.427], [-3.6879, 40.427], [-3.6879, 40.4271], [-3.688, 40.4271], [-3.688, 40.427]];
 const hole = [[-3.68798, 40.42702], [-3.68798, 40.42708], [-3.68792, 40.42708], [-3.68792, 40.42702], [-3.68798, 40.42702]];
@@ -16,7 +17,9 @@ test('Madrid building input is bounded, validated and never invents missing heig
   });
   assert.equal(buildings.features.length, 1);
   assert.equal(buildings.omitted, 1);
-  assert.equal(requested[0].searchParams.get('geometry'), '-3.692,40.425,-3.685,40.429');
+  assert.equal(new URLSearchParams(requested[1].body).get('geometry'), '-3.692,40.425,-3.685,40.429');
+  assert.equal(requested[1].method, 'POST');
+  assert.ok(!String(requested[0]).includes('40.425'));
   assert.equal(requested[1].credentials, 'omit');
   assert.ok(insideAyala({ lng: -3.688, lat: 40.427 }));
   assert.ok(!insideAyala({ lng: -3.7, lat: 40.427 }));
@@ -24,6 +27,44 @@ test('Madrid building input is bounded, validated and never invents missing heig
   await assert.rejects(getMadridBuildings(response({ type: 'FeatureCollection', features: [] })));
   await assert.rejects(getMadridBuildings(response({ type: 'FeatureCollection', features: Array(2000).fill(raw) })));
   await assert.rejects(getMadridBuildings(response({ type: 'FeatureCollection', features: [{ ...raw, geometry: { type: 'Polygon', coordinates: [square.slice(0, -1)] } }] })));
+});
+
+test('building queries follow a different viewport and split a truncated municipal response', async () => {
+  const bounds = [-3.704, 40.418, -3.698, 40.422];
+  const polygon = [[-3.702, 40.419], [-3.7019, 40.419], [-3.7019, 40.4191], [-3.702, 40.4191], [-3.702, 40.419]];
+  const feature = { type: 'Feature', properties: { ALTURA: 12, OBJECTID: 7 }, geometry: { type: 'Polygon', coordinates: [polygon] } };
+  let calls = 0;
+  const result = await getMadridBuildings(async (_url, options) => {
+    calls++;
+    assert.equal(options.method, 'POST');
+    return { ok: true, json: async () => calls === 1 ? { type: 'FeatureCollection', features: [], exceededTransferLimit: true } : { type: 'FeatureCollection', features: [feature] } };
+  }, bounds);
+  assert.equal(calls, 3);
+  assert.equal(result.features.length, 1, 'overlapping returned buildings are not drawn twice');
+  assert.deepEqual(result.bounds, bounds);
+});
+
+test('a viewport outside Madrid uses nearby OpenStreetMap geometry and keeps missing heights out of drawn shadows', async () => {
+  const geometry = [
+    { lat: 40.7002, lon: -74.0010 }, { lat: 40.7002, lon: -74.0009 },
+    { lat: 40.7003, lon: -74.0009 }, { lat: 40.7002, lon: -74.0010 },
+  ];
+  let request;
+  const fetch = async (url, options) => {
+    request = { url, ...options };
+    return { ok: true, json: async () => ({ elements: [
+      { type: 'way', id: 1, geometry, tags: { height: '12' } },
+      { type: 'way', id: 2, geometry, tags: {} },
+    ] }) };
+  };
+  const result = await getViewportBuildings([-74.0012, 40.7001, -74.0004, 40.7007], fetch);
+  assert.equal(result.source, 'osm');
+  assert.equal(result.features.length, 1);
+  assert.equal(result.features[0].properties.height, 12);
+  assert.equal(result.omitted, 1);
+  assert.equal(request.method, 'POST');
+  assert.deepEqual(viewportBounds([-74.0012, 40.7001, -74.0004, 40.7007]), [-74.002, 40.7, -74, 40.701]);
+  await assert.rejects(() => getViewportBuildings([-74.1, 40.7, -73.9, 40.9], fetch), /Acerca el mapa/);
 });
 
 test('a 10 m building at 45° casts a 10 m shadow opposite the sun, including courtyard edges', async () => {

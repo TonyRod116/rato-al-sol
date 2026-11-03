@@ -1,10 +1,7 @@
 import { shadowOffset } from './solar.mjs';
-import { AYALA_CENTER } from './madrid-buildings.mjs';
-
-// Local metres-per-degree approximation is suitable for this small fixed area.
+// Local metres-per-degree approximation follows the latitude of the view.
 const METRES_PER_DEGREE = 111319.49079327358;
-const EAST_PER_DEGREE = METRES_PER_DEGREE * Math.cos(AYALA_CENTER.lat * Math.PI / 180);
-const shift = (point, dx, dy) => [point[0] + dx / EAST_PER_DEGREE, point[1] - dy / METRES_PER_DEGREE];
+const shift = (point, dx, dy, east) => [point[0] + dx / east, point[1] - dy / METRES_PER_DEGREE];
 const boundsCache = new WeakMap();
 
 function footprintBounds(building) {
@@ -19,10 +16,10 @@ function footprintBounds(building) {
   return bounds;
 }
 
-function mayReachView(building, offset, view) {
+function mayReachView(building, offset, view, eastPerDegree) {
   if (!Array.isArray(view) || view.length !== 4 || !view.every(Number.isFinite)) return true;
   const [west, south, east, north] = footprintBounds(building);
-  const dx = offset[0] / EAST_PER_DEGREE, dy = -offset[1] / METRES_PER_DEGREE;
+  const dx = offset[0] / eastPerDegree, dy = -offset[1] / METRES_PER_DEGREE;
   // Include the swept area, even when the casting building is off screen.
   return Math.min(west, west + dx) <= view[2] && Math.max(east, east + dx) >= view[0] &&
     Math.min(south, south + dy) <= view[3] && Math.max(north, north + dy) >= view[1];
@@ -35,11 +32,13 @@ export function buildingShadows(buildings, sun, view = null) {
   for (const building of buildings?.features ?? []) {
     const offset = shadowOffset(sun, building.properties.height);
     if (!offset) continue;
-    if (!mayReachView(building, offset, view)) continue;
+    const buildingBounds = footprintBounds(building);
+    const east = METRES_PER_DEGREE * Math.cos((buildingBounds[1] + buildingBounds[3]) / 2 * Math.PI / 180);
+    if (!mayReachView(building, offset, view, east)) continue;
     const polygons = building.geometry.type === 'Polygon' ? [building.geometry.coordinates] : building.geometry.coordinates;
     const shapes = [];
     for (const polygon of polygons) {
-      const shifted = polygon.map((ring) => ring.map((point) => shift(point, ...offset)));
+      const shifted = polygon.map((ring) => ring.map((point) => shift(point, ...offset, east)));
       shapes.push(shifted);
       for (let r = 0; r < polygon.length; r++) {
         const ring = polygon[r];

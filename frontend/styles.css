@@ -398,6 +398,50 @@ footer { display: flex; align-items: center; justify-content: space-between; gap
 .use-location { min-height: 44px; padding: 0; border: 0; background: transparent; color: #92563e; font-size: .75rem; font-weight: 750; }
 .select-map-center:disabled, .use-location:disabled { opacity: .5; cursor: default; }
 .nearby-fields > label { min-width: 0; }
+.visually-hidden { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0, 0, 0, 0); white-space: nowrap; border: 0; }
+.daylight-summary { margin-top: 18px; padding: 21px 25px; border: 1px solid #ded8c8; background: #fffdf7; }
+.daylight-heading { display: flex; align-items: center; justify-content: space-between; gap: 14px; }
+.daylight-heading .section-kicker { margin: 0 0 6px; }
+.daylight-heading h2 { margin: 0; font: 700 1.35rem/1.15 Georgia, serif; color: var(--ink); }
+.daylight-heading > span { color: #d49530; font-size: 30px; line-height: 1; }
+.daylight-place { margin: 11px 0 14px; color: #5f7064; font-size: .78rem; line-height: 1.45; }
+.daylight-track { position: relative; height: 20px; overflow: hidden; border-radius: 3px; background: #e7e5dc; }
+.daylight-segments { display: flex; width: 100%; height: 100%; }
+.daylight-segment { min-width: 0; height: 100%; }
+.daylight-segment.is-sun, .legend-sun::before { background: #eeb54f; }
+.daylight-segment.is-shade, .legend-shade::before { background: #718991; }
+.daylight-segment.is-night, .legend-night::before { background: #3f5062; }
+.daylight-segment.is-unknown, .legend-unknown::before { background: repeating-linear-gradient(135deg, #deddd4 0 4px, #c8cbc1 4px 7px); }
+.daylight-now { position: absolute; top: 0; bottom: 0; width: 2px; background: #fffdf7; box-shadow: 0 0 0 1px #38483ba8; transform: translateX(-1px); }
+.daylight-scale { display: flex; justify-content: space-between; margin-top: 6px; color: #788578; font-size: .65rem; }
+.daylight-legend { display: flex; flex-wrap: wrap; gap: 7px 16px; margin-top: 12px; color: #56685b; font-size: .68rem; }
+.daylight-legend span { display: inline-flex; align-items: center; gap: 5px; background: transparent; }
+.daylight-legend span::before { display: block; width: 9px; height: 9px; border-radius: 2px; content: ''; }
+.daylight-highlights { display: flex; flex-wrap: wrap; gap: 8px 20px; margin: 17px 0 0; padding: 0; list-style: none; }
+.daylight-highlights[hidden] { display: none; }
+.daylight-highlights li { display: flex; flex-wrap: wrap; gap: 5px; color: #536b74; font-size: .75rem; }
+.daylight-highlights .is-sun { color: #94601c; }
+.daylight-highlights strong { font-weight: 750; }
+.daylight-note { margin: 13px 0 0; color: #748074; font-size: .68rem; line-height: 1.45; }
+.outdoor-options { margin-top: 18px; padding-top: 15px; border-top: 1px solid #e7dfd0; }
+.outdoor-options p { margin: 0; color: #5d7062; font-size: .72rem; line-height: 1.45; }
+.outdoor-options .outdoor-title { margin-bottom: 5px; color: #354d3e; font-weight: 800; font-size: .8rem; }
+.outdoor-options ul { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 190px), 1fr)); gap: 7px; margin: 10px 0 0; padding: 0; list-style: none; }
+.outdoor-options button { width: 100%; min-height: 60px; padding: 9px 11px; border: 1px solid #d8d0bd; background: #fbf8ee; color: #354b3d; text-align: left; }
+.outdoor-options button:hover { border-color: #8c9d87; background: #f2f1e6; }
+.outdoor-options button strong, .outdoor-options button small { display: block; }
+.outdoor-options button strong { font-size: .73rem; }
+.outdoor-options button small { margin-top: 4px; color: #6c796c; font-size: .67rem; line-height: 1.35; }
+.nearby-form .range-heading { display: flex; align-items: baseline; justify-content: space-between; gap: 10px; }
+.nearby-form .range-heading label { margin: 0; }
+.nearby-form output { color: #a45e3e; font: 700 1.05rem Georgia, serif; white-space: nowrap; }
+.nearby-form input[type="range"] { appearance: none; display: block; height: 42px; margin: 1px 0 0; padding: 0; border: 0; background: transparent; }
+.range-ends { display: flex; justify-content: space-between; color: #7d887c; font-size: .64rem; }
+.nearby-form .range-toggle { display: flex; align-items: center; gap: 9px; min-height: 48px; margin: 8px 0 4px; color: #435b4a; cursor: pointer; }
+.nearby-form .range-toggle input { appearance: auto; width: 19px; height: 19px; margin: 0; accent-color: #344e3e; }
+.range-distance { margin-top: 18px; }
+.nearby-submit { width: 100%; min-height: 48px; margin-top: 18px; border: 0; background: #344e3e; color: #fffdf7; font-weight: 800; }
+@media (max-width: 650px) { .daylight-summary { margin-top: 15px; padding: 19px; } .daylight-heading h2 { font-size: 1.2rem; } }
 @media (max-width: 950px) {
   .explore-grid { grid-template-columns: minmax(0, 1fr); }
   .scene-column, .real-inspector { min-width: 0; }
