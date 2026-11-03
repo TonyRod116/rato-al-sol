@@ -6,7 +6,7 @@ Un mapa sencillo de terrazas con intervalos estimados de sol y sombra, un select
 
 ## Estado real
 
-La web reúne el mapa 3D de Ayala y sombras orientativas. En `mobile/` hay un prototipo React Native para iOS y Android con búsqueda por nombre o cercanía, selector de hora, mapa y estimaciones para un punto exterior elegido. La vista web del prototipo comparte la interfaz y el motor solar; la web anterior permanece disponible.
+La web reúne el mapa 3D de Ayala y sombras orientativas. El selector abarca todo el día y el mapa cambia de aspecto con la posición del sol; el botón «Reducir detalle de edificios» ofrece una vista más ligera. En `mobile/` hay un prototipo React Native para iOS y Android con búsqueda por nombre o cercanía, selector de hora, mapa y estimaciones para un punto exterior elegido. La vista web del prototipo comparte la interfaz y el motor solar; la web anterior permanece disponible.
 
 Madrid aporta alturas estimadas municipales; en otras zonas la geometría y las alturas dependen de OpenStreetMap y pueden ser insuficientes. La fuente pública de búsqueda general no respondió en las pruebas de este entorno; se ha probado una alternativa con parques municipales y nombres del censo de Madrid, además de la selección manual de un punto. Las entradas de locales **no identifican las mesas** y la sombra de los árboles no está modelada. Ni las estimaciones ni las sombras se han contrastado sobre el terreno; faltan pruebas en dispositivos nativos y no hay despliegue.
 
@@ -32,7 +32,7 @@ npm ci
 npx expo start --host localhost
 ```
 
-Expo usa el puerto 8081 si está libre. `localhost` limita la conexión a este ordenador; abrir el teléfono por la red requiere configurarlo expresamente. La app usa mapas nativos de Apple o Google, no una página web incrustada. Para probarla en un dispositivo se necesita una versión compatible de Expo Go o una compilación de desarrollo; para publicar se deben configurar credenciales propias de los mapas y revisar costes y permisos.
+Expo usa el puerto 8081 si está libre. `localhost` limita la conexión a este ordenador; para acceder desde un teléfono en la misma red se puede iniciar expresamente con `npx expo start --host lan` y escanear el QR con una versión compatible de Expo Go. La app usa mapas nativos de Apple o Google, no una página web incrustada. El aspecto y el rendimiento en iPhone y Android todavía necesitan comprobarse en dispositivos reales; para publicar se deben configurar credenciales propias de los mapas y revisar costes y permisos.
 
 Para las comprobaciones locales se necesitan Python 3.11 o posterior y Node.js:
 
@@ -41,6 +41,7 @@ node tests/demo.test.mjs
 node tests/solar.test.mjs
 node tests/madrid.test.mjs
 node tests/map-shadows.test.mjs
+node tests/map-atmosphere.test.mjs
 node --test tests/mobile.test.mjs
 node --check frontend/app.mjs
 python3 scripts/repo_check.py

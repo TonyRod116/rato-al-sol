@@ -8,11 +8,12 @@ import { createCityMap } from './city-map.mjs';
 const $ = (selector) => document.querySelector(selector);
 const today = Object.fromEntries(new Intl.DateTimeFormat('en-GB', {
   timeZone: 'Europe/Madrid', year: 'numeric', month: '2-digit', day: '2-digit',
+  hour: '2-digit', minute: '2-digit', hourCycle: 'h23',
 }).formatToParts(new Date()).map(({ type, value }) => [type, value]));
-const state = { date: `${today.year}-${today.month}-${today.day}`, minutes: 750 };
+const state = { date: `${today.year}-${today.month}-${today.day}`, minutes: Math.floor((Number(today.hour) * 60 + Number(today.minute)) / 10) * 10 };
 const empty = { type: 'FeatureCollection', features: [] };
 let buildings, activeMap, madridPlaces = [], selectedMadrid = '', madridConsulted = '';
-let mapStarted = false, mapLoading = false, is3D = true, playback, pendingFrame;
+let mapStarted = false, mapLoading = false, is3D = true, lightweight = false, playback, pendingFrame;
 let view = { bearing: 0, pitch: 0, center: AYALA_CENTER };
 let currentDirection = null;
 let buildingsLoading = false, buildingsError = false;
@@ -53,8 +54,10 @@ function updateSolar() {
   $('#time').value = state.minutes;
   $('#time-value').value = clock;
   $('#time').setAttribute('aria-valuetext', `${clock}, hora de Madrid`);
-  $('#time').style.setProperty('--progress', `${(state.minutes - 540) / 660 * 100}%`);
-  $('#direction-text').textContent = currentDirection
+  $('#time').style.setProperty('--progress', `${state.minutes / 1430 * 100}%`);
+  $('#direction-text').textContent = !instant
+    ? 'Esta hora no existe en Madrid por el cambio al horario de verano. Elige otra hora.'
+    : currentDirection
     ? `A las ${clock}, las sombras apuntan hacia el ${currentDirection.label}.`
     : sun && sun.altitude < -1 ? `A las ${clock} es de noche; no hay sombra solar.`
       : `A las ${clock} el sol está muy bajo; no mostramos sombras fiables.`;
@@ -66,7 +69,7 @@ function updateSolar() {
     pendingFrame = null;
     if (activeMap) {
       activeMap.setSun?.(sun);
-      activeMap.setShadows(buildings && currentDirection ? buildingShadows(buildings, sun) : empty);
+      activeMap.setShadows(buildings && currentDirection ? buildingShadows(buildings, sun, view.shadowBounds) : empty);
     }
   });
 }
@@ -152,6 +155,7 @@ function onViewChange(next) {
   view = next;
   updateCompass();
   updateShadowStatus();
+  if (next.settled && activeMap) updateSolar();
 }
 
 function activateMap(map, isCity) {
@@ -159,6 +163,7 @@ function activateMap(map, isCity) {
   $('#city-map').hidden = !isCity;
   $('#open-map').hidden = isCity;
   $('#city-controls').hidden = !isCity;
+  $('#map-options').hidden = !isCity;
   $('#map-dimension').hidden = !isCity || !is3D;
   $('#map-message').hidden = true;
   updateMadridMarkers();
@@ -199,24 +204,30 @@ async function loadMap() {
 $('#time').addEventListener('input', (event) => { stopPlayback(); state.minutes = Number(event.target.value); updateSolar(); });
 $('#date').addEventListener('change', (event) => {
   stopPlayback();
-  if (!event.target.validity.valid || !civilTimeToUtc(event.target.value, state.minutes)) { event.target.value = state.date; return; }
+  if (!event.target.validity.valid || !civilTimeToUtc(event.target.value, 720)) { event.target.value = state.date; return; }
   state.date = event.target.value; updateSolar();
 });
 $('#play-day').addEventListener('click', () => {
   if (playback) return stopPlayback();
-  if (state.minutes >= 1200) state.minutes = 540;
+  if (state.minutes >= 1430) state.minutes = 0;
   updateSolar();
   $('#play-day').setAttribute('aria-pressed', 'true');
   $('#play-day').textContent = '❚❚ Pausar';
   playback = setInterval(() => {
-    state.minutes = Math.min(1200, state.minutes + 10); updateSolar();
-    if (state.minutes >= 1200) stopPlayback();
+    state.minutes = Math.min(1430, state.minutes + 10); updateSolar();
+    if (state.minutes >= 1430) stopPlayback();
   }, 450);
 });
 $('#madrid-load').addEventListener('click', loadMadrid);
 $('#shadows-retry').addEventListener('click', loadBuildings);
 $('#map-retry').addEventListener('click', () => window.location.reload());
 $('#map-rotate').addEventListener('click', () => activeMap?.rotate?.());
+$('#map-detail').addEventListener('click', (event) => {
+  lightweight = !lightweight;
+  event.currentTarget.setAttribute('aria-pressed', String(lightweight));
+  event.currentTarget.textContent = lightweight ? 'Volver al detalle normal ↗' : 'Reducir detalle de edificios ↗';
+  activeMap?.setLightweight?.(lightweight);
+});
 $('#map-pitch').addEventListener('click', () => {
   is3D = !is3D;
   $('#map-pitch').setAttribute('aria-pressed', String(is3D));

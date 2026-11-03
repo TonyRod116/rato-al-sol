@@ -40,7 +40,7 @@ function Main() {
   const [query, setQuery] = useState(''), [radius, setRadius] = useState(1000);
   const [customRadius, setCustomRadius] = useState('');
   const [dayOffset, setDayOffset] = useState(0);
-  const [minutes, setMinutes] = useState(() => Math.round((new Date().getHours() * 60 + new Date().getMinutes()) / 15) * 15 % 1440);
+  const [minutes, setMinutes] = useState(() => { const now = new Date(); return Math.floor((now.getHours() * 60 + now.getMinutes()) / 15) * 15; });
   const [places, setPlaces] = useState([]), [resultsType, setResultsType] = useState(null);
   const [selected, setSelected] = useState(null), [buildings, setBuildings] = useState([]), [coverage, setCoverage] = useState([]);
   const [busy, setBusy] = useState(''), [notice, setNotice] = useState(''), [error, setError] = useState('');
@@ -62,10 +62,11 @@ function Main() {
   const state = useMemo(() => scene ? lightAt(scene, instant) : 'unknown', [scene, instant]);
   const windows = useMemo(() => scene ? solarWindows(scene, day) : [], [scene, day]);
   const shadows = useMemo(() => scene ? shadowShapes(buildings, selected, instant) : [], [scene, buildings, selected, instant]);
-  const direction = useMemo(() => {
+  const mapSun = useMemo(() => {
     const point = selected || center;
-    return shadowDirection(sunPosition(instant, point.latitude, point.longitude));
+    return sunPosition(instant, point.latitude, point.longitude);
   }, [selected, center, instant]);
+  const direction = useMemo(() => shadowDirection(mapSun), [mapSun]);
   const nearbyScenes = useMemo(() => {
     const scenes = {};
     if (resultsType !== 'nearby') return scenes;
@@ -234,14 +235,16 @@ function Main() {
       {!!busy && <Loading text={busy} />}
       {!!error && <View accessibilityRole="alert" style={[styles.alert, styles.feedback]}><Text style={styles.alertText}>{error}</Text></View>}
       {!!notice && <View style={[styles.note, styles.feedback]}><Text style={styles.noteText}>{notice}</Text></View>}
-      <View style={styles.mapSection}><MapCanvas camera={camera} places={places} selected={selected} shadows={shadows} onMove={(point) => { setCenter(point); setOriginLabel(myLocation.current && distanceMetres(myLocation.current, point) < 25 ? 'Tu ubicación' : 'Zona del mapa'); }} onPick={selectPoint} onPlace={selectPoint} />
+      <View style={styles.mapSection}><MapCanvas camera={camera} places={places} selected={selected} shadows={shadows} sun={mapSun} onMove={(point) => { setCenter(point); setOriginLabel(myLocation.current && distanceMetres(myLocation.current, point) < 25 ? 'Tu ubicación' : 'Zona del mapa'); }} onPick={selectPoint} onPlace={selectPoint} />
         <Text style={styles.mapCaption}>✳  Toca el punto exacto donde te sentarías. Las sombras son orientativas.</Text></View>
       <View style={styles.timePanel}>
         <View style={styles.rowBetween}><View><Text style={styles.eyebrow}>DESCUBRE CÓMO CAMBIA LA LUZ</Text><Text style={styles.sectionTitle}>Mueve la hora <Text style={styles.accent}>↗</Text></Text></View><Text style={styles.clock}>{formatTime(minutes)}</Text></View>
         <View style={styles.dayRow}><View style={styles.chips}><Chip selected={dayOffset === 0} onPress={() => setDayOffset(0)}>Hoy</Chip><Chip selected={dayOffset === 1} onPress={() => setDayOffset(1)}>Mañana</Chip></View><Text style={styles.dayText}>{day.toLocaleDateString('es-ES', { day: 'numeric', month: 'short' })}</Text></View>
-        <Slider style={styles.slider} accessibilityLabel="Hora para consultar el sol" minimumValue={0} maximumValue={1425} step={15} value={minutes} onValueChange={setMinutes} minimumTrackTintColor="#eeb342" maximumTrackTintColor="#d9d7cb" thumbTintColor="#30463a" />
+        {Platform.OS === 'web' ? <input type="range" aria-label="Hora para consultar el sol" aria-valuetext={formatTime(minutes)} min="0" max="1425" step="15" value={minutes} onChange={(event) => setMinutes(Number(event.target.value))} style={{ width: '100%', height: 42, marginTop: 4, accentColor: '#30463a', cursor: 'pointer' }} />
+          : <Slider style={styles.slider} accessibilityLabel="Hora para consultar el sol" accessibilityValue={{ min: 0, max: 1425, now: minutes, text: formatTime(minutes) }} minimumValue={0} maximumValue={1425} step={15} value={minutes} onValueChange={setMinutes} minimumTrackTintColor="#eeb342" maximumTrackTintColor="#d9d7cb" thumbTintColor="#30463a" />}
         <View style={styles.rowBetween}><Text style={styles.scale}>00:00</Text><Text style={styles.scale}>06:00</Text><Text style={styles.scale}>12:00</Text><Text style={styles.scale}>18:00</Text><Text style={styles.scale}>23:45</Text></View>
         <Text style={styles.timezone}>Hora de tu teléfono · {timezone}</Text>
+        {!instant && <Text style={styles.distanceError}>Esta hora no existe por el cambio al horario de verano. Elige otra hora.</Text>}
         {direction && <View style={styles.direction}><Text accessible={false} style={[styles.directionArrow, { transform: [{ rotate: `${direction.bearing}deg` }] }]}>↑</Text><Text style={styles.directionText}>A las {formatTime(minutes)}, las sombras apuntan hacia el {direction.label}.</Text></View>}
       </View>
       {selected && <View style={styles.detail}>

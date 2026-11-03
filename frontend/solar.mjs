@@ -5,10 +5,9 @@ const madridClock = new Intl.DateTimeFormat('en-GB', {
   hour: '2-digit', minute: '2-digit', hourCycle: 'h23',
 });
 
-// The demo is limited to 09:00–20:00, outside Madrid's ambiguous DST hour.
 export function civilTimeToUtc(date, minutes) {
   if (typeof date !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(date) ||
-      !Number.isInteger(minutes) || minutes < 540 || minutes > 1200) return null;
+      !Number.isInteger(minutes) || minutes < 0 || minutes >= 1440) return null;
   const [year, month, day] = date.split('-').map(Number);
   if (year < 2000 || year > 2099) return null;
   const wallClock = Date.UTC(year, month - 1, day, Math.floor(minutes / 60), minutes % 60);
@@ -19,10 +18,15 @@ export function civilTimeToUtc(date, minutes) {
     const fields = Object.fromEntries(madridClock.formatToParts(instant).map(({ type, value }) => [type, Number(value)]));
     return Date.UTC(fields.year, fields.month - 1, fields.day, fields.hour, fields.minute);
   };
-  let instant = wallClock;
-  // Two passes account for a possible change of offset during the first guess.
-  for (let i = 0; i < 2; i++) instant += wallClock - asMadridWallClock(new Date(instant));
-  return asMadridWallClock(new Date(instant)) === wallClock ? new Date(instant) : null;
+  // Sample offsets on either side of a clock change. A skipped hour has no
+  // match; a repeated hour resolves to its first occurrence.
+  const offsets = new Set([-36, 0, 36].map((hours) => {
+    const sample = wallClock + hours * 3600000;
+    return asMadridWallClock(new Date(sample)) - sample;
+  }));
+  const matches = [...offsets].map((offset) => wallClock - offset)
+    .filter((instant) => asMadridWallClock(new Date(instant)) === wallClock).sort((a, b) => a - b);
+  return matches.length ? new Date(matches[0]) : null;
 }
 
 export function sunPosition(instant, latitude, longitude) {

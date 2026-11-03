@@ -38,13 +38,14 @@
               <div id="map-message" class="map-message" role="status"><span aria-hidden="true">✳</span><p id="map-message-text">Preparando el mapa…</p><button id="map-retry" type="button" hidden>Reintentar mapa ↗</button></div>
             </div>
             <figcaption><span>✳</span> Sombras estimadas de edificios en el entorno de Ayala. Los puntos son entradas aproximadas, no mesas.</figcaption>
+            <div id="map-options" class="map-options" hidden><p>¿El mapa va lento?</p><button id="map-detail" type="button" aria-pressed="false">Reducir detalle de edificios ↗</button></div>
             <p id="map-provider-status" class="map-provider-status" role="status" hidden></p>
           </figure>
           <section class="planner" aria-label="Elige el día y la hora">
             <div class="planner-heading"><div><p class="section-kicker">DESCUBRE CÓMO CAMBIA LA LUZ</p><h2>Mueve la hora <span aria-hidden="true">↗</span></h2></div><output id="time-value" for="time">12:30</output></div>
             <div class="planner-controls">
               <div class="date-control"><label for="date">Día</label><input type="date" id="date" name="fecha" min="2000-01-01" max="2099-12-31" required></div>
-              <div class="time-control"><label for="time">Hora en Madrid</label><input type="range" id="time" name="hora" min="540" max="1200" step="10" value="750"><div class="time-scale" aria-hidden="true"><span>09:00</span><span>12:00</span><span>16:00</span><span>20:00</span></div></div>
+              <div class="time-control"><label for="time">Hora en Madrid</label><input type="range" id="time" name="hora" min="0" max="1430" step="10" value="750"><div class="time-scale" aria-hidden="true"><span>00:00</span><span>06:00</span><span>12:00</span><span>18:00</span><span>23:50</span></div></div>
             </div>
             <div class="direction-line" role="status" aria-live="polite"><span id="direction-symbol" aria-hidden="true">↗</span><p id="direction-text">Calculando la dirección de la sombra…</p></div>
             <div class="planner-footer"><p class="date-note">Hora local de Madrid. Sombras orientativas, sin nubes, árboles ni toldos.</p><button id="play-day" class="play-day" type="button" aria-pressed="false">▶ Ver pasar el día</button></div>

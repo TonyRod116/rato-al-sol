@@ -40,7 +40,17 @@ Al cambiar de etapa: resultado, evidencia, bloqueo y siguiente acción concreta.
 - Hitos: (1) contrato y motor de posición/intervalos con incertidumbre y pruebas; (2) fuente de lugares y geometría acotada, sin publicar ubicación en URLs ni inferir mesas; (3) app nativa y prueba real si el dispositivo lo permite; (4) versión web conectada y comprobación visual; (5) cotejar lo conseguido contra el objetivo completo. No cerrar por entregar solo una maqueta.
 - Permisos: implementación y pruebas locales en este repositorio, consultas públicas acotadas, y actualización de la rama privada ya autorizada; sin contratar APIs, crear infraestructura o desplegar.
 - Evidencia y límites: empaquetado JavaScript de iOS/Android y vista web comprobados; falta ejecución en un dispositivo real. Overpass devolvió 406 y la alternativa agotó el plazo desde este entorno, por lo que la búsqueda general real y la cobertura fuera de Madrid no están verificadas. Las estimaciones no se han contrastado sobre el terreno; hay dos avisos altos de npm en dependencias de Expo CLI.
-- Siguiente acción: probar en iOS y Android, obtener una fuente de búsqueda fiable con derechos/capacidad adecuados, validar alturas y sombras y localizar mesas reales. El revisor automático rechazó exponer Expo en la red local; localhost sí quedó permitido. Mantener la tarea abierta.
+- Siguiente acción: probar en iOS y Android, obtener una fuente de búsqueda fiable con derechos/capacidad adecuados, validar alturas y sombras y localizar mesas reales. Tras un rechazo inicial, Tony autorizó expresamente Expo en la red local y el servidor del puerto 8082 quedó accesible; falta la prueba desde su dispositivo. Mantener la tarea abierta.
+
+## APP-003 — Luz de la ciudad y fluidez del mapa
+
+- Estado: `in_progress` — petición de Tony del 2026-11-03.
+- Objetivo: ofrecer Expo al móvil en la red local autorizada, adaptar la apariencia del mapa a noche y luz baja y reducir el coste de los edificios y sombras al explorar y cambiar la hora.
+- Aceptación: colores ligados al mismo sol del selector, transición visible de noche/amanecer/atardecer, control razonable de detalle, sombras coherentes con la escena y comprobación visual y de rendimiento antes/después. Comprobar las horas de cambio de horario y no alterar la precisión del cálculo para mesas.
+- Estado inicial: el servidor Expo LAN escucha en el puerto 8082 tras la autorización expresa de Tony; pendiente prueba desde su móvil. Un cálculo previo con 1.324 edificios produjo 16.178 polígonos de sombra y unos 3,8 MB de geometría por cambio de hora en la muestra de Ayala.
+- Avance: apariencia solar para la web y el prototipo móvil, ciclo completo de 24 horas, detalle ligero 2D opcional y recorte de sombras a la zona visible con margen; se conservan las sombras de edificios exteriores que pueden entrar en pantalla. Pruebas de fecha, sombras y aspecto; capturas 3D, 2D y web móvil revisadas, incluidos teclado y error de horario inexistente. Para una vista cercana de prueba, 4.665 polígonos y 1,09 MB frente a 16.178 y 3,78 MB; la mediana local de cálculo bajó de 9,54 a 2,17 ms en 20 iteraciones. No es una medición de FPS ni demuestra el rendimiento en el ordenador de Tony.
+- Siguiente acción: abrir Expo Go en un iPhone y un Android reales, comprobar mapa, colores y respuesta al deslizar; confirmar con Tony si el modo ligero resuelve la saturación de su equipo. Mantener abierta la tarea hasta tener esa evidencia.
+- Permisos: exponer el servidor de desarrollo en la red local, implementar y verificar localmente y actualizar la rama privada ya autorizada. No publicar ni crear infraestructura.
 
 ## REPO-001 — Guardar el proyecto en GitHub
 

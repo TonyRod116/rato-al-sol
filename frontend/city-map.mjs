@@ -1,4 +1,5 @@
 import { AYALA_BOUNDS } from './madrid-buildings.mjs';
+import { mapAtmosphere } from './map-atmosphere.mjs';
 
 export async function createCityMap(element, onViewChange = () => {}) {
   const base = 'https://cdn.jsdelivr.net/npm/maplibre-gl@5.24.0/dist/maplibre-gl';
@@ -78,13 +79,15 @@ export async function createCityMap(element, onViewChange = () => {}) {
   const [west, south, east, north] = AYALA_BOUNDS;
   const coverage = { type: 'Polygon', coordinates: [[[west, south], [east, south], [east, north], [west, north], [west, south]]] };
   const empty = { type: 'FeatureCollection', features: [] };
-  map.addSource('ayala-buildings', { type: 'geojson', data: empty });
-  map.addSource('ayala-shadows', { type: 'geojson', data: empty });
+  map.addSource('ayala-buildings', { type: 'geojson', data: empty, maxzoom: 17 });
+  map.addSource('ayala-shadows', { type: 'geojson', data: empty, maxzoom: 17 });
   const belowBuildings = map.getLayer('building') ? 'building' : undefined;
   map.addLayer({ id: 'ayala-shadows', type: 'fill', source: 'ayala-shadows',
     paint: { 'fill-color': '#536a70', 'fill-opacity': .44, 'fill-antialias': false } }, belowBuildings);
+  map.addLayer({ id: 'ayala-buildings-2d', type: 'fill', source: 'ayala-buildings', minzoom: 13, maxzoom: 16,
+    paint: { 'fill-color': '#d6ae99' } }, belowBuildings);
   const below3d = map.getLayer('building-3d') ? 'building-3d' : undefined;
-  map.addLayer({ id: 'ayala-buildings-3d', type: 'fill-extrusion', source: 'ayala-buildings', minzoom: 14,
+  map.addLayer({ id: 'ayala-buildings-3d', type: 'fill-extrusion', source: 'ayala-buildings', minzoom: 16,
     paint: { 'fill-extrusion-color': '#d8a993', 'fill-extrusion-height': ['get', 'height'],
       'fill-extrusion-base': 0, 'fill-extrusion-opacity': 1 } }, below3d);
   // Replace the schematic tile buildings only within the municipal coverage area.
@@ -97,11 +100,18 @@ export async function createCityMap(element, onViewChange = () => {}) {
     }
   }
   let usingMunicipal = false;
-  const notifyView = () => onViewChange({ bearing: map.getBearing(), pitch: map.getPitch(), center: map.getCenter() });
-  map.on('rotate', notifyView);
-  map.on('pitch', notifyView);
-  map.on('moveend', notifyView);
-  notifyView();
+  if (map.getLayer('building-3d')) map.setLayerZoomRange('building-3d', 16, 24);
+  const notifyView = (settled = false) => {
+    const bounds = map.getBounds();
+    const x = (bounds.getEast() - bounds.getWest()) * .2;
+    const y = (bounds.getNorth() - bounds.getSouth()) * .2;
+    onViewChange({ bearing: map.getBearing(), pitch: map.getPitch(), center: map.getCenter(), settled,
+      shadowBounds: [bounds.getWest() - x, bounds.getSouth() - y, bounds.getEast() + x, bounds.getNorth() + y] });
+  };
+  map.on('rotate', () => notifyView());
+  map.on('pitch', () => notifyView());
+  map.on('moveend', () => notifyView(true));
+  notifyView(true);
   let markers = [];
   let fittedPlaces = false;
   const duration = () => window.matchMedia('(prefers-reduced-motion: reduce)').matches ? 0 : 350;
@@ -112,10 +122,17 @@ export async function createCityMap(element, onViewChange = () => {}) {
     },
     setShadows(shadows) { map.getSource('ayala-shadows').setData(shadows); },
     setSun(sun) {
+      map.getCanvas().style.filter = mapAtmosphere(sun).cssFilter;
       const daylight = sun && sun.altitude >= 5;
       map.setLight({ anchor: 'map', color: '#fff9ef', intensity: daylight ? .3 : .12,
         position: daylight ? [1.5, sun.azimuth, 90 - sun.altitude] : [1.5, 180, 30],
         'position-transition': { duration: 0 }, 'intensity-transition': { duration: 0 } });
+    },
+    setLightweight(enabled) {
+      for (const id of ['building-3d', 'ayala-buildings-3d']) {
+        if (map.getLayer(id)) map.setLayoutProperty(id, 'visibility', enabled ? 'none' : 'visible');
+      }
+      map.setLayerZoomRange('ayala-buildings-2d', 13, enabled ? 24 : 16);
     },
     showPlaces(places, onSelect) {
       for (const entry of markers) entry.marker.remove();

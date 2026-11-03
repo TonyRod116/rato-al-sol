@@ -7,6 +7,7 @@ node tests/demo.test.mjs
 node tests/solar.test.mjs
 node tests/madrid.test.mjs
 node tests/map-shadows.test.mjs
+node tests/map-atmosphere.test.mjs
 node --test tests/mobile.test.mjs
 node --check frontend/app.mjs
 node --check frontend/demo-data.mjs
@@ -24,6 +25,8 @@ bash scripts/check-ai-instructions.sh
 Los tests de Node comprueban una posición solar de referencia con tolerancia de 0,1°, cambios de horario de Madrid, geometría analítica simple y dirección de sombra dibujada, intervalos, noche, datos ausentes, filtros, privacidad de consultas y contratos municipales. La prueba solar cubre solo ese caso, no su precisión global ni la sombra real en terrazas. Los dos últimos comandos comprueban solo documentación/configuración. La web anterior es estática; el prototipo nativo usa Expo.
 
 Para comprobar el empaquetado nativo, desde `mobile/`: `npx expo export --platform android --output-dir /tmp/rato-android-export` y equivalente con `--platform ios`. Esto verifica el empaquetado JavaScript, no instala ni prueba una app en un dispositivo.
+
+En la revisión de luz y rendimiento del 2026-11-03 se inspeccionaron en Chromium las vistas de noche, amanecer y atardecer, el modo ligero, el respaldo 2D y capturas a 320, 390 y 1440 px. Se comprobaron el selector con teclado, movimiento reducido y la hora inexistente del cambio de horario. La vista web móvil también cambió entre día y noche y su selector respondió al teclado. Una muestra local con 1.324 edificios de Ayala y sol a 35° pasó de 16.178 polígonos y 3,78 MB a 4.665 y 1,09 MB al limitar el dibujo a una vista cercana con margen; la mediana de cálculo pasó de 9,54 a 2,17 ms en 20 iteraciones. Es una comparación local de geometría, no una medición de la fluidez real en el ordenador de Tony. Hay una prueba que conserva sombras que entran en pantalla desde edificios exteriores. Se empaquetaron iOS, Android y web, pero la apariencia y fluidez nativas siguen pendientes de dispositivo.
 
 El 2026-11-03 se probó en Chromium la vista web del prototipo: selección de un punto real en Madrid y respuesta de alturas municipales, cambio de hora con teclado, búsqueda municipal real tras fallo simulado de Overpass y filtro de sol con lugares y edificios ficticios. Con Overpass simulado como caído se consultaron el catálogo real de parques y alturas municipales para dos puntos; se verificó también la validación de un radio personalizado. Se inspeccionaron capturas de móvil y escritorio; falta QA de dispositivo iOS/Android, comprobación de accesibilidad nativa y contraste sobre el terreno. La búsqueda general no pudo validarse con datos reales por 406/timeout. El análisis npm señaló 13 avisos, dos altos en dependencias de Expo CLI; la corrección automática propone cambiar de versión mayor de Expo y queda pendiente de revisión antes de publicar.
 

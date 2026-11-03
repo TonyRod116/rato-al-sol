@@ -87,8 +87,11 @@ input[type="range"]::-moz-range-thumb { width: 22px; height: 22px; border: 2px s
 .time-scale, .timeline-scale { position: relative; height: 14px; margin-top: 4px; color: #72786e; font-size: .66rem; font-variant-numeric: tabular-nums; }
 .time-scale span, .timeline-scale span { position: absolute; transform: translateX(-50%); }
 .time-scale span:first-child, .timeline-scale span:first-child { left: 0; transform: none; }
-.time-scale span:nth-child(2), .timeline-scale span:nth-child(2) { left: 27.27%; }
-.time-scale span:nth-child(3), .timeline-scale span:nth-child(3) { left: 63.64%; }
+.time-scale span:nth-child(2) { left: 25%; }
+.time-scale span:nth-child(3) { left: 50%; }
+.time-scale span:nth-child(4) { left: 75%; }
+.timeline-scale span:nth-child(2) { left: 27.27%; }
+.timeline-scale span:nth-child(3) { left: 63.64%; }
 .time-scale span:last-child, .timeline-scale span:last-child { right: 0; transform: none; }
 .planner-footer { display: flex; align-items: end; justify-content: space-between; gap: 15px; margin-top: 12px; }
 .date-note { max-width: 390px; margin: 0; color: #74796e; font-size: .72rem; line-height: 1.45; }

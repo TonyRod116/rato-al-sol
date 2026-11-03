@@ -1,5 +1,6 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { Text, View } from 'react-native';
+import { mapAtmosphere } from '../../frontend/map-atmosphere.mjs';
 
 let leafletPromise;
 function loadLeaflet() {
@@ -18,7 +19,7 @@ function loadLeaflet() {
   return leafletPromise;
 }
 
-export default function MapCanvas({ camera, places, selected, shadows, onMove, onPick, onPlace }) {
+export default function MapCanvas({ camera, places, selected, shadows, sun, onMove, onPick, onPlace }) {
   const element = useRef(null), map = useRef(null), layers = useRef(null), callbacks = useRef({});
   const [ready, setReady] = useState(false), [failed, setFailed] = useState(false);
   callbacks.current = { onMove, onPick, onPlace };
@@ -37,6 +38,7 @@ export default function MapCanvas({ camera, places, selected, shadows, onMove, o
     return () => { disposed = true; map.current?.remove(); map.current = null; };
   }, []);
   useEffect(() => { if (ready && camera) map.current?.setView([camera.latitude, camera.longitude], 16); }, [ready, camera]);
+  useEffect(() => { if (ready) map.current.getPane('tilePane').style.filter = mapAtmosphere(sun).cssFilter; }, [ready, sun]);
   useEffect(() => {
     if (!ready || !layers.current) return;
     const L = window.L; layers.current.clearLayers();

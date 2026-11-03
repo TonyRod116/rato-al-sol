@@ -48,3 +48,12 @@ test('no shadow is drawn or direction claimed near or below the horizon', async 
     assert.equal(shadowDirection({ altitude, azimuth: 180 }), null);
   }
 });
+
+test('viewport filtering keeps a shadow cast into view by an off-screen building', async () => {
+  const buildings = await getMadridBuildings(response({ type: 'FeatureCollection', features: [raw] }));
+  const sun = { altitude: 45, azimuth: 90 };
+  const reachesView = [-3.68815, 40.427, -3.68803, 40.4271];
+  const farAway = [-3.689, 40.427, -3.6889, 40.4271];
+  assert.deepEqual(buildingShadows(buildings, sun, reachesView), buildingShadows(buildings, sun));
+  assert.equal(buildingShadows(buildings, sun, farAway).features.length, 0);
+});

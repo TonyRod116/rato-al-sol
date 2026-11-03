@@ -5,14 +5,37 @@ import { AYALA_CENTER } from './madrid-buildings.mjs';
 const METRES_PER_DEGREE = 111319.49079327358;
 const EAST_PER_DEGREE = METRES_PER_DEGREE * Math.cos(AYALA_CENTER.lat * Math.PI / 180);
 const shift = (point, dx, dy) => [point[0] + dx / EAST_PER_DEGREE, point[1] - dy / METRES_PER_DEGREE];
+const boundsCache = new WeakMap();
+
+function footprintBounds(building) {
+  if (boundsCache.has(building)) return boundsCache.get(building);
+  const polygons = building.geometry.type === 'Polygon' ? [building.geometry.coordinates] : building.geometry.coordinates;
+  const bounds = [Infinity, Infinity, -Infinity, -Infinity];
+  for (const polygon of polygons) for (const ring of polygon) for (const [lng, lat] of ring) {
+    bounds[0] = Math.min(bounds[0], lng); bounds[1] = Math.min(bounds[1], lat);
+    bounds[2] = Math.max(bounds[2], lng); bounds[3] = Math.max(bounds[3], lat);
+  }
+  boundsCache.set(building, bounds);
+  return bounds;
+}
+
+function mayReachView(building, offset, view) {
+  if (!Array.isArray(view) || view.length !== 4 || !view.every(Number.isFinite)) return true;
+  const [west, south, east, north] = footprintBounds(building);
+  const dx = offset[0] / EAST_PER_DEGREE, dy = -offset[1] / METRES_PER_DEGREE;
+  // Include the swept area, even when the casting building is off screen.
+  return Math.min(west, west + dx) <= view[2] && Math.max(east, east + dx) >= view[0] &&
+    Math.min(south, south + dy) <= view[3] && Math.max(north, north + dy) >= view[1];
+}
 
 // Sweep each boundary, including courtyard boundaries, and the translated roof.
 // Geometry remains a visual estimate; it is not used to classify a terrace.
-export function buildingShadows(buildings, sun) {
+export function buildingShadows(buildings, sun, view = null) {
   const features = [];
   for (const building of buildings?.features ?? []) {
     const offset = shadowOffset(sun, building.properties.height);
     if (!offset) continue;
+    if (!mayReachView(building, offset, view)) continue;
     const polygons = building.geometry.type === 'Polygon' ? [building.geometry.coordinates] : building.geometry.coordinates;
     const shapes = [];
     for (const polygon of polygons) {

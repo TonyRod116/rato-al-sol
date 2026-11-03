@@ -16,7 +16,11 @@ test('la hora de Madrid respeta ambos cambios de horario', () => {
   assert.equal(civilTimeToUtc('2026-03-29', 600).toISOString(), '2026-03-29T08:00:00.000Z');
   assert.equal(civilTimeToUtc('2026-10-25', 600).toISOString(), '2026-10-25T09:00:00.000Z');
   assert.equal(civilTimeToUtc('2026-02-30', 600), null);
-  assert.equal(civilTimeToUtc('2026-03-29', 90), null);
+  assert.equal(civilTimeToUtc('2026-03-29', 90).toISOString(), '2026-03-29T00:30:00.000Z');
+  assert.equal(civilTimeToUtc('2026-03-29', 150), null, 'la hora saltada no existe');
+  assert.equal(civilTimeToUtc('2026-10-25', 150).toISOString(), '2026-10-25T00:30:00.000Z', 'la hora repetida usa la primera');
+  assert.equal(civilTimeToUtc('2026-07-01', 0).toISOString(), '2026-06-30T22:00:00.000Z');
+  assert.equal(civilTimeToUtc('2026-07-01', 1430).toISOString(), '2026-07-01T21:50:00.000Z');
   assert.equal(civilTimeToUtc('1900-01-01', 600), null);
   assert.equal(sunPosition(new Date('invalid'), 40.4, -3.7), null);
 });

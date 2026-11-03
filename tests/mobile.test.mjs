@@ -129,3 +129,15 @@ test('solar intervals cover the day in labelled samples and empty coverage remai
   assert.equal(lightAt(null, atMinutes(new Date(), 720)), 'unknown');
   assert.equal(prepareScene(madrid, []), null);
 });
+
+test('phone local time does not silently shift the skipped DST hour', () => {
+  const previous = process.env.TZ;
+  try {
+    process.env.TZ = 'Europe/Madrid';
+    const day = new Date(2026, 2, 29, 12);
+    assert.deepEqual([atMinutes(day, 90)?.toISOString(), atMinutes(day, 150), atMinutes(day, 210)?.toISOString()],
+      ['2026-03-29T00:30:00.000Z', null, '2026-03-29T01:30:00.000Z']);
+  } finally {
+    if (previous === undefined) delete process.env.TZ; else process.env.TZ = previous;
+  }
+});

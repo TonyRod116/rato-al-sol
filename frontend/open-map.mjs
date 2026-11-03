@@ -1,5 +1,7 @@
 // Fallback when the 3D map is unavailable. Official Leaflet 1.9.4 files
 // are pinned with the integrity hashes published by the project.
+import { mapAtmosphere } from './map-atmosphere.mjs';
+
 export async function createOpenMap(element, onTileStatus, onViewChange = () => {}) {
   const version = 'https://cdn.jsdelivr.net/npm/leaflet@1.9.4/dist/leaflet';
   const css = document.createElement('link');
@@ -32,7 +34,11 @@ export async function createOpenMap(element, onTileStatus, onViewChange = () => 
   tiles.on('tileerror', () => { if (!loaded && ++failed >= 3) onTileStatus(false); });
   tiles.addTo(map);
   const shadows = L.geoJSON(null, { interactive: false, style: { stroke: false, fillColor: '#536a70', fillOpacity: .25 } }).addTo(map);
-  const notifyView = () => onViewChange({ bearing: 0, center: map.getCenter() });
+  const notifyView = () => {
+    const bounds = map.getBounds().pad(.2);
+    onViewChange({ bearing: 0, center: map.getCenter(), settled: true,
+      shadowBounds: [bounds.getWest(), bounds.getSouth(), bounds.getEast(), bounds.getNorth()] });
+  };
   map.on('moveend', notifyView);
   notifyView();
   let markers = [];
@@ -45,6 +51,7 @@ export async function createOpenMap(element, onTileStatus, onViewChange = () => 
   }
   return {
     setBuildings() {},
+    setSun(sun) { map.getPane('tilePane').style.filter = mapAtmosphere(sun).cssFilter; },
     setShadows(data) { shadows.clearLayers(); shadows.addData(data); },
     showPlaces(places, onSelect) {
       for (const marker of markers) marker.remove();
