@@ -8,11 +8,11 @@ const source = join(root, 'frontend');
 // Keep this list aligned with the imports in frontend/index.html and app.mjs.
 // Local configuration and inactive experiments must not enter the package.
 const publicFiles = [
-  'index.html', 'styles.css', 'favicon.svg', 'app.mjs', 'solar.mjs',
+  'index.html', 'styles.css', 'favicon.svg', 'app.mjs', 'i18n.mjs', 'solar.mjs',
   'madrid.mjs', 'madrid-buildings.mjs', 'map-shadows.mjs', 'viewport-buildings.mjs',
   'open-map.mjs', 'city-map.mjs', 'explore-search.mjs', 'map-atmosphere.mjs',
   'shadow-mask.mjs', 'map-basemap.mjs',
-  'shared/places.mjs', 'shared/ayala-fallback.mjs', 'shared/madrid-scene.mjs', 'shared/default-location.mjs', 'shared/time-selection.mjs',
+  'shared/places.mjs', 'shared/ayala-fallback.mjs', 'shared/madrid-scene.mjs', 'shared/default-location.mjs', 'shared/time-selection.mjs', 'shared/i18n.mjs',
   'shared/scene-provider.mjs', 'shared/estimate.mjs',
   'vendor/suncalc-2.0.2.mjs', 'vendor/SUNCALC-LICENSE.txt',
 ];

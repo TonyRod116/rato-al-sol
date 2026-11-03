@@ -3,9 +3,10 @@ import { DEFAULT_LOCATION } from './shared/default-location.mjs';
 import { initialSelectedTime, TIME_END, TIME_START } from './shared/time-selection.mjs';
 import { buildingShadows, shadowDirection } from './map-shadows.mjs';
 import { getViewportBuildings, viewportBounds } from './viewport-buildings.mjs';
-import { createOpenMap } from './open-map.mjs?v=20261103-14';
-import { createCityMap } from './city-map.mjs?v=20261103-16';
-import { createExplorer } from './explore-search.mjs?v=20261103-16';
+import { createOpenMap } from './open-map.mjs?v=20261103-18';
+import { createCityMap } from './city-map.mjs?v=20261103-18';
+import { createExplorer } from './explore-search.mjs?v=20261103-18';
+import { direction, message, savedLanguage, setLanguage, t } from './i18n.mjs';
 
 const $ = (selector) => document.querySelector(selector);
 const today = Object.fromEntries(new Intl.DateTimeFormat('en-GB', {
@@ -36,6 +37,16 @@ function formattedTime(minutes) {
   return `${String(Math.floor(minutes / 60)).padStart(2, '0')}:${String(minutes % 60).padStart(2, '0')}`;
 }
 
+function updateMapLabels() {
+  for (const [selector, spanish, english] of [
+    ['.maplibregl-ctrl-zoom-in, .leaflet-control-zoom-in', 'Acercar mapa', 'Zoom in'],
+    ['.maplibregl-ctrl-zoom-out, .leaflet-control-zoom-out', 'Alejar mapa', 'Zoom out'],
+  ]) for (const control of document.querySelectorAll(selector)) {
+    control.setAttribute('aria-label', t(spanish, english));
+    control.setAttribute('title', t(spanish, english));
+  }
+}
+
 function updateNearbyControls() {
   const start = $('#nearby-start'), end = $('#nearby-end'), radius = $('#nearby-radius');
   const from = start.valueAsNumber;
@@ -43,7 +54,7 @@ function updateNearbyControls() {
   if (end.valueAsNumber <= from) end.value = String(Math.min(1440, from + 60));
   $('#nearby-start-value').value = formattedTime(from);
   $('#nearby-end-value').value = formattedTime(end.valueAsNumber);
-  $('#nearby-radius-value').value = radius.valueAsNumber < 1000 ? `${radius.valueAsNumber} m` : `${(radius.valueAsNumber / 1000).toFixed(1).replace('.', ',').replace(',0', '')} km`;
+  $('#nearby-radius-value').value = radius.valueAsNumber < 1000 ? `${radius.valueAsNumber} m` : `${(radius.valueAsNumber / 1000).toFixed(1).replace(/\.0$/, '').replace('.', t(',', '.'))} km`;
   $('#nearby-end-control').hidden = !$('#nearby-end-enabled').checked;
   for (const input of [start, end, radius]) {
     input.style.setProperty('--progress', `${(input.valueAsNumber - Number(input.min)) / (Number(input.max) - Number(input.min) || 1) * 100}%`);
@@ -54,12 +65,12 @@ function updateNearbyControls() {
 function updateShadowStatus() {
   const status = $('#shadow-status');
   $('#shadows-retry').hidden = !buildingsError;
-  if (buildingsLoading) status.textContent = 'Cargando alturas de edificios…';
-  else if (buildingsError) status.textContent = buildingsError;
-  else if (!buildings) status.textContent = 'Las sombras aún no están disponibles.';
-  else if (buildings.source === 'osm') status.textContent = 'Sombras orientativas · OpenStreetMap. Pueden faltar edificios y alturas.';
-  else if (buildings.omitted) status.textContent = 'Sombras orientativas · alturas municipales. Faltan algunas alturas.';
-  else status.textContent = 'Sombras orientativas · alturas municipales de la zona visible.';
+  if (buildingsLoading) message(status, 'Cargando alturas de edificios…', 'Loading building heights…');
+  else if (buildingsError) message(status, buildingsError, buildingsError.startsWith('Acerca el mapa') ? 'Zoom in to load buildings in this area.' : 'Could not load building heights in this area. Please try again.');
+  else if (!buildings) message(status, 'Las sombras aún no están disponibles.', 'Shadows are not yet available.');
+  else if (buildings.source === 'osm') message(status, 'Sombras orientativas · OpenStreetMap. Pueden faltar edificios y alturas.', 'Approximate shadows · OpenStreetMap. Some buildings or heights may be missing.');
+  else if (buildings.omitted) message(status, 'Sombras orientativas · alturas municipales. Faltan algunas alturas.', 'Approximate shadows · municipal heights. Some heights are missing.');
+  else message(status, 'Sombras orientativas · alturas municipales de la zona visible.', 'Approximate shadows · municipal heights in the visible area.');
 }
 
 function updateSolar() {
@@ -72,14 +83,14 @@ function updateSolar() {
   $('#date').value = state.date;
   $('#time').value = state.minutes;
   $('#time-value').value = clock;
-  $('#time').setAttribute('aria-valuetext', `${clock}, hora de Madrid`);
+  $('#time').setAttribute('aria-valuetext', t(`${clock}, hora de Madrid`, `${clock}, Madrid time`));
   $('#time').style.setProperty('--progress', `${(state.minutes - TIME_START) / (TIME_END - TIME_START) * 100}%`);
   $('#direction-text').textContent = !instant
-    ? 'Esta hora no existe en Madrid por el cambio al horario de verano. Elige otra hora.'
+    ? t('Esta hora no existe en Madrid por el cambio al horario de verano. Elige otra hora.', 'This time does not exist in Madrid due to the daylight saving time change. Choose another time.')
     : currentDirection
-    ? `A las ${clock}, las sombras apuntan hacia el ${currentDirection.label}.`
-    : sun && sun.altitude < -1 ? `A las ${clock} es de noche; no hay sombra solar.`
-      : `A las ${clock} el sol está muy bajo; no mostramos sombras fiables.`;
+    ? t(`A las ${clock}, las sombras apuntan hacia el ${currentDirection.label}.`, `At ${clock}, shadows point ${direction(currentDirection.label)}.`)
+    : sun && sun.altitude < -1 ? t(`A las ${clock} es de noche; no hay sombra solar.`, `At ${clock} it is night; there are no sun shadows.`)
+      : t(`A las ${clock} el sol está muy bajo; no mostramos sombras fiables.`, `At ${clock} the sun is very low; reliable shadows are unavailable.`);
   $('#direction-symbol').textContent = currentDirection ? '↑' : sun && sun.altitude < -1 ? '☾' : '☼';
   $('#direction-symbol').style.transform = currentDirection ? `rotate(${currentDirection.bearing}deg)` : '';
   explorer.updateTime();
@@ -96,7 +107,7 @@ function updateSolar() {
 function stopPlayback() {
   clearInterval(playback); playback = null;
   $('#play-day').setAttribute('aria-pressed', 'false');
-  $('#play-day').textContent = '▶ Ver pasar el día';
+  message($('#play-day'), '▶ Ver pasar el día', '▶ Play the day');
 }
 
 function loadBuildings(force = false) {
@@ -137,6 +148,7 @@ function onViewChange(next) {
 
 function activateMap(map, isCity) {
   activeMap = map;
+  updateMapLabels();
   $('#city-map').hidden = !isCity;
   $('#open-map').hidden = isCity;
   $('#city-controls').hidden = !isCity;
@@ -159,15 +171,15 @@ async function loadOpenMap() {
       tilesAvailable = available;
       $('#map-message').hidden = available;
       $('#map-retry').hidden = available;
-      if (!available) $('#map-message-text').textContent = 'No hemos podido cargar el mapa. Puedes buscar lugares o volver a intentarlo.';
+      if (!available) message($('#map-message-text'), 'No hemos podido cargar el mapa. Puedes buscar lugares o volver a intentarlo.', 'Could not load the map. You can search for places or try again.');
     }, onViewChange, () => {}, (point) => explorer.selectPoint(point));
     activateMap(map, false);
     $('#map-message').hidden = tilesAvailable;
     $('#map-provider-status').hidden = false;
-    $('#map-provider-status').textContent = 'La vista 3D no está disponible en este navegador; mostramos el mapa en 2D.';
+    message($('#map-provider-status'), 'La vista 3D no está disponible en este navegador; mostramos el mapa en 2D.', '3D view is unavailable in this browser; showing the 2D map.');
   } catch {
     $('#map-message').hidden = false;
-    $('#map-message-text').textContent = 'No hemos podido cargar el mapa. Puedes buscar lugares o volver a intentarlo.';
+    message($('#map-message-text'), 'No hemos podido cargar el mapa. Puedes buscar lugares o volver a intentarlo.', 'Could not load the map. You can search for places or try again.');
     $('#map-retry').hidden = false;
   }
 }
@@ -188,20 +200,20 @@ $('#nearby-form').addEventListener('submit', () => { searchTimeEdited = true; })
 $('#select-map-center').addEventListener('click', () => explorer.selectPoint({ latitude: view.center.lat, longitude: view.center.lng }));
 $('#use-location').addEventListener('click', () => {
   const button = $('#use-location'), status = $('#nearby-status');
-  if (!navigator.geolocation) { status.textContent = 'Tu navegador no ofrece ubicación. Puedes mover el mapa hasta la zona que quieras.'; return; }
+  if (!navigator.geolocation) { message(status, 'Tu navegador no ofrece ubicación. Puedes mover el mapa hasta la zona que quieras.', 'Your browser does not provide location. You can move the map to the area you want.'); return; }
   button.disabled = true;
-  status.textContent = 'Buscando tu ubicación…';
+  message(status, 'Buscando tu ubicación…', 'Finding your location…');
   navigator.geolocation.getCurrentPosition(({ coords }) => {
     const { latitude, longitude } = coords;
     if (!Number.isFinite(latitude) || !Number.isFinite(longitude) || Math.abs(latitude) > 85 || Math.abs(longitude) > 180) {
-      status.textContent = 'No hemos podido localizarte. Puedes mover el mapa.'; button.disabled = false; return;
+      message(status, 'No hemos podido localizarte. Puedes mover el mapa.', 'Could not find your location. You can move the map.'); button.disabled = false; return;
     }
     view = { ...view, center: { lat: latitude, lng: longitude } };
     activeMap?.focus({ lat: latitude, lng: longitude });
-    status.textContent = 'Mapa centrado en tu ubicación. Elige la hora y busca cerca.';
+    message(status, 'Mapa centrado en tu ubicación. Elige la hora y busca cerca.', 'Map centred on your location. Choose a time and search nearby.');
     button.disabled = false;
   }, () => {
-    status.textContent = 'No hemos podido usar tu ubicación. Puedes mover el mapa hasta la zona que quieras.';
+    message(status, 'No hemos podido usar tu ubicación. Puedes mover el mapa hasta la zona que quieras.', 'Could not use your location. You can move the map to the area you want.');
     button.disabled = false;
   }, { enableHighAccuracy: false, timeout: 10000, maximumAge: 60000 });
 });
@@ -215,7 +227,7 @@ $('#play-day').addEventListener('click', () => {
   if (state.minutes >= TIME_END) state.minutes = TIME_START;
   updateSolar();
   $('#play-day').setAttribute('aria-pressed', 'true');
-  $('#play-day').textContent = '❚❚ Pausar';
+  message($('#play-day'), '❚❚ Pausar', '❚❚ Pause');
   playback = setInterval(() => {
     state.minutes = Math.min(TIME_END, state.minutes + 10); updateSolar();
     if (state.minutes >= TIME_END) stopPlayback();
@@ -226,10 +238,18 @@ $('#map-retry').addEventListener('click', () => window.location.reload());
 $('#map-rotate').addEventListener('click', () => activeMap?.rotate?.());
 function setView3D(enabled) {
   is3D = enabled;
-  $('#map-pitch').textContent = is3D ? 'Ver en 2D' : 'Ver en 3D';
+  message($('#map-pitch'), is3D ? 'Ver en 2D' : 'Ver en 3D', is3D ? 'View in 2D' : 'View in 3D');
   activeMap?.set3D?.(is3D);
 }
 $('#map-pitch').addEventListener('click', () => setView3D(!is3D));
+setLanguage(savedLanguage());
+$('#language').addEventListener('change', (event) => {
+  setLanguage(event.target.value, true);
+  updateSolar();
+  updateShadowStatus();
+  explorer.refreshLanguage();
+  updateMapLabels();
+});
 const oldParams = new URLSearchParams(window.location.search);
 if (['fecha', 'hora', 'filtro', 'terraza'].some((key) => oldParams.has(key))) $('#old-link-note').hidden = false;
 updateSolar();

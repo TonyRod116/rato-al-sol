@@ -94,7 +94,7 @@ export async function createOpenMap(element, onTileStatus, onViewChange = () => 
       selectedPoint?.remove();
       if (!point) return;
       const icon = L.divIcon({ className: 'open-map-pin', html: '<span class="selected-point-pin"></span>', iconSize: [30, 38], iconAnchor: [15, 38] });
-      selectedPoint = L.marker([point.latitude, point.longitude], { icon, interactive: false, title: 'Punto seleccionado' }).addTo(map);
+      selectedPoint = L.marker([point.latitude, point.longitude], { icon, interactive: false, title: point.name }).addTo(map);
     },
     showPlaces(places, onSelect) {
       for (const marker of markers) marker.remove();

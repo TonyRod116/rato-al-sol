@@ -13,7 +13,7 @@ test('a release web package excludes local configuration and preserves an existi
   const output = join(temporary, 'rato-al-sol');
   try {
     buildWeb(output);
-    for (const file of ['index.html', 'styles.css', 'app.mjs', 'solar.mjs', 'shared/estimate.mjs', 'shared/default-location.mjs', 'shared/time-selection.mjs', 'vendor/suncalc-2.0.2.mjs', 'vendor/SUNCALC-LICENSE.txt']) {
+    for (const file of ['index.html', 'styles.css', 'app.mjs', 'i18n.mjs', 'solar.mjs', 'shared/estimate.mjs', 'shared/default-location.mjs', 'shared/time-selection.mjs', 'shared/i18n.mjs', 'vendor/suncalc-2.0.2.mjs', 'vendor/SUNCALC-LICENSE.txt']) {
       assert.ok(existsSync(join(output, file)), `${file} must be included`);
     }
     assert.ok(!existsSync(join(output, 'maps-config.local.json')));

@@ -2,6 +2,7 @@ import React, { useEffect, useRef, useState } from 'react';
 import { Text, View } from 'react-native';
 import { mapAtmosphere } from '../../frontend/map-atmosphere.mjs';
 import { DEFAULT_LOCATION } from '../../frontend/shared/default-location.mjs';
+import { translate } from '../../frontend/shared/i18n.mjs';
 
 let leafletPromise;
 function loadLeaflet() {
@@ -20,7 +21,7 @@ function loadLeaflet() {
   return leafletPromise;
 }
 
-export default function MapCanvas({ camera, places, selected, shadows, sun, onMove, onPick, onPlace }) {
+export default function MapCanvas({ camera, places, selected, language, shadows, sun, onMove, onPick, onPlace }) {
   const element = useRef(null), map = useRef(null), layers = useRef(null), callbacks = useRef({});
   const [ready, setReady] = useState(false), [failed, setFailed] = useState(false);
   callbacks.current = { onMove, onPick, onPlace };
@@ -39,7 +40,14 @@ export default function MapCanvas({ camera, places, selected, shadows, sun, onMo
     return () => { disposed = true; map.current?.remove(); map.current = null; };
   }, []);
   useEffect(() => { if (ready && camera) map.current?.setView([camera.latitude, camera.longitude], 16); }, [ready, camera]);
-  useEffect(() => { if (ready) map.current.getPane('tilePane').style.filter = mapAtmosphere(sun).cssFilter; }, [ready, sun]);
+  useEffect(() => { if (ready && map.current) map.current.getPane('tilePane').style.filter = mapAtmosphere(sun).cssFilter; }, [ready, sun]);
+  useEffect(() => {
+    if (!ready || !map.current) return;
+    for (const [selector, es, en] of [['.leaflet-control-zoom-in', 'Acercar mapa', 'Zoom in'], ['.leaflet-control-zoom-out', 'Alejar mapa', 'Zoom out']]) {
+      const control = map.current.getContainer().querySelector(selector);
+      if (control) { control.title = translate(language, es, en); control.setAttribute('aria-label', control.title); }
+    }
+  }, [ready, language]);
   useEffect(() => {
     if (!ready || !layers.current) return;
     const L = window.L; layers.current.clearLayers();
@@ -53,7 +61,7 @@ export default function MapCanvas({ camera, places, selected, shadows, sun, onMo
     if (selected) L.circleMarker([selected.latitude, selected.longitude], { radius: 9, color: '#fffaf0', weight: 3, fillColor: '#273e33', fillOpacity: 1, interactive: false }).addTo(layers.current);
   }, [ready, places, selected, shadows]);
   return <View style={{ height: 300, backgroundColor: '#ebe4d7', overflow: 'hidden', borderRadius: 4 }}>
-    <div ref={element} aria-label="Mapa. Toca para elegir un punto exterior." style={{ height: '100%', width: '100%', zIndex: 0 }} />
-    {failed && <Text style={{ position: 'absolute', left: 15, top: 15, color: '#31453b' }}>No se ha podido cargar el mapa.</Text>}
+    <div ref={element} aria-label={translate(language, 'Mapa. Toca para elegir un punto exterior.', 'Map. Tap to choose an outdoor point.')} style={{ height: '100%', width: '100%', zIndex: 0 }} />
+    {failed && <Text style={{ position: 'absolute', left: 15, top: 15, color: '#31453b' }}>{translate(language, 'No se ha podido cargar el mapa.', 'Could not load the map.')}</Text>}
   </View>;
 }

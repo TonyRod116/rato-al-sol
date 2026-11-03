@@ -19,19 +19,19 @@ function editDistance(a, b) {
 }
 
 const categories = [
-  { names: ['restaurante', 'restaurantes', 'restaurant'], filter: '["amenity"~"^(restaurant|fast_food)$"]', kind: 'business' },
-  { names: ['terraza', 'terrazas'], filter: '["amenity"~"^(restaurant|cafe|bar|pub|ice_cream)$"]["outdoor_seating"="yes"]', kind: 'business' },
-  { names: ['bar', 'bares'], filter: '["amenity"~"^(bar|pub)$"]', kind: 'business' },
-  { names: ['cafe', 'cafeteria', 'cafeterias'], filter: '["amenity"="cafe"]', kind: 'business' },
-  { names: ['parque', 'parques', 'jardin', 'jardines'], filter: '["leisure"~"^(park|garden|playground|recreation_ground)$"]', kind: 'public' },
-  { names: ['plaza', 'plazas'], filter: '["place"="square"]', kind: 'public' },
+  { names: ['restaurante', 'restaurantes', 'restaurant', 'restaurants'], filter: '["amenity"~"^(restaurant|fast_food)$"]', kind: 'business' },
+  { names: ['terraza', 'terrazas', 'terrace', 'terraces'], filter: '["amenity"~"^(restaurant|cafe|bar|pub|ice_cream)$"]["outdoor_seating"="yes"]', kind: 'business' },
+  { names: ['bar', 'bares', 'bars'], filter: '["amenity"~"^(bar|pub)$"]', kind: 'business' },
+  { names: ['cafe', 'cafes', 'cafeteria', 'cafeterias'], filter: '["amenity"="cafe"]', kind: 'business' },
+  { names: ['parque', 'parques', 'jardin', 'jardines', 'park', 'parks', 'garden', 'gardens'], filter: '["leisure"~"^(park|garden|playground|recreation_ground)$"]', kind: 'public' },
+  { names: ['plaza', 'plazas', 'square', 'squares'], filter: '["place"="square"]', kind: 'public' },
 ];
 
 export function searchCategory(text) {
   const query = typeof text === 'string' ? fold(text) : '';
   if (!query || query.includes(' ') || !/^[a-z]+$/.test(query)) return null;
-  return categories.find((category) => category.names.some((name) =>
-    name === query || (query.length >= 5 && Math.abs(name.length - query.length) <= 2 && editDistance(name, query) <= (query.length >= 8 ? 2 : 1)))) || null;
+  return categories.find((category) => category.names.includes(query)) || categories.find((category) => category.names.some((name) =>
+    query.length >= 5 && Math.abs(name.length - query.length) <= 2 && editDistance(name, query) <= (query.length >= 8 ? 2 : 1))) || null;
 }
 
 export function matchesName(text, name) {

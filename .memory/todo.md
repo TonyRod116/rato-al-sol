@@ -132,11 +132,12 @@ Al cambiar de etapa: resultado, evidencia, bloqueo y siguiente acción concreta.
 
 ## APP-012 — Idiomas castellano e inglés
 
-- Estado: `in_progress` — petición de Tony del 2026-11-03.
+- Estado: `done` para la implementación local — petición de Tony del 2026-11-03.
 - Objetivo: traducir la web y el prototipo móvil al inglés, conservando el castellano y un selector de idioma discreto.
 - Aceptación: textos de navegación, controles, estados, resultados y accesibilidad coherentes en ambos idiomas; cambio funcional sin perder la selección de sitio u hora; comprobación en navegador y empaquetado móvil.
 - Alcance: cambios y verificaciones locales y actualización de la rama privada ya autorizada; sin publicación.
-- Siguiente acción: inventariar los textos visibles y los mensajes generados, implementar el idioma compartido y verificar los recorridos en los dos idiomas.
+- Evidencia: selector y preferencia local en web y prototipo móvil; búsquedas por categorías en inglés con pruebas de `park`, `restaurants` y `terraces`. En Chromium se comprobaron cambios durante cargas, resultados, lugar y hora conservados, persistencia, fallos simulados y accesibilidad del selector. Se revisaron capturas a 320, 390 y 1440 px y la web empaquetada bajo `/rato-al-sol/`. El JavaScript se empaquetó para iOS y Android; una generación temporal del proyecto iOS incluye el texto de permiso de ubicación en ambos idiomas.
+- Límite: no se ha probado en teléfonos ni emuladores; los avisos nativos del sistema siguen el idioma configurado en el dispositivo, no el selector de la app. Continúa la comprobación nativa en APP-002.
 
 ## REPO-001 — Guardar el proyecto en GitHub
 

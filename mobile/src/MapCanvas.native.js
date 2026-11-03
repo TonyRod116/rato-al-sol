@@ -3,6 +3,7 @@ import MapView, { Marker, Polygon } from 'react-native-maps';
 import { Platform, StyleSheet, View } from 'react-native';
 import { mapAtmosphere } from '../../frontend/map-atmosphere.mjs';
 import { DEFAULT_LOCATION } from '../../frontend/shared/default-location.mjs';
+import { translate } from '../../frontend/shared/i18n.mjs';
 
 // Android's map colour-scheme prop is only applied at creation by this version
 // of react-native-maps, so a map style lets it follow the time slider live.
@@ -16,7 +17,7 @@ const nightMap = [
 ];
 const defaultMap = [];
 
-export default function MapCanvas({ camera, places, selected, shadows, sun, onMove, onPick, onPlace }) {
+export default function MapCanvas({ camera, places, selected, language, shadows, sun, onMove, onPick, onPlace }) {
   const map = useRef(null);
   const atmosphere = mapAtmosphere(sun);
   useEffect(() => {
@@ -27,7 +28,7 @@ export default function MapCanvas({ camera, places, selected, shadows, sun, onMo
       showsBuildings showsCompass pitchEnabled rotateEnabled userInterfaceStyle={Platform.OS === 'android' ? 'light' : atmosphere.isNight ? 'dark' : 'light'}
       customMapStyle={Platform.OS === 'android' ? atmosphere.isNight ? nightMap : defaultMap : undefined}
       onRegionChangeComplete={(region) => onMove({ latitude: region.latitude, longitude: region.longitude })}
-      onPress={(event) => onPick(event.nativeEvent.coordinate)} accessibilityLabel="Mapa. Toca para elegir un punto exterior.">
+      onPress={(event) => onPick(event.nativeEvent.coordinate)} accessibilityLabel={translate(language, 'Mapa. Toca para elegir un punto exterior.', 'Map. Tap to choose an outdoor point.')}>
       {shadows.map((coordinates, index) => <Polygon key={index} coordinates={coordinates} fillColor="rgba(48,67,73,0.26)" strokeColor="rgba(48,67,73,0.05)" strokeWidth={0.5} tappable={false} />)}
       {places.slice(0, 30).map((place) => <Marker key={place.id} coordinate={place} title={place.name} pinColor="#cf7554"
         onPress={(event) => { event.stopPropagation(); onPlace(place); }} />)}

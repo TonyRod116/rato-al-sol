@@ -33,6 +33,20 @@ test('a misspelled category finds nearby restaurants by type, not only by their 
   assert.equal((await searchPlaces('reiaurante', madrid, 1000, fetch))[0]?.name, 'Casa Pepa');
 });
 
+test('English categories search by type without confusing parks with bars', async () => {
+  const queries = [];
+  const fetch = async (_url, options) => {
+    queries.push(decodeURIComponent(options.body.slice(5)));
+    return { ok: true, json: async () => ({ elements: [] }) };
+  };
+  await searchPlaces('parks', madrid, 1000, fetch);
+  await searchPlaces('restaurants', madrid, 1000, fetch);
+  await searchPlaces('terraces', madrid, 1000, fetch);
+  assert.match(queries[0], /leisure.*park/);
+  assert.match(queries[1], /amenity.*restaurant/);
+  assert.match(queries[2], /outdoor_seating/);
+});
+
 test('municipal category fallback returns nearby terraces without inventing their business type', async () => {
   const fetch = async (_url, options) => {
     const body = JSON.parse(options.body);

@@ -6,6 +6,18 @@
     "icon": "./assets/icon.png",
     "orientation": "portrait",
     "userInterfaceStyle": "light",
+    "locales": {
+      "es": {
+        "ios": {
+          "NSLocationWhenInUseUsageDescription": "Rato al Sol usa tu ubicación para encontrar lugares cerca de ti cuando tú lo pides."
+        }
+      },
+      "en": {
+        "ios": {
+          "NSLocationWhenInUseUsageDescription": "Rato al Sol uses your location to find nearby places when you ask."
+        }
+      }
+    },
     "ios": {
       "supportsTablet": true,
       "bundleIdentifier": "com.ratoalsol.app",

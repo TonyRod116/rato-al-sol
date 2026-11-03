@@ -28,8 +28,11 @@ h1, h2, h3 { font-family: Georgia, "Times New Roman", serif; letter-spacing: -.0
 .wordmark, .footer-brand { font: 700 1.65rem/1 Georgia, serif; letter-spacing: -.055em; color: var(--ink); text-decoration: none; white-space: nowrap; }
 .brand-sun { font: 1.8rem/1 sans-serif; color: #d99b18; vertical-align: -.05em; margin-right: .2rem; }
 .wordmark-dot, .heading-dot { color: var(--rust); }
-.header-link { color: var(--ink); text-decoration: none; font-size: .82rem; font-weight: 700; }
+.header-link { color: var(--ink); text-decoration: none; font-size: .82rem; font-weight: 700; white-space: nowrap; }
 .header-link span { margin-left: .3rem; color: var(--rust); }
+.header-actions { display: flex; align-items: center; gap: .4rem; }
+.header-link span[data-en] { margin-left: 0; color: inherit; }
+.language-select { min-height: 44px; width: 50px; border: 0; background: transparent; color: var(--ink); font: inherit; font-size: .75rem; font-weight: 700; cursor: pointer; }
 main, footer { max-width: 1536px; margin: auto; padding-left: 3.5%; padding-right: 3.5%; }
 main { container-type: inline-size; }
 .section-kicker { margin: 0 0 8px; color: #727367; font-size: .65rem; font-weight: 800; letter-spacing: .14em; line-height: 1.3; }

@@ -212,7 +212,7 @@ export async function createCityMap(element, onViewChange = () => {}, onBasemapE
       if (!point) return;
       const pin = document.createElement('span');
       pin.className = 'selected-point-pin';
-      pin.setAttribute('aria-label', 'Punto seleccionado');
+      pin.setAttribute('aria-label', point.name);
       pin.setAttribute('role', 'img');
       selectedPoint = new gl.Marker({ element: pin, anchor: 'bottom' })
         .setLngLat([point.longitude, point.latitude]).addTo(map);
