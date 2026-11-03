@@ -4,6 +4,7 @@ import { mapAtmosphere } from './map-atmosphere.mjs';
 import { drawShadowMask } from './shadow-mask.mjs?v=20261103-6';
 import { AYALA_BOUNDS } from './madrid-buildings.mjs';
 import { AERIAL_TILES, AERIAL_ATTRIBUTION } from './map-basemap.mjs';
+import { DEFAULT_LOCATION } from './shared/default-location.mjs';
 
 export async function createOpenMap(element, onTileStatus, onViewChange = () => {}, onBasemapError = () => {}, onPick = () => {}) {
   const version = 'https://cdn.jsdelivr.net/npm/leaflet@1.9.4/dist/leaflet';
@@ -25,7 +26,7 @@ export async function createOpenMap(element, onTileStatus, onViewChange = () => 
   } finally { clearTimeout(timeout); }
   if (!window.L?.map) throw new Error('Map unavailable');
   const L = window.L;
-  const map = L.map(element, { zoomControl: false, scrollWheelZoom: false }).setView([40.42713, -3.68856], 17);
+  const map = L.map(element, { zoomControl: false, scrollWheelZoom: false }).setView([DEFAULT_LOCATION.latitude, DEFAULT_LOCATION.longitude], 17);
   L.control.zoom({ position: 'bottomright' }).addTo(map);
   map.attributionControl.setPrefix(false);
   const tiles = L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', {

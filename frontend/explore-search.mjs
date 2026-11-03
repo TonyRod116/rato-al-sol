@@ -14,7 +14,6 @@ const distance = (metres) => metres < 1000 ? `${Math.round(metres / 10) * 10} m`
 export function createExplorer({ getCenter, getDate, getTime, onPlaces, onPoint }) {
   let selected = null, pointRequest = 0, placeRequest = 0, nearbyRequest = 0;
   let places = [], nearby = [], criteria = null, sceneByPlace = new Map(), pending = new Set();
-  let hasSearch = false;
 
   function mapPlaces(items) {
     onPlaces(items.map((place) => ({ ...place, position: { lat: place.latitude, lng: place.longitude },
@@ -105,7 +104,6 @@ export function createExplorer({ getCenter, getDate, getTime, onPlaces, onPoint 
     const request = ++pointRequest;
     selected = { ...point, name: point.name || 'Punto elegido en el mapa', kind: point.kind || 'point', scene: null };
     onPoint(selected, focus);
-    $('map-selection').hidden = false;
     $('point-title').textContent = selected.name;
     $('point-status').textContent = 'Consultando los edificios de alrededor…';
     $('point-windows').replaceChildren();
@@ -221,7 +219,7 @@ export function createExplorer({ getCenter, getDate, getTime, onPlaces, onPoint 
       $('place-status').textContent = 'Escribe entre 2 y 80 caracteres y sitúa el mapa en la zona que buscas.'; return;
     }
     const request = ++placeRequest; ++nearbyRequest; criteria = null;
-    hasSearch = true; places = []; nearby = []; sceneByPlace = new Map(); pending = new Set();
+    places = []; nearby = []; sceneByPlace = new Map(); pending = new Set();
     $('place-results').replaceChildren(); $('nearby-results').replaceChildren();
     $('nearby-status').textContent = 'Busca parques y terrazas para la fecha seleccionada.';
     onPlaces([], () => {});
@@ -248,7 +246,7 @@ export function createExplorer({ getCenter, getDate, getTime, onPlaces, onPoint 
       $('nearby-status').textContent = 'Elige una distancia de 500 m a 5 km y una hora final posterior al inicio.'; return;
     }
     const request = ++nearbyRequest; ++placeRequest;
-    hasSearch = true; places = []; nearby = []; criteria = { from, to }; sceneByPlace = new Map(); pending = new Set();
+    places = []; nearby = []; criteria = { from, to }; sceneByPlace = new Map(); pending = new Set();
     $('place-results').replaceChildren();
     $('place-status').textContent = 'Buscamos cerca del centro del mapa, hasta 5 km.';
     onPlaces([], () => {});
@@ -270,7 +268,6 @@ export function createExplorer({ getCenter, getDate, getTime, onPlaces, onPoint 
     selectPoint,
     updateDate() { renderPoint(); renderNearby(); },
     updateTime() { renderPoint(); },
-    hasSearch() { return hasSearch; },
     getSelected() { return selected; },
   };
 }

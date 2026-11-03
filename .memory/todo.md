@@ -112,6 +112,15 @@ Al cambiar de etapa: resultado, evidencia, bloqueo y siguiente acción concreta.
 - Evidencia: cinco propuestas revisadas, recursos nativos generados en una copia temporal y JavaScript empaquetado para iOS y Android. En Chromium se revisaron capturas de web y vista web del prototipo a 320, 390 y escritorio; se probó con cinco lugares simulados buscar, ampliar resultados, seleccionar, cambiar de lugar y ajustar la hora. Las pruebas del proyecto pasan. La aplicación nativa y su icono no se han probado en teléfonos ni emuladores.
 - Siguiente acción: comprobar el aspecto, el icono y la navegación en iPhone y Android reales o emuladores como parte de APP-002; mantener la tarea abierta hasta disponer de esa evidencia.
 
+## APP-010 — Inicio limpio en un lugar reconocible
+
+- Estado: `done` para la implementación local — petición de Tony del 2026-11-03.
+- Objetivo: retirar los tres marcadores antiguos que aparecen al iniciar, comenzar el mapa en un lugar más característico y reducir los elementos superpuestos que lo recargan.
+- Aceptación: web 3D, respaldo 2D y prototipo móvil centrados en la Puerta del Sol, sin marcadores precargados ni etiquetas redundantes sobre el mapa; las búsquedas y la selección de un punto siguen funcionando, se conservan los controles útiles y las alturas corresponden a la zona visible.
+- Alcance: cambios y verificaciones locales y actualización de la rama privada ya autorizada; sin publicación ni recursos externos nuevos.
+- Evidencia: la vista inicial sin marcadores y las alturas municipales de la Puerta del Sol se comprobaron en 3D, en el respaldo 2D y en la vista web del prototipo móvil. Se probaron selección y cálculo de un punto con edificios reales, búsqueda de tres lugares simulados, giro y cambio 2D/3D. Se inspeccionaron capturas a 320, 390 y 1440 px; los controles de giro y vista quedan debajo del mapa y el inicio 3D carga sombras. El JavaScript se empaquetó para iOS y Android.
+- Límites y siguiente acción: la app nativa todavía no se ha probado en un teléfono o emulador; seguir con la verificación de APP-002. Los horarios son estimaciones sin contraste sobre el terreno.
+
 ## REPO-001 — Guardar el proyecto en GitHub
 
 - Estado: `done` — completado y comprobado el 2026-11-02.

@@ -7,8 +7,8 @@
   <meta name="description" content="Explora las horas estimadas de sol y sombra para un lugar o un punto del mapa.">
   <title>Rato al Sol — Explora la luz en Madrid</title>
   <link rel="icon" href="./favicon.svg?v=20261103-12" type="image/svg+xml">
-  <link rel="stylesheet" href="./styles.css?v=20261103-13">
-  <script type="module" src="./app.mjs?v=20261103-12"></script>
+  <link rel="stylesheet" href="./styles.css?v=20261103-16">
+  <script type="module" src="./app.mjs?v=20261103-16"></script>
 </head>
 <body>
   <a class="skip-link" href="#contenido">Saltar al contenido</a>
@@ -42,17 +42,15 @@
             <div class="real-map-shell">
               <div id="city-map" class="google-map" aria-label="Mapa tridimensional interactivo"></div>
               <div id="open-map" class="google-map" aria-label="Mapa interactivo" hidden></div>
-              <div class="real-map-tag"><span aria-hidden="true">⌖</span> EXPLORAR MAPA <b id="map-dimension" hidden>3D</b></div>
-              <span class="map-center-crosshair" aria-hidden="true">⌖</span>
-              <div id="city-controls" class="city-controls" aria-label="Controles del mapa tridimensional" hidden>
-                <button id="map-rotate" type="button" aria-label="Girar el mapa 45 grados">↻ <span>Girar</span></button>
-                <button id="map-pitch" type="button" aria-pressed="true">Vista 3D</button>
-              </div>
-              <div class="shadow-compass" id="shadow-compass" aria-hidden="true"><span class="compass-arrow" id="compass-arrow">↑</span><span><small>LA SOMBRA VA HACIA</small><strong id="compass-label">—</strong></span></div>
-              <a class="map-selection-link" id="map-selection" href="#point-info" hidden>⌖ Punto marcado · Ver sus horas ↓</a>
               <div id="map-message" class="map-message" role="status"><span aria-hidden="true">✳</span><p id="map-message-text">Preparando el mapa…</p><button id="map-retry" type="button" hidden>Reintentar mapa ↗</button></div>
             </div>
-            <figcaption><span>✳</span> Toca el lugar exacto donde quieres estar para consultar sus horas de luz.</figcaption>
+            <figcaption>
+              <p><span aria-hidden="true">✳</span> Toca el mapa para elegir un punto.</p>
+              <div id="city-controls" class="city-controls" role="group" aria-label="Controles del mapa" hidden>
+                <button id="map-rotate" type="button" aria-label="Girar el mapa 45 grados">↻ Girar</button>
+                <button id="map-pitch" type="button">Ver en 2D</button>
+              </div>
+            </figcaption>
           </figure>
           <div id="outdoor-options" class="outdoor-options" hidden><p class="outdoor-title">Elige un punto exterior cercano</p><p>La referencia está dentro de un edificio. Son puntos aproximados: elige dónde quieres estar.</p><ul id="outdoor-list"></ul></div>
           <section class="daylight-summary" aria-labelledby="daylight-title">
@@ -77,7 +75,6 @@
           </section>
           <div class="map-tools">
             <button id="select-map-center" class="select-map-center" type="button" disabled>⌖ Marcar el centro del mapa</button>
-            <div id="map-options" class="map-options" hidden><p>Para alejarte más o mejorar el rendimiento</p><button id="map-detail" type="button" aria-pressed="false">Pasar a vista 2D ↗</button></div>
             <p id="map-provider-status" class="map-provider-status" role="status" hidden></p>
           </div>
         </div>
@@ -110,18 +107,12 @@
             <p class="explorer-note">Se analizan hasta 4 puntos de espacios exteriores. Un punto no representa todo un parque; no se incluyen árboles, nubes, toldos ni sombrillas.</p>
             <p class="explorer-note">Lugares: <a href="https://www.openstreetmap.org/copyright">OpenStreetMap y colaboradores</a> y Ayuntamiento de Madrid. La búsqueda puede ser incompleta.</p>
           </section>
-          <details class="real-results"><summary>Terrazas registradas en Ayala</summary><div class="real-list-heading"><h3>Censo municipal</h3><button id="madrid-load" type="button">Actualizar ↻</button></div>
-            <p id="madrid-status" class="madrid-status" role="status" aria-live="polite">Consultando el censo municipal…</p>
-            <ul id="madrid-list" class="madrid-list" aria-label="Terrazas registradas en la calle de Ayala"></ul>
-            <div class="real-light-note"><strong>☼ &nbsp; Aún no sabemos dónde están las mesas</strong><p>Por eso no podemos decirte las horas de sol de cada terraza. El registro tampoco confirma que estén abiertas hoy.</p></div>
-            <p class="madrid-source">Fuentes: Ayuntamiento de Madrid, <a href="https://datos.madrid.es/dataset/200085-0-censo-locales/information">censo de terrazas</a> y <a href="https://datos.madrid.es/dataset/300750-0-servicio-mapas">alturas estimadas de edificios</a> · <a href="https://creativecommons.org/licenses/by/4.0/">CC BY 4.0</a>. La consulta no garantiza la actualidad de cada dato.</p>
-          </details>
         </aside>
       </div>
     </section>
     <section class="about" id="como-funciona" aria-labelledby="about-title">
       <div><p class="section-kicker">CÓMO FUNCIONA</p><h2 id="about-title">Para perseguir el sol.<br><em>O escapar de él.</em></h2></div>
-      <div><p>Calculamos la posición del sol para la fecha y la hora elegidas y dibujamos sombras aproximadas a partir de los edificios disponibles en la zona.</p><p>El mapa es una orientación, no una predicción de sol en una mesa. Las alturas pueden tener omisiones y no tenemos en cuenta nubes, árboles, toldos ni sombrillas.</p></div>
+      <div><p>Calculamos la posición del sol para la fecha y la hora elegidas y dibujamos sombras aproximadas a partir de los edificios disponibles en la zona.</p><p>El mapa es una orientación, no una predicción de sol en una mesa. Las alturas pueden tener omisiones y no tenemos en cuenta nubes, árboles, toldos ni sombrillas.</p><p class="explorer-note">Datos de <a href="https://www.openstreetmap.org/copyright">OpenStreetMap y sus colaboradores</a> y del Ayuntamiento de Madrid: <a href="https://datos.madrid.es/dataset/200085-0-censo-locales/information">censo de terrazas</a> y <a href="https://datos.madrid.es/dataset/300750-0-servicio-mapas">alturas estimadas</a> · <a href="https://creativecommons.org/licenses/by/4.0/">CC BY 4.0</a>.</p></div>
     </section>
   </main>
   <footer><span class="footer-brand">Rato al Sol<span class="wordmark-dot">.</span></span><span>Hecho para los buenos ratos <span aria-hidden="true">☀</span></span></footer>

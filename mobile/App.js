@@ -12,8 +12,8 @@ import { inMadridArea } from '../frontend/shared/madrid-scene.mjs';
 import { atMinutes, formatTime, lightAt, lightForInterval, nearbyOutdoorScenes, prepareScene, sceneInsideBuilding, shadowShapes, solarWindows } from '../frontend/shared/estimate.mjs';
 import { sunPosition } from '../frontend/solar.mjs';
 import { shadowDirection } from '../frontend/map-shadows.mjs';
+import { DEFAULT_LOCATION } from '../frontend/shared/default-location.mjs';
 
-const MADRID = { latitude: 40.42785, longitude: -3.6873 };
 const statusText = { sun: 'Sol estimado', shade: 'Sombra estimada', night: 'Es de noche', unknown: 'Sin datos suficientes' };
 const statusColor = { sun: '#a45b24', shade: '#536b74', night: '#536b74', unknown: '#777a70' };
 const barColor = { sun: '#eeb54f', shade: '#718991', night: '#3f5062', unknown: '#c8cbc1' };
@@ -54,7 +54,7 @@ function Range({ label, value, min, max, step, onChange, valueText }) {
 function Main() {
   const { width } = useWindowDimensions();
   const [mode, setMode] = useState('place');
-  const [center, setCenter] = useState(MADRID), [camera, setCamera] = useState(null);
+  const [center, setCenter] = useState(DEFAULT_LOCATION), [camera, setCamera] = useState(null);
   const [originLabel, setOriginLabel] = useState('Zona del mapa');
   const [query, setQuery] = useState(''), [radius, setRadius] = useState(500);
   const [dayOffset, setDayOffset] = useState(0);

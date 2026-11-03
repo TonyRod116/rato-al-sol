@@ -1,6 +1,7 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { Text, View } from 'react-native';
 import { mapAtmosphere } from '../../frontend/map-atmosphere.mjs';
+import { DEFAULT_LOCATION } from '../../frontend/shared/default-location.mjs';
 
 let leafletPromise;
 function loadLeaflet() {
@@ -27,7 +28,7 @@ export default function MapCanvas({ camera, places, selected, shadows, sun, onMo
     let disposed = false;
     loadLeaflet().then((L) => {
       if (disposed || !element.current) return;
-      map.current = L.map(element.current, { zoomControl: false }).setView([40.42785, -3.6873], 16);
+      map.current = L.map(element.current, { zoomControl: false }).setView([DEFAULT_LOCATION.latitude, DEFAULT_LOCATION.longitude], 16);
       L.control.zoom({ position: 'bottomleft' }).addTo(map.current);
       L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', { maxZoom: 19, attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>' }).addTo(map.current);
       layers.current = L.layerGroup().addTo(map.current);
@@ -54,6 +55,5 @@ export default function MapCanvas({ camera, places, selected, shadows, sun, onMo
   return <View style={{ height: 300, backgroundColor: '#ebe4d7', overflow: 'hidden', borderRadius: 4 }}>
     <div ref={element} aria-label="Mapa. Toca para elegir un punto exterior." style={{ height: '100%', width: '100%', zIndex: 0 }} />
     {failed && <Text style={{ position: 'absolute', left: 15, top: 15, color: '#31453b' }}>No se ha podido cargar el mapa.</Text>}
-    <View pointerEvents="none" style={{ position: 'absolute', left: 12, top: 12, backgroundColor: '#fffaf0', paddingHorizontal: 10, paddingVertical: 8 }}><Text style={{ color: '#31453b', fontSize: 9, fontWeight: '800', letterSpacing: 0.8 }}>TOCA PARA ELEGIR UN PUNTO  ↗</Text></View>
   </View>;
 }

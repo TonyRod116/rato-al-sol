@@ -1,11 +1,10 @@
 import { civilTimeToUtc, sunPosition } from './solar.mjs';
-import { getMadridTerraces } from './madrid.mjs';
-import { AYALA_CENTER } from './madrid-buildings.mjs';
+import { DEFAULT_LOCATION } from './shared/default-location.mjs';
 import { buildingShadows, shadowDirection } from './map-shadows.mjs';
 import { getViewportBuildings, viewportBounds } from './viewport-buildings.mjs';
-import { createOpenMap } from './open-map.mjs?v=20261103-8';
-import { createCityMap } from './city-map.mjs?v=20261103-8';
-import { createExplorer } from './explore-search.mjs?v=20261103-12';
+import { createOpenMap } from './open-map.mjs?v=20261103-14';
+import { createCityMap } from './city-map.mjs?v=20261103-16';
+import { createExplorer } from './explore-search.mjs?v=20261103-16';
 
 const $ = (selector) => document.querySelector(selector);
 const today = Object.fromEntries(new Intl.DateTimeFormat('en-GB', {
@@ -14,9 +13,9 @@ const today = Object.fromEntries(new Intl.DateTimeFormat('en-GB', {
 }).formatToParts(new Date()).map(({ type, value }) => [type, value]));
 const state = { date: `${today.year}-${today.month}-${today.day}`, minutes: Math.floor((Number(today.hour) * 60 + Number(today.minute)) / 10) * 10 };
 const empty = { type: 'FeatureCollection', features: [] };
-let buildings, activeMap, madridPlaces = [], selectedMadrid = '', madridConsulted = '';
+let buildings, activeMap;
 let mapStarted = false, mapLoading = false, is3D = true, playback, pendingFrame;
-let view = { bearing: 0, pitch: 0, center: AYALA_CENTER };
+let view = { bearing: 0, pitch: 0, center: { lat: DEFAULT_LOCATION.latitude, lng: DEFAULT_LOCATION.longitude } };
 let currentDirection = null;
 let buildingsLoading = false, buildingsError = '', buildingRequest = 0, buildingKey = '', buildingTimer;
 let searchPins;
@@ -51,18 +50,6 @@ function updateNearbyControls() {
   }
 }
 
-function updateCompass() {
-  const direction = currentDirection;
-  $('#shadow-compass').hidden = !direction;
-  if (!direction) return;
-  const radians = (direction.bearing - view.bearing) * Math.PI / 180;
-  const pitch = (view.pitch || 0) * Math.PI / 180;
-  const screenAngle = Math.atan2(Math.sin(radians), Math.cos(radians) * Math.cos(pitch)) * 180 / Math.PI;
-  $('#compass-arrow').style.transform = `rotate(${screenAngle}deg)`;
-  $('#compass-label').textContent = direction.label;
-  $('#direction-symbol').style.transform = `rotate(${direction.bearing}deg)`;
-}
-
 function updateShadowStatus() {
   const status = $('#shadow-status');
   $('#shadows-retry').hidden = !buildingsError;
@@ -93,8 +80,7 @@ function updateSolar() {
     : sun && sun.altitude < -1 ? `A las ${clock} es de noche; no hay sombra solar.`
       : `A las ${clock} el sol está muy bajo; no mostramos sombras fiables.`;
   $('#direction-symbol').textContent = currentDirection ? '↑' : sun && sun.altitude < -1 ? '☾' : '☼';
-  if (!currentDirection) $('#direction-symbol').style.transform = '';
-  updateCompass();
+  $('#direction-symbol').style.transform = currentDirection ? `rotate(${currentDirection.bearing}deg)` : '';
   explorer.updateTime();
   if (pendingFrame) cancelAnimationFrame(pendingFrame);
   pendingFrame = requestAnimationFrame(() => {
@@ -142,68 +128,8 @@ function loadBuildings(force = false) {
   }, 350);
 }
 
-function selectMadrid(id, focus = true) {
-  selectedMadrid = id;
-  for (const button of document.querySelectorAll('#madrid-list button')) {
-    const selected = button.dataset.id === id;
-    button.classList.toggle('is-selected', selected);
-    button.setAttribute('aria-pressed', String(selected));
-  }
-  const place = madridPlaces.find((entry) => entry.id === id);
-  activeMap?.highlight(id);
-  if (focus && place?.position) explorer.selectPoint({ latitude: place.position.lat, longitude: place.position.lng, name: place.name, kind: 'business' }, true);
-}
-
-function updateMadridMarkers() {
-  if (explorer.hasSearch()) return;
-  activeMap?.showPlaces(madridPlaces, selectMadrid);
-  activeMap?.highlight(selectedMadrid);
-}
-
-async function loadMadrid() {
-  const button = $('#madrid-load'), status = $('#madrid-status'), results = $('#madrid-list');
-  button.disabled = true;
-  status.textContent = 'Consultando el censo municipal…';
-  try {
-    madridPlaces = await getMadridTerraces();
-    results.replaceChildren();
-    if (!madridPlaces.length) {
-      selectedMadrid = ''; madridConsulted = '';
-      status.textContent = 'El censo no devuelve terrazas para esta selección. Prueba de nuevo más tarde.';
-    } else {
-      madridPlaces.forEach((terrace, index) => {
-        const item = document.createElement('li'), entry = document.createElement('button');
-        const number = document.createElement('span'), identity = document.createElement('span');
-        const name = document.createElement('strong'), address = document.createElement('small');
-        const arrow = document.createElement('span');
-        entry.type = 'button'; entry.dataset.id = terrace.id;
-        number.className = 'place-number'; number.textContent = String(index + 1);
-        name.textContent = terrace.name;
-        address.textContent = terrace.position ? terrace.address : `${terrace.address} · sin punto en el mapa`;
-        arrow.textContent = '↗'; arrow.setAttribute('aria-hidden', 'true');
-        identity.append(name, address); entry.append(number, identity, arrow); item.append(entry); results.append(item);
-        entry.addEventListener('click', () => selectMadrid(terrace.id));
-      });
-      madridConsulted = new Intl.DateTimeFormat('es-ES', {
-        timeZone: 'Europe/Madrid', dateStyle: 'short', timeStyle: 'short',
-      }).format(new Date());
-      status.textContent = `${madridPlaces.length} ${madridPlaces.length === 1 ? 'registro' : 'registros'} · Consulta: ${madridConsulted}`;
-      if (!madridPlaces.some((place) => place.id === selectedMadrid)) selectedMadrid = madridPlaces[0].id;
-      selectMadrid(selectedMadrid, false);
-    }
-    updateMadridMarkers();
-    button.textContent = 'Actualizar ↻';
-  } catch {
-    status.textContent = madridConsulted
-      ? `No hemos podido actualizar. Se mantiene la consulta anterior: ${madridConsulted}.`
-      : 'No podemos consultar el censo de Madrid. Comprueba tu conexión y vuelve a intentarlo.';
-    button.textContent = 'Reintentar ↻';
-  } finally { button.disabled = false; }
-}
-
 function onViewChange(next) {
   view = next;
-  updateCompass();
   updateShadowStatus();
   if (next.settled && activeMap) { updateSolar(); loadBuildings(); }
 }
@@ -213,13 +139,10 @@ function activateMap(map, isCity) {
   $('#city-map').hidden = !isCity;
   $('#open-map').hidden = isCity;
   $('#city-controls').hidden = !isCity;
-  $('#map-options').hidden = !isCity;
-  $('#map-dimension').hidden = !isCity || !is3D;
   $('#map-message').hidden = true;
   $('#select-map-center').disabled = false;
   $('#use-location').disabled = false;
   if (searchPins) activeMap.showPlaces(searchPins.places, searchPins.onSelect);
-  else updateMadridMarkers();
   activeMap.setSelectedPoint(explorer.getSelected());
   if (buildings) activeMap.setBuildings(buildings);
   updateSolar();
@@ -235,7 +158,7 @@ async function loadOpenMap() {
       tilesAvailable = available;
       $('#map-message').hidden = available;
       $('#map-retry').hidden = available;
-      if (!available) $('#map-message-text').textContent = 'No hemos podido cargar el mapa. Puedes consultar la lista o volver a intentarlo.';
+      if (!available) $('#map-message-text').textContent = 'No hemos podido cargar el mapa. Puedes buscar lugares o volver a intentarlo.';
     }, onViewChange, () => {}, (point) => explorer.selectPoint(point));
     activateMap(map, false);
     $('#map-message').hidden = tilesAvailable;
@@ -243,7 +166,7 @@ async function loadOpenMap() {
     $('#map-provider-status').textContent = 'La vista 3D no está disponible en este navegador; mostramos el mapa en 2D.';
   } catch {
     $('#map-message').hidden = false;
-    $('#map-message-text').textContent = 'No hemos podido cargar el mapa. Puedes consultar la lista o volver a intentarlo.';
+    $('#map-message-text').textContent = 'No hemos podido cargar el mapa. Puedes buscar lugares o volver a intentarlo.';
     $('#map-retry').hidden = false;
   }
 }
@@ -297,23 +220,16 @@ $('#play-day').addEventListener('click', () => {
     if (state.minutes >= 1430) stopPlayback();
   }, 450);
 });
-$('#madrid-load').addEventListener('click', loadMadrid);
 $('#shadows-retry').addEventListener('click', () => loadBuildings(true));
 $('#map-retry').addEventListener('click', () => window.location.reload());
 $('#map-rotate').addEventListener('click', () => activeMap?.rotate?.());
 function setView3D(enabled) {
   is3D = enabled;
-  $('#map-pitch').setAttribute('aria-pressed', String(is3D));
-  $('#map-pitch').textContent = is3D ? 'Vista 3D' : 'Vista 2D';
-  $('#map-detail').setAttribute('aria-pressed', String(!is3D));
-  $('#map-detail').textContent = is3D ? 'Pasar a vista 2D ↗' : 'Volver a edificios en 3D ↗';
-  $('#map-dimension').hidden = !is3D;
+  $('#map-pitch').textContent = is3D ? 'Ver en 2D' : 'Ver en 3D';
   activeMap?.set3D?.(is3D);
 }
-$('#map-detail').addEventListener('click', () => setView3D(!is3D));
 $('#map-pitch').addEventListener('click', () => setView3D(!is3D));
 const oldParams = new URLSearchParams(window.location.search);
 if (['fecha', 'hora', 'filtro', 'terraza'].some((key) => oldParams.has(key))) $('#old-link-note').hidden = false;
 updateSolar();
-loadMadrid();
 loadMap();

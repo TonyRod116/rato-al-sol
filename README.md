@@ -22,7 +22,7 @@ Para abrir la web, desde la raíz del proyecto y con el puerto libre:
 python3 -m http.server 5182 --bind 127.0.0.1 --directory frontend
 ```
 
-Abrir `http://127.0.0.1:5182/` y parar el servidor con `Ctrl+C`. Si el puerto está ocupado, elegir otro; no detener procesos ajenos. El frontend es estático y no necesita instalar paquetes ni ejecutar un build. El mapa, las alturas y el censo necesitan conexión a internet; las consultas municipales se hacen al abrir la página y se pueden repetir si fallan.
+Abrir `http://127.0.0.1:5182/` y parar el servidor con `Ctrl+C`. Si el puerto está ocupado, elegir otro; no detener procesos ajenos. El frontend es estático y no necesita instalar paquetes ni ejecutar un build. El mapa, las alturas y el censo necesitan conexión a internet; las alturas se consultan al abrir el mapa y el censo cuando se buscan lugares.
 
 Para desarrollar el prototipo nativo o abrir su vista web local:
 

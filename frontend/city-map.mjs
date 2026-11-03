@@ -2,6 +2,7 @@ import { AYALA_BOUNDS } from './madrid-buildings.mjs';
 import { mapAtmosphere } from './map-atmosphere.mjs';
 import { drawShadowMask } from './shadow-mask.mjs?v=20261103-6';
 import { AERIAL_TILES, AERIAL_ATTRIBUTION } from './map-basemap.mjs';
+import { DEFAULT_LOCATION } from './shared/default-location.mjs';
 
 export async function createCityMap(element, onViewChange = () => {}, onBasemapError = () => {}, onPick = () => {}) {
   const base = 'https://cdn.jsdelivr.net/npm/maplibre-gl@5.24.0/dist/maplibre-gl';
@@ -28,7 +29,7 @@ export async function createCityMap(element, onViewChange = () => {}, onBasemapE
   const map = new gl.Map({
     container: element,
     style: 'https://tiles.openfreemap.org/styles/liberty',
-    center: [-3.68856, 40.42713], zoom: 17, pitch: 55, bearing: -20,
+    center: [DEFAULT_LOCATION.longitude, DEFAULT_LOCATION.latitude], zoom: 18, pitch: 55, bearing: -20,
     minZoom: 14, maxZoom: 19,
     scrollZoom: false,
   });
@@ -66,6 +67,9 @@ export async function createCityMap(element, onViewChange = () => {}, onBasemapE
         }
         for (const layer of ['poi_r20', 'poi_r7', 'poi_r1', 'poi_transit']) {
           if (map.getLayer(layer)) map.setLayoutProperty(layer, 'visibility', 'none');
+        }
+        for (const layer of ['label_city', 'label_city_capital']) {
+          if (map.getLayer(layer)) map.setLayerZoomRange(layer, 3, 16);
         }
         map.once('idle', () => {
           const buildings = map.querySourceFeatures('openmaptiles', { sourceLayer: 'building' });

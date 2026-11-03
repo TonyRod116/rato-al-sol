@@ -16,7 +16,7 @@ El detalle del MVP y sus límites está en [producto](docs/PRODUCT.md), los dato
 
 ## 2. Estado real y primera lectura de cualquier IA
 
-Hay una web con sombras orientativas en Ayala y un prototipo React Native/Expo que permite elegir un punto y estimar su luz usando edificios disponibles. Madrid aporta alturas municipales; la búsqueda general usa una fuente pública no garantizada. El censo aporta entradas aproximadas, no la posición de las mesas. Tony ha elegido una ruta de su dominio personal para la futura web. **No hay estimaciones contrastadas sobre el terreno ni servicios de esta app publicados.**
+Hay una web que comienza en la Puerta del Sol con sombras orientativas y un prototipo React Native/Expo que permite elegir un punto y estimar su luz usando edificios disponibles. Madrid aporta alturas municipales; la búsqueda general usa una fuente pública no garantizada. El censo aporta entradas aproximadas, no la posición de las mesas. Tony ha elegido una ruta de su dominio personal para la futura web. **No hay estimaciones contrastadas sobre el terreno ni servicios de esta app publicados.**
 
 Al entrar desde CLI: leer `AGENTS.md` (o su copia de la herramienta), este archivo, `NOTES.md` y la tarea pertinente de `.memory/todo.md`. Revisar la evidencia actual antes de decidir qué implementar; no repetir trabajo terminado ni interpretar una ruta propuesta como un servicio existente.
 

@@ -1,7 +1,8 @@
 import React, { useEffect, useRef } from 'react';
 import MapView, { Marker, Polygon } from 'react-native-maps';
-import { Platform, StyleSheet, View, Text } from 'react-native';
+import { Platform, StyleSheet, View } from 'react-native';
 import { mapAtmosphere } from '../../frontend/map-atmosphere.mjs';
+import { DEFAULT_LOCATION } from '../../frontend/shared/default-location.mjs';
 
 // Android's map colour-scheme prop is only applied at creation by this version
 // of react-native-maps, so a map style lets it follow the time slider live.
@@ -22,7 +23,7 @@ export default function MapCanvas({ camera, places, selected, shadows, sun, onMo
     if (camera) map.current?.animateCamera({ center: { latitude: camera.latitude, longitude: camera.longitude } }, { duration: 350 });
   }, [camera]);
   return <View style={styles.container}>
-    <MapView ref={map} style={StyleSheet.absoluteFill} initialCamera={{ center: { latitude: 40.42785, longitude: -3.6873 }, pitch: 45, heading: 0, altitude: 700, zoom: 16 }}
+    <MapView ref={map} style={StyleSheet.absoluteFill} initialCamera={{ center: DEFAULT_LOCATION, pitch: 45, heading: 0, altitude: 700, zoom: 16 }}
       showsBuildings showsCompass pitchEnabled rotateEnabled userInterfaceStyle={Platform.OS === 'android' ? 'light' : atmosphere.isNight ? 'dark' : 'light'}
       customMapStyle={Platform.OS === 'android' ? atmosphere.isNight ? nightMap : defaultMap : undefined}
       onRegionChangeComplete={(region) => onMove({ latitude: region.latitude, longitude: region.longitude })}
@@ -33,11 +34,8 @@ export default function MapCanvas({ camera, places, selected, shadows, sun, onMo
       {selected && <Marker coordinate={selected} title={selected.name} pinColor="#273e33" />}
     </MapView>
     <View pointerEvents="none" style={[StyleSheet.absoluteFill, { backgroundColor: atmosphere.nativeTint }]} />
-    <View style={styles.hint} pointerEvents="none"><Text style={styles.hintText}>TOCA PARA ELEGIR UN PUNTO  ↗</Text></View>
   </View>;
 }
 const styles = StyleSheet.create({
   container: { height: 300, backgroundColor: '#ebe4d7', overflow: 'hidden', borderRadius: 4 },
-  hint: { position: 'absolute', left: 12, top: 12, backgroundColor: '#fffaf0', paddingHorizontal: 10, paddingVertical: 8 },
-  hintText: { color: '#31453b', fontSize: 9, fontWeight: '800', letterSpacing: 0.8 },
 });
