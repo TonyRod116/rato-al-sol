@@ -6,7 +6,7 @@ Un mapa sencillo de terrazas con intervalos estimados de sol y sombra, un select
 
 ## Estado real
 
-La web reúne un mapa 3D con sombras orientativas que se actualizan al desplazarlo, búsqueda por nombre, categoría o cercanía y una barra con los intervalos de luz para un punto elegido. Puede buscar espacios exteriores para una hora o una franja, con distancia y ubicación opcional. En `mobile/` hay un prototipo React Native para iOS y Android con el mismo motor solar, selección de punto y filtro por hora o franja.
+La web reúne un mapa 3D con sombras orientativas que se actualizan al desplazarlo, búsqueda por nombre, categoría o cercanía y una barra con los intervalos de luz para un punto elegido. Puede buscar espacios exteriores para una hora o una franja, con distancia y ubicación opcional. En `mobile/` se desarrolla la app React Native para iOS y Android: un mapa nativo, una ficha inferior ampliable, búsqueda, selección de punto y filtro por hora o franja comparten el mismo motor solar.
 
 Madrid aporta alturas estimadas municipales; en otras zonas la geometría y las alturas dependen de OpenStreetMap y pueden ser insuficientes. La fuente pública de búsqueda general no respondió en las pruebas de este entorno; se ha probado una alternativa con parques municipales y el censo de terrazas de Madrid, además de la selección manual de un punto. Las opciones exteriores propuestas alrededor de un local son orientativas, no ubicaciones verificadas de mesas. Las entradas de locales **no identifican las mesas** y la sombra de los árboles no está modelada. Ni las estimaciones ni las sombras se han contrastado sobre el terreno; faltan pruebas en dispositivos nativos y no hay despliegue.
 
@@ -24,7 +24,7 @@ python3 -m http.server 5182 --bind 127.0.0.1 --directory frontend
 
 Abrir `http://127.0.0.1:5182/` y parar el servidor con `Ctrl+C`. Si el puerto está ocupado, elegir otro; no detener procesos ajenos. El frontend es estático y no necesita instalar paquetes ni ejecutar un build. El mapa, las alturas y el censo necesitan conexión a internet; las alturas se consultan al abrir el mapa y el censo cuando se buscan lugares.
 
-Para desarrollar el prototipo nativo o abrir su vista web local:
+Para desarrollar la app nativa o abrir su vista web local de desarrollo:
 
 ```bash
 cd mobile
@@ -32,7 +32,7 @@ npm ci
 npx expo start --host localhost
 ```
 
-Expo usa el puerto 8081 si está libre. `localhost` limita la conexión a este ordenador; para acceder desde un teléfono en la misma red se puede iniciar expresamente con `npx expo start --host lan` y escanear el QR con una versión compatible de Expo Go. La app usa mapas nativos de Apple o Google, no una página web incrustada. El aspecto y el rendimiento en iPhone y Android todavía necesitan comprobarse en dispositivos reales; para publicar se deben configurar credenciales propias de los mapas y revisar costes y permisos. Los perfiles para pruebas internas y futuras compilaciones de tienda se explican en [preparación de publicación](docs/RELEASE.md).
+Expo usa el puerto 8081 si está libre. `localhost` limita la conexión a este ordenador; para acceder desde un teléfono en la misma red se puede iniciar expresamente con `npx expo start --host lan` y escanear el QR con una versión de Expo Go compatible con el SDK del proyecto. En iPhone, la disponibilidad de versiones y el acceso a Expo Go dependen de las condiciones actuales de Expo y Apple; consultar la [guía de Expo](https://docs.expo.dev/get-started/start-developing/). Expo Go es una vista de desarrollo, no el paquete firmado de esta app. La app usa mapas nativos de Apple o Google, no una página web incrustada. El aspecto y el rendimiento en iPhone y Android todavía necesitan comprobarse en dispositivos reales; para publicar se deben configurar credenciales propias de los mapas y revisar costes y permisos. Los perfiles para pruebas internas y futuras compilaciones de tienda se explican en [preparación de publicación](docs/RELEASE.md).
 
 Para generar una carpeta web limpia y prepararla para la ruta elegida `tony-r.com/rato-al-sol/`, ejecutar `node scripts/build-web.mjs`. El resultado se guarda en `dist/web/rato-al-sol/`; el comando no sobrescribe una carpeta ya existente. La URL elegida todavía no muestra esta app y su alojamiento no se ha configurado. El procedimiento de prueba local y los pasos pendientes están en [publicación](docs/RELEASE.md).
 

@@ -17,13 +17,13 @@ const nightMap = [
 ];
 const defaultMap = [];
 
-export default function MapCanvas({ camera, places, selected, language, shadows, sun, onMove, onPick, onPlace }) {
+export default function MapCanvas({ camera, places, selected, language, shadows, sun, onMove, onPick, onPlace, style }) {
   const map = useRef(null);
   const atmosphere = mapAtmosphere(sun);
   useEffect(() => {
     if (camera) map.current?.animateCamera({ center: { latitude: camera.latitude, longitude: camera.longitude } }, { duration: 350 });
   }, [camera]);
-  return <View style={styles.container}>
+  return <View style={[styles.container, style]}>
     <MapView ref={map} style={StyleSheet.absoluteFill} initialCamera={{ center: DEFAULT_LOCATION, pitch: 45, heading: 0, altitude: 700, zoom: 16 }}
       showsBuildings showsCompass pitchEnabled rotateEnabled userInterfaceStyle={Platform.OS === 'android' ? 'light' : atmosphere.isNight ? 'dark' : 'light'}
       customMapStyle={Platform.OS === 'android' ? atmosphere.isNight ? nightMap : defaultMap : undefined}
@@ -38,5 +38,5 @@ export default function MapCanvas({ camera, places, selected, language, shadows,
   </View>;
 }
 const styles = StyleSheet.create({
-  container: { height: 300, backgroundColor: '#ebe4d7', overflow: 'hidden', borderRadius: 4 },
+  container: { flex: 1, backgroundColor: '#ebe4d7', overflow: 'hidden' },
 });

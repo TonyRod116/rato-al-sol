@@ -1,5 +1,11 @@
 # Decisiones — Rato al Sol
 
+## 2026-11-03 — app con el mapa como pantalla principal
+
+- Tony pidió que iPhone y Android se usen como una app y no como una página larga. Se conserva React Native/Expo, con mapa nativo, búsqueda en una pantalla propia y ficha inferior ampliable para la luz y el detalle del punto.
+- La búsqueda de sol cercano tiene su propia pestaña y controles táctiles. La identidad, el cálculo solar compartido y los avisos sobre datos insuficientes se mantienen; la web de producto sigue su propio recorrido.
+- La implementación y la vista web de desarrollo no demuestran el comportamiento en iPhone o Android: faltan dispositivos, mapas y accesibilidad nativa, además de preparar firma y distribución cuando se autoricen.
+
 ## 2026-10-30 — identidad y ubicación
 
 - Confirmado por Tony: nombre **Rato al Sol**, carpeta `rato-al-sol` bajo `Cool_Projects` en WSL.

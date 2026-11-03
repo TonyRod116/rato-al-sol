@@ -139,6 +139,15 @@ Al cambiar de etapa: resultado, evidencia, bloqueo y siguiente acción concreta.
 - Evidencia: selector y preferencia local en web y prototipo móvil; búsquedas por categorías en inglés con pruebas de `park`, `restaurants` y `terraces`. En Chromium se comprobaron cambios durante cargas, resultados, lugar y hora conservados, persistencia, fallos simulados y accesibilidad del selector. Se revisaron capturas a 320, 390 y 1440 px y la web empaquetada bajo `/rato-al-sol/`. El JavaScript se empaquetó para iOS y Android; una generación temporal del proyecto iOS incluye el texto de permiso de ubicación en ambos idiomas.
 - Límite: no se ha probado en teléfonos ni emuladores; los avisos nativos del sistema siguen el idioma configurado en el dispositivo, no el selector de la app. Continúa la comprobación nativa en APP-002.
 
+## APP-013 — Una experiencia móvil nativa centrada en el mapa
+
+- Estado: `in_progress` — petición de Tony del 2026-11-03.
+- Objetivo: convertir el prototipo de React Native en una app cómoda para iPhone y Android, manteniendo la web existente como recorrido independiente.
+- Aceptación: mapa interactivo como pantalla principal; búsqueda de lugares y zonas; selección de un punto y horas de sol y sombra; controles de hora, fecha y búsqueda por distancia o franja; estados claros de carga, error y datos insuficientes; castellano e inglés y controles accesibles. Sin inventar datos ni ocultar los límites del cálculo.
+- Evidencia: la pantalla de React Native se ha reorganizado alrededor del mapa, con ficha ampliable, búsqueda independiente, filtro de distancia/franja y el cálculo compartido. En la vista web de desarrollo se han revisado las interacciones y capturas a 320, 390 y 1440 px, el error de proveedores, el permiso denegado y una consulta real a alturas de Madrid. Las pruebas del motor pasan; Expo empaqueta JavaScript y genera proyectos temporales para iOS y Android, con permisos de ubicación en primer plano.
+- Alcance: implementación y verificaciones locales y actualización del repositorio privado ya autorizado; no publicación, cuentas, pagos ni infraestructura nueva.
+- Límite y siguiente acción: probar la app en iPhone y Android reales o emuladores, incluido mapa, gestos, accesibilidad y ubicación; este equipo Linux no dispone de las herramientas nativas. Preparar la firma y distribución solo dentro de una autorización específica. No se han contrastado las sombras sobre el terreno.
+
 ## REPO-001 — Guardar el proyecto en GitHub
 
 - Estado: `done` — completado y comprobado el 2026-11-02.

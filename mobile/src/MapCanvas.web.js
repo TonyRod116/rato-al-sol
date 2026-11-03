@@ -21,12 +21,13 @@ function loadLeaflet() {
   return leafletPromise;
 }
 
-export default function MapCanvas({ camera, places, selected, language, shadows, sun, onMove, onPick, onPlace }) {
+export default function MapCanvas({ camera, places, selected, language, shadows, sun, onMove, onPick, onPlace, style }) {
   const element = useRef(null), map = useRef(null), layers = useRef(null), callbacks = useRef({});
   const [ready, setReady] = useState(false), [failed, setFailed] = useState(false);
   callbacks.current = { onMove, onPick, onPlace };
   useEffect(() => {
     let disposed = false;
+    let resizeObserver;
     loadLeaflet().then((L) => {
       if (disposed || !element.current) return;
       map.current = L.map(element.current, { zoomControl: false }).setView([DEFAULT_LOCATION.latitude, DEFAULT_LOCATION.longitude], 16);
@@ -35,9 +36,13 @@ export default function MapCanvas({ camera, places, selected, language, shadows,
       layers.current = L.layerGroup().addTo(map.current);
       map.current.on('moveend', () => { const p = map.current.getCenter(); callbacks.current.onMove({ latitude: p.lat, longitude: p.lng }); });
       map.current.on('click', (event) => callbacks.current.onPick({ latitude: event.latlng.lat, longitude: event.latlng.lng }));
+      if (window.ResizeObserver) {
+        resizeObserver = new ResizeObserver(() => map.current?.invalidateSize({ animate: false, debounceMoveend: true }));
+        resizeObserver.observe(element.current);
+      }
       setReady(true);
     }).catch(() => setFailed(true));
-    return () => { disposed = true; map.current?.remove(); map.current = null; };
+    return () => { disposed = true; resizeObserver?.disconnect(); map.current?.remove(); map.current = null; };
   }, []);
   useEffect(() => { if (ready && camera) map.current?.setView([camera.latitude, camera.longitude], 16); }, [ready, camera]);
   useEffect(() => { if (ready && map.current) map.current.getPane('tilePane').style.filter = mapAtmosphere(sun).cssFilter; }, [ready, sun]);
@@ -60,7 +65,7 @@ export default function MapCanvas({ camera, places, selected, language, shadows,
     });
     if (selected) L.circleMarker([selected.latitude, selected.longitude], { radius: 9, color: '#fffaf0', weight: 3, fillColor: '#273e33', fillOpacity: 1, interactive: false }).addTo(layers.current);
   }, [ready, places, selected, shadows]);
-  return <View style={{ height: 300, backgroundColor: '#ebe4d7', overflow: 'hidden', borderRadius: 4 }}>
+  return <View style={[{ flex: 1, backgroundColor: '#ebe4d7', overflow: 'hidden' }, style]}>
     <div ref={element} aria-label={translate(language, 'Mapa. Toca para elegir un punto exterior.', 'Map. Tap to choose an outdoor point.')} style={{ height: '100%', width: '100%', zIndex: 0 }} />
     {failed && <Text style={{ position: 'absolute', left: 15, top: 15, color: '#31453b' }}>{translate(language, 'No se ha podido cargar el mapa.', 'Could not load the map.')}</Text>}
   </View>;
