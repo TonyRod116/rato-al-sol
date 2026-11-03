@@ -1,6 +1,6 @@
 # Arquitectura — Rato al Sol
 
-Estado: frontend local en HTML, CSS y JavaScript, sin instalación ni build. `frontend/solar.mjs` usa SunCalc 2.0.2 incluido localmente y calcula sombra sobre polígonos sintéticos; `frontend/demo-data.mjs` aporta un barrio imaginario que comparten mapa y lista. `frontend/madrid.mjs` consulta a demanda una selección del censo público municipal; los locales reales se muestran sin estimación solar. No hay backend propio.
+Estado: frontend local en HTML, CSS y JavaScript, sin instalación ni build. `frontend/solar.mjs` usa SunCalc 2.0.2 incluido localmente y calcula sombra sobre polígonos sintéticos; `frontend/demo-data.mjs` aporta un barrio imaginario que comparten mapa y lista. `frontend/madrid.mjs` consulta al abrir o actualizar una selección del censo público municipal y convierte las coordenadas de las entradas; los locales reales se muestran sin estimación solar. `frontend/google-map.mjs` integra el mapa opcional de Google y `frontend/open-map.mjs` proporciona el respaldo con Leaflet/OpenStreetMap cuando Google no carga. No hay backend propio.
 
 El escenario trabaja con metros, eje X hacia el este e Y hacia el sur, cubiertas planas y `Europe/Madrid`. Con el sol cerca del horizonte devuelve desconocido y no modela árboles, toldos ni nubes. Los polígonos del ejemplo son simples y conocidos: antes de admitir fuentes reales hay que validar topología, cobertura, alturas, coordenadas y ubicación de mesas; los tests actuales no acreditan precisión sobre el terreno.
 

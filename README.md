@@ -6,7 +6,7 @@ Un mapa sencillo de terrazas con intervalos estimados de sol y sombra, un select
 
 ## Estado real
 
-Existe un ejemplo interactivo con un barrio en perspectiva, sombras que se mueven, reproducción del día y tramos aproximados de sol y sombra para cada terraza. La posición del sol se calcula para Madrid, pero **el barrio y los edificios del mapa son inventados**: sus resultados no sirven para elegir una terraza real. También hay una consulta independiente al censo del Ayuntamiento para mostrar las primeras terrazas registradas en la calle de Ayala; no calcula su sol o sombra porque falta comprobar dónde están las mesas. No hay despliegue.
+La primera pantalla muestra un mapa interactivo de Ayala, en Madrid, y las terrazas incluidas en el censo municipal. Los puntos corresponden a las **entradas aproximadas de los locales**, no a sus mesas; todavía no se calculan sus horas de sol. Si Google Maps no está disponible, se usa un mapa de OpenStreetMap. En «Prueba de sol» hay un barrio inventado con sombras que se mueven, reproducción y tramos de luz aproximados: esos resultados no describen terrazas reales. No hay despliegue.
 
 ## Orientación obligatoria
 
@@ -20,7 +20,7 @@ Para abrir el ejemplo, desde la raíz del proyecto y con el puerto libre:
 python3 -m http.server 5182 --bind 127.0.0.1 --directory frontend
 ```
 
-Abrir `http://127.0.0.1:5182/` y parar el servidor con `Ctrl+C`. Si el puerto está ocupado, elegir otro; no detener procesos ajenos. El frontend es estático y no necesita instalar paquetes ni ejecutar un build. La consulta real de Madrid necesita conexión a internet y solo se realiza al pulsar su botón.
+Abrir `http://127.0.0.1:5182/` y parar el servidor con `Ctrl+C`. Si el puerto está ocupado, elegir otro; no detener procesos ajenos. El frontend es estático y no necesita instalar paquetes ni ejecutar un build. El mapa y el censo necesitan conexión a internet; la consulta municipal comienza al abrir la página y se puede actualizar manualmente.
 
 Para las comprobaciones locales se necesitan Python 3.11 o posterior y Node.js:
 
@@ -55,7 +55,9 @@ Los tests comprueban casos solares y geométricos concretos, no la precisión de
 
 ## Configuración
 
-`.env.example` contiene solo nombres internos de variables propuestos, sin credenciales. Su presencia no conecta un proveedor ni fija la API del futuro código. Mantener claves privadas fuera del cliente y del repositorio.
+La integración opcional de Google Maps usa exclusivamente una clave **de navegador** para Maps JavaScript, con restricciones de origen y API. Copiar `frontend/maps-config.example.json` a `frontend/maps-config.local.json` y configurar ahí la clave; el archivo local está ignorado por Git. No usar claves privadas de servidor, Routes o Places. La clave compartida de desarrollo que Tony autorizó reutilizar rechaza actualmente `http://127.0.0.1:5182/`: para activarla en este origen habría que añadirlo a sus restricciones en Google Cloud. Con clave ausente o rechazada, el mapa alternativo utiliza Leaflet y OpenStreetMap, con atribución visible. La integración real de Google todavía requiere una prueba tras autorizar el origen; `DEMO_MAP_ID` es solo para desarrollo. Véase [fuentes y contratos](docs/DATA_SOURCES.md) antes de publicar o ampliar tráfico.
+
+`.env.example` contiene nombres internos propuestos, sin credenciales. Mantener claves privadas fuera del cliente y del repositorio.
 
 `.codex/config.toml` declara Auto Review sin cambiar modelo, red, sandbox ni directorios. Su aplicación depende del cliente, confianza del proyecto y requisitos administrados; no modifica una sesión ya iniciada.
 

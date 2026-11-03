@@ -38,3 +38,8 @@ Documentar el motivo y la evidencia al resolverlas. No convertir una propuesta e
 
 - Tony eligió Madrid para probar terrazas reales. Se seleccionó Ayala/Recoletos como muestra pequeña y reversible: el navegador consulta el censo municipal solo al pulsar un botón, sin claves ni ubicación personal. Se atribuye la fuente y no se infiere la posición de las mesas ni la apertura real.
 - Se incluye SunCalc 2.0.2 con licencia y una comprobación frente a un caso independiente; el motor geométrico se aplica únicamente a edificios y lugares inventados. Se separan noche, horizonte bajo y ausencia de geometría. No se ha validado la precisión sobre terrazas reales.
+
+## 2026-11-03 — mapa real con respaldo
+
+- Tony pidió utilizar Google Maps como en Hora de Salir y mejorar el recorrido. El mapa real muestra el censo de Ayala/Recoletos y sus entradas aproximadas; la simulación de sol permanece separada. La consulta municipal se inicia ahora al abrir la página y se puede actualizar.
+- Se integró la clave de navegador autorizada del proyecto hermano sin copiar claves de servidor; el origen local 5182 no está permitido por Google, así que la integración real queda pendiente de autorización y prueba. Leaflet y OpenStreetMap proporcionan un mapa alternativo con atribución. No se afirma que las sombras o mesas sean reales.

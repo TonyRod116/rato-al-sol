@@ -10,15 +10,19 @@ node --check frontend/app.mjs
 node --check frontend/demo-data.mjs
 node --check frontend/solar.mjs
 node --check frontend/madrid.mjs
+node --check frontend/google-map.mjs
+node --check frontend/open-map.mjs
 python3 scripts/repo_check.py
 bash scripts/check-ai-instructions.sh
 ```
 
 Los tests de Node comprueban una posición solar de referencia con tolerancia de 0,1°, cambios de horario de Madrid, geometría analítica simple y dirección de sombra dibujada, agrupación de intervalos de 10 minutos, noche, datos ausentes, filtros, enlace compartido y contrato de la API municipal. La prueba de la biblioteca solar cubre solo ese caso, no su precisión global ni la sombra real en terrazas. Los dos últimos comandos comprueban solo documentación/configuración. El frontend es estático, sin build, compilador de tipos ni linter configurado.
 
-En la revisión de la escena en perspectiva del 2026-11-03 se inspeccionaron capturas en Chromium de 320, 390, 768 y 1440 px y con ampliación CSS al 200 %. Se comprobaron la selección, movimiento de las sombras y de la dirección del sol, intervalos, reproducción y pausa, teclado, noche, falta de mesas, filtro vacío, enlace y movimiento reducido. La respuesta municipal se simuló para comprobar el texto no confiable y que la petición solo se hace al pulsar. No se observaron errores de JavaScript. No sustituye pruebas en dispositivos ni la validación de una escena real.
+En la mejora del mapa del 2026-11-03 se revisaron capturas de 320, 390, 768 y 1440 px y zoom al 200 %. El censo real devolvió tres entradas y se vio el mapa real de OpenStreetMap; se comprobó selección de lista y puntos, selector solar, sombras, reproducción, teclado y movimiento reducido. Se simularon Google disponible, errores de autenticación y de ambos mapas, texto no confiable, fallo de actualización conservando la fecha anterior y enlace compartido. La clave real de Google rechazó el puerto 5182, por lo que Google y sus edificios vectoriales quedan pendientes de prueba real. El motor de conversión se contrastó con una referencia pública aproximada y límites de zona; no acredita precisión de mesas ni validación sobre el terreno. No sustituye pruebas en dispositivos reales.
 
-El 2026-11-03 se probó en Chromium a 320, 390, 768 y 1440 px: cambio de fecha y hora, noche, filtros, mapa/lista/detalle, enlace y teclado. La consulta municipal se probó con una respuesta real (tres registros) y con respuestas sintéticas válidas, vacías, fallidas y con texto malicioso; no consulta antes de pulsar ni envía el plan. Se inspeccionaron capturas de cada tamaño. Falta prueba en dispositivos reales, validación geométrica con datos reales y contraste sobre el terreno.
+En la revisión anterior de la escena en perspectiva del 2026-11-03 se inspeccionaron capturas en Chromium de 320, 390, 768 y 1440 px y con ampliación CSS al 200 %. Se comprobaron la selección, movimiento de las sombras y de la dirección del sol, intervalos, reproducción y pausa, teclado, noche, falta de mesas, filtro vacío, enlace y movimiento reducido. En esa revisión anterior, la respuesta municipal se simuló para comprobar el texto no confiable y que entonces la petición solo se hacía al pulsar. No se observaron errores de JavaScript. No sustituye pruebas en dispositivos ni la validación de una escena real.
+
+El 2026-11-03 se probó en Chromium a 320, 390, 768 y 1440 px: cambio de fecha y hora, noche, filtros, mapa/lista/detalle, enlace y teclado. La consulta municipal se probó con una respuesta real (tres registros) y con respuestas sintéticas válidas, vacías, fallidas y con texto malicioso; entonces no consultaba antes de pulsar ni enviaba el plan; ahora consulta también al abrir la página. Se inspeccionaron capturas de cada tamaño. Falta prueba en dispositivos reales, validación geométrica con datos reales y contraste sobre el terreno.
 
 El 2026-11-02 se probaron con Chromium y datos inventados las anchuras 320, 390, 768 y 1440 px: filtros, lista y mapa sincronizados, caso vacío, enlace compartido, teclado, movimiento reducido y consola/red. Se inspeccionaron capturas y se corrigió la distribución en pantalla intermedia y con ampliación CSS al 200 %. Sin JavaScript se comprobó el aviso. No sustituye una auditoría completa de accesibilidad ni la prueba en dispositivos reales.
 

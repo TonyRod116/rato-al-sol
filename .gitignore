@@ -20,6 +20,7 @@ __pycache__/
 .env
 .env.*
 !.env.example
+frontend/maps-config.local.json
 *.pem
 *.key
 *.p12

@@ -4,7 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="theme-color" content="#faf6ec">
-  <meta name="description" content="Un primer ejemplo interactivo de Rato al Sol, para encontrar terrazas al sol o a la sombra.">
+  <meta name="description" content="Explora terrazas de Madrid y descubre cómo cambia el sol a lo largo del día.">
   <title>Rato al Sol — Encuentra tu terraza</title>
   <link rel="icon" href="./favicon.svg" type="image/svg+xml">
   <link rel="stylesheet" href="./styles.css">
@@ -16,7 +16,7 @@
     <a class="wordmark" href="./" aria-label="Rato al Sol, inicio">
       <span class="brand-sun" aria-hidden="true">✳</span> Rato al Sol<span class="wordmark-dot">.</span>
     </a>
-    <a class="header-link" href="#madrid">Datos reales de Madrid <span aria-hidden="true">↗</span></a>
+    <a class="header-link" href="#sobre-ejemplo">Cómo funciona <span aria-hidden="true">↗</span></a>
   </header>
 
   <main id="contenido">
@@ -24,13 +24,45 @@
       <div>
         <p class="section-kicker">EXPLORADOR DE SOL Y SOMBRA <span aria-hidden="true">✳</span></p>
         <h1 id="titulo">Encuentra tu <em>rato de sol.</em></h1>
-        <p class="lead">Elige una terraza y mueve la hora para ver cómo cambia la luz.</p>
+        <p class="lead">Terrazas para disfrutar el día, con la luz como protagonista.</p>
       </div>
-      <div class="demo-notice" role="note"><span aria-hidden="true">✳</span><p><strong>Estás explorando un barrio inventado.</strong> Edificios, terrazas y sombras son de ejemplo; no sirven para elegir una terraza real.</p></div>
     </section>
     <noscript><p class="noscript">Activa JavaScript para poder utilizar el ejemplo interactivo.</p></noscript>
 
-    <section class="explore" aria-label="Explora el barrio de ejemplo">
+    <nav class="view-switch" aria-label="Elige qué explorar">
+      <button id="real-tab" class="view-tab is-active" type="button" aria-pressed="true" aria-controls="madrid"><span aria-hidden="true">⌖</span> Madrid real</button>
+      <button id="demo-tab" class="view-tab" type="button" aria-pressed="false" aria-controls="demo"><span aria-hidden="true">☀</span> Prueba de sol <small>EJEMPLO</small></button>
+    </nav>
+
+    <section class="explore real-explore" id="madrid" aria-labelledby="madrid-title">
+      <div class="explore-grid">
+        <div class="scene-column">
+          <figure class="map-figure">
+            <div class="real-map-shell">
+              <div id="google-map" class="google-map" aria-label="Mapa de terrazas registradas en la calle de Ayala"></div>
+              <div id="open-map" class="google-map" aria-label="Mapa de terrazas registradas en la calle de Ayala" hidden></div>
+              <div class="real-map-tag"><span>⌖</span> MADRID · RECOLETOS</div>
+              <div id="map-message" class="map-message" role="status"><span aria-hidden="true">✳</span><p id="map-message-text">Preparando el mapa…</p><button id="map-retry" type="button" hidden>Reintentar mapa ↗</button></div>
+            </div>
+            <figcaption><span>✳</span> Los puntos indican entradas aproximadas de los locales, no la ubicación de las mesas.</figcaption>
+          </figure>
+          <div class="demo-invitation"><div><span class="invitation-icon" aria-hidden="true">☀</span><div><strong>¿Y el sol?</strong><p>Descubre cómo podría cambiar la sombra a lo largo del día.</p></div></div><button id="open-demo" type="button">Ver la simulación <span aria-hidden="true">↗</span></button></div>
+        </div>
+        <aside class="real-inspector" aria-label="Terrazas registradas en Ayala">
+          <div class="real-inspector-head"><div><p class="section-kicker">UN PASEO POR MADRID</p><h2 id="madrid-title">Calle de Ayala<span class="heading-dot">.</span></h2><p>Recoletos · Madrid</p></div><span class="neighborhood-icon" aria-hidden="true">✳</span></div>
+          <div class="real-explanation"><span aria-hidden="true">✳</span><p>Estamos empezando por aquí. Elige un local para verlo en el mapa.</p></div>
+          <div class="real-results"><div class="real-list-heading"><h3>Terrazas registradas</h3><button id="madrid-load" type="button">Actualizar ↻</button></div>
+            <p id="madrid-status" class="madrid-status" role="status" aria-live="polite">Consultando el censo municipal…</p>
+            <ul id="madrid-list" class="madrid-list" aria-label="Terrazas registradas en la calle de Ayala"></ul>
+            <div class="real-light-note"><strong>☼ &nbsp; Las horas de sol aún no están disponibles</strong><p>El registro no indica dónde están las mesas. Tampoco confirma que las terrazas abran hoy.</p></div>
+            <p class="madrid-source">Fuente: <a href="https://datos.madrid.es/dataset/200085-0-censo-locales/information">Ayuntamiento de Madrid, censo de terrazas</a> · <a href="https://creativecommons.org/licenses/by/4.0/">CC BY 4.0</a>. La fecha de consulta no garantiza la actualidad de cada dato.</p>
+          </div>
+        </aside>
+      </div>
+    </section>
+
+    <section class="explore" id="demo" aria-label="Explora el barrio de ejemplo" hidden>
+      <div class="demo-notice" role="note"><span aria-hidden="true">✳</span><p><strong>Estás explorando un barrio inventado.</strong> Edificios, terrazas y sombras son de ejemplo; no sirven para elegir una terraza real.</p></div>
       <div class="explore-grid">
         <div class="scene-column">
           <figure class="map-figure">
@@ -100,24 +132,9 @@
       </div>
     </section>
 
-    <section class="madrid-pilot" id="madrid" aria-labelledby="madrid-title">
-      <div class="madrid-intro">
-        <p class="section-kicker">PRIMERA PRUEBA CON DATOS REALES</p>
-        <h2 id="madrid-title">Una calle de Madrid<span class="heading-dot">.</span></h2>
-        <p>Estamos empezando por la calle de Ayala, en Recoletos. Consulta las terrazas que aparecen en el registro municipal.</p>
-        <p>El registro no indica dónde están las mesas: todavía no podemos decir si allí habrá sol o sombra. Tampoco confirma que abran hoy.</p>
-        <button id="madrid-load" class="madrid-button" type="button">Ver terrazas de Ayala <span aria-hidden="true">↗</span></button>
-      </div>
-      <div class="madrid-results">
-        <p id="madrid-status" class="madrid-status" role="status" aria-live="polite">La consulta se hará al pulsar el botón.</p>
-        <ul id="madrid-list" class="madrid-list" aria-label="Terrazas registradas en la calle de Ayala"></ul>
-        <p class="madrid-source">Fuente: <a href="https://datos.madrid.es/dataset/200085-0-censo-locales/information">Ayuntamiento de Madrid, censo de terrazas</a> · <a href="https://creativecommons.org/licenses/by/4.0/">CC BY 4.0</a>. Se seleccionan registros y campos; la fecha de consulta no garantiza la actualidad de cada dato.</p>
-      </div>
-    </section>
-
     <section class="about" id="sobre-ejemplo" aria-labelledby="about-title">
       <div><p class="section-kicker">LO QUE QUEREMOS CONSTRUIR</p><h2 id="about-title">Para perseguir el sol.<br><em>O escapar de él.</em></h2></div>
-      <div><p>Rato al Sol quiere ayudarte a elegir una terraza según la hora. Antes necesitamos comprobar dónde están las mesas y qué edificios les dan sombra.</p><p>El mapa superior es imaginario; la consulta de Madrid muestra registros reales sin cálculo de sol. Todavía no consultamos nubosidad ni horarios. Los toldos, árboles y sombrillas también pueden cambiar el resultado.</p></div>
+      <div><p>Rato al Sol quiere ayudarte a elegir una terraza según la hora. Antes necesitamos comprobar dónde están las mesas y qué edificios les dan sombra.</p><p>El mapa de Madrid muestra registros reales sin cálculo de sol; la prueba de sombras usa un barrio imaginario. Todavía no consultamos nubosidad ni horarios. Los toldos, árboles y sombrillas también pueden cambiar el resultado.</p></div>
     </section>
   </main>
   <footer><span class="footer-brand">Rato al Sol<span class="wordmark-dot">.</span></span><span>Hecho para los buenos ratos <span aria-hidden="true">☀</span></span></footer>

@@ -1,6 +1,8 @@
 import { buildings, places, demoSun, outcomeFor, visiblePlaces, intervalsFor, parseSharedState, shareUrl } from './demo-data.mjs';
 import { shadowOffset, shadowPolygons } from './solar.mjs';
 import { getMadridTerraces } from './madrid.mjs';
+import { createMadridMap } from './google-map.mjs';
+import { createOpenMap } from './open-map.mjs';
 
 const $ = (selector) => document.querySelector(selector);
 const time = $('#time');
@@ -269,44 +271,134 @@ $('#copy').addEventListener('click', async () => {
   }
 });
 
-$('#madrid-load').addEventListener('click', async () => {
-  const button = $('#madrid-load');
-  const status = $('#madrid-status');
-  const results = $('#madrid-list');
+let madridPlaces = [];
+let selectedMadrid = '';
+let googleMap;
+let madridConsulted = '';
+
+function selectMadrid(id, focus = true) {
+  selectedMadrid = id;
+  for (const button of document.querySelectorAll('#madrid-list button')) {
+    const selected = button.dataset.id === id;
+    button.classList.toggle('is-selected', selected);
+    button.setAttribute('aria-pressed', String(selected));
+  }
+  const place = madridPlaces.find((entry) => entry.id === id);
+  googleMap?.highlight(id);
+  if (focus && place?.position) googleMap?.focus(place.position);
+}
+
+function updateMadridMarkers() {
+  googleMap?.showPlaces(madridPlaces, selectMadrid);
+  googleMap?.highlight(selectedMadrid);
+}
+
+async function loadMadrid() {
+  const button = $('#madrid-load'), status = $('#madrid-status'), results = $('#madrid-list');
   button.disabled = true;
-  results.replaceChildren();
   status.textContent = 'Consultando el censo municipal…';
   try {
-    const terraces = await getMadridTerraces();
-    if (!terraces.length) {
+    madridPlaces = await getMadridTerraces();
+    results.replaceChildren();
+    if (!madridPlaces.length) {
+      selectedMadrid = '';
+      madridConsulted = '';
       status.textContent = 'El censo no devuelve terrazas para esta selección. Prueba de nuevo más tarde.';
     } else {
-      for (const terrace of terraces) {
-        const item = document.createElement('li');
-        const identity = document.createElement('span');
-        const name = document.createElement('strong');
-        const address = document.createElement('small');
-        const light = document.createElement('span');
+      madridPlaces.forEach((terrace, index) => {
+        const item = document.createElement('li'), entry = document.createElement('button');
+        const number = document.createElement('span'), identity = document.createElement('span');
+        const name = document.createElement('strong'), address = document.createElement('small');
+        const arrow = document.createElement('span');
+        entry.type = 'button'; entry.dataset.id = terrace.id;
+        number.className = 'place-number'; number.textContent = String(index + 1);
         name.textContent = terrace.name;
-        address.textContent = terrace.address;
-        identity.append(name, address);
-        light.className = 'status status-unknown';
-        light.textContent = '? Sin datos de sol';
-        item.append(identity, light);
-        results.append(item);
-      }
+        address.textContent = terrace.position ? terrace.address : `${terrace.address} · sin punto en el mapa`;
+        arrow.textContent = '↗'; arrow.setAttribute('aria-hidden', 'true');
+        identity.append(name, address); entry.append(number, identity, arrow); item.append(entry); results.append(item);
+        entry.addEventListener('click', () => selectMadrid(terrace.id));
+      });
       const consulted = new Intl.DateTimeFormat('es-ES', {
         timeZone: 'Europe/Madrid', dateStyle: 'short', timeStyle: 'short',
       }).format(new Date());
-      status.textContent = `${terraces.length} ${terraces.length === 1 ? 'registro' : 'registros'} · Consulta: ${consulted}, hora de Madrid.`;
+      madridConsulted = consulted;
+      status.textContent = `${madridPlaces.length} ${madridPlaces.length === 1 ? 'registro' : 'registros'} · Consulta: ${consulted}`;
+      if (!madridPlaces.some((place) => place.id === selectedMadrid)) selectedMadrid = madridPlaces[0].id;
+      selectMadrid(selectedMadrid, false);
     }
-    button.textContent = 'Actualizar consulta ↗';
+    updateMadridMarkers();
+    button.textContent = 'Actualizar ↻';
   } catch {
-    status.textContent = 'Ahora no podemos consultar el censo de Madrid. Comprueba tu conexión y vuelve a intentarlo.';
-    button.textContent = 'Reintentar consulta ↗';
+    status.textContent = madridConsulted
+      ? `No hemos podido actualizar. Se mantiene la consulta anterior: ${madridConsulted}.`
+      : 'No podemos consultar el censo de Madrid. Comprueba tu conexión y vuelve a intentarlo.';
+    button.textContent = 'Reintentar ↻';
   } finally {
     button.disabled = false;
   }
+}
+
+let fallbackStarted = false;
+let mapAttempt = 0;
+async function mapFailed() {
+  ++mapAttempt;
+  if (fallbackStarted) return;
+  fallbackStarted = true;
+  googleMap = undefined;
+  $('#google-map').hidden = true;
+  $('#open-map').hidden = false;
+  $('#map-message').hidden = false;
+  $('#map-message-text').textContent = 'Preparando el mapa…';
+  try {
+    googleMap = await createOpenMap($('#open-map'), (available) => {
+      $('#map-message').hidden = available;
+      $('#map-retry').hidden = available;
+      if (!available) $('#map-message-text').textContent = 'No hemos podido cargar el mapa. Puedes consultar la lista de terrazas o volver a intentarlo.';
+    });
+    updateMadridMarkers();
+    if (!$('#madrid').hidden) googleMap.invalidate();
+  } catch {
+    $('#map-message-text').textContent = 'No hemos podido cargar el mapa. Puedes consultar la lista de terrazas o volver a intentarlo.';
+    $('#map-retry').hidden = false;
+  }
+}
+
+async function loadMap() {
+  const attempt = ++mapAttempt;
+  try {
+    const map = await createMadridMap($('#google-map'), mapFailed);
+    if (attempt !== mapAttempt) return;
+    googleMap = map;
+    $('#map-message').hidden = true;
+    updateMadridMarkers();
+  } catch { mapFailed(); }
+}
+
+function switchView(view) {
+  const demo = view === 'demo';
+  if (!demo) stopPlayback();
+  $('#madrid').hidden = demo;
+  $('#demo').hidden = !demo;
+  if (!demo) googleMap?.invalidate?.();
+  for (const [id, active] of [['#real-tab', !demo], ['#demo-tab', demo]]) {
+    $(id).classList.toggle('is-active', active);
+    $(id).setAttribute('aria-pressed', String(active));
+  }
+}
+
+$('#real-tab').addEventListener('click', () => switchView('real'));
+$('#demo-tab').addEventListener('click', () => switchView('demo'));
+$('#open-demo').addEventListener('click', () => {
+  switchView('demo');
+  $('#demo-tab').focus();
+  $('#demo-tab').scrollIntoView({ block: 'nearest', behavior: 'auto' });
 });
+$('#madrid-load').addEventListener('click', loadMadrid);
+$('#map-retry').addEventListener('click', () => window.location.reload());
 
 render();
+// Shared links describe the fictional example; opening one should show it directly.
+const sharedParams = new URLSearchParams(window.location.search);
+if (['fecha', 'hora', 'filtro', 'terraza'].some((key) => sharedParams.has(key))) switchView('demo');
+loadMadrid();
+loadMap();

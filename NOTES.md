@@ -2,7 +2,7 @@
 
 Actualizado: 2026-11-03.
 
-- **Estado**: recorrido local con cálculo solar y geometría ficticia; consulta real limitada al censo de Madrid, todavía sin predicción para esos locales. Ver [tareas](.memory/todo.md).
+- **Estado**: mapa real y consulta limitada al censo de Madrid; cálculo solar aún solo sobre geometría ficticia, sin predicción para esos locales. Google pendiente de autorizar el origen local; respaldo OpenStreetMap disponible. Ver [tareas](.memory/todo.md).
 - **Orientación de producto y publicación**: [guía obligatoria](PROYECTO_Y_DESPLIEGUE.md). BuildApp protegido; backend nuevo de Cool Projects compartible entre las tres apps, aún inexistente.
 - **Referencia principal**: BuildApp; adaptación documentada en [prácticas heredadas](docs/INHERITED_PRACTICES.md).
 - **Verdad del producto**: [alcance](docs/PRODUCT.md), [fuentes](docs/DATA_SOURCES.md), [calidad](docs/QUALITY.md).
