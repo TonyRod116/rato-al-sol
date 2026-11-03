@@ -4,6 +4,8 @@ Estado: frontend local en HTML, CSS y JavaScript, sin instalación ni build. `fr
 
 El escenario trabaja con metros, eje X hacia el este e Y hacia el sur, cubiertas planas y `Europe/Madrid`. Con el sol cerca del horizonte devuelve desconocido y no modela árboles, toldos ni nubes. Los polígonos del ejemplo son simples y conocidos: antes de admitir fuentes reales hay que validar topología, cobertura, alturas, coordenadas y ubicación de mesas; los tests actuales no acreditan precisión sobre el terreno.
 
+La escena ilustra las mismas huellas y alturas en una perspectiva fija: proyecta sus sombras sobre el suelo con la posición del mismo sol que clasifica las terrazas. Los tramos del día agrupan muestras cada 10 minutos entre las 09:00 y las 20:00 y son aproximados, no límites exactos. No se dibuja una sombra cuando el sol está por debajo del umbral de confianza del ejemplo.
+
 ## Flujo propuesto
 
 Entrada: fecha, hora y zona local, coordenadas de terraza, geometría/alturas y sus derechos; nubosidad si se integra.

@@ -32,6 +32,17 @@ export function sunPosition(instant, latitude, longitude) {
   return getPosition(instant, latitude, longitude); // degrees, azimuth clockwise from north
 }
 
+// Ground displacement of a building's roof shadow; x east, y south, metres.
+// Match the classification's horizon threshold rather than drawing false precision.
+export function shadowOffset(sun, height) {
+  if (!sun || !Number.isFinite(sun.altitude) || sun.altitude < 5 || sun.altitude > 90 ||
+      !Number.isFinite(sun.azimuth) || sun.azimuth < 0 || sun.azimuth > 360 ||
+      !Number.isFinite(height) || height <= 0) return null;
+  const angle = sun.azimuth * Math.PI / 180;
+  const length = height / Math.tan(sun.altitude * Math.PI / 180);
+  return [-Math.sin(angle) * length, Math.cos(angle) * length];
+}
+
 const EPSILON = 1e-8;
 const cross = ([ax, ay], [bx, by]) => ax * by - ay * bx;
 const minus = ([ax, ay], [bx, by]) => [ax - bx, ay - by];
@@ -41,6 +52,18 @@ function validFootprint(polygon) {
   if (!Array.isArray(polygon) || polygon.length < 3 || !polygon.every(validPoint)) return false;
   const twiceArea = polygon.reduce((sum, point, index) => sum + cross(point, polygon[(index + 1) % polygon.length]), 0);
   return Math.abs(twiceArea) > EPSILON;
+}
+
+// Sweep the footprint away from the sun, returning the ground polygons to draw.
+export function shadowPolygons(sun, building) {
+  const offset = shadowOffset(sun, building?.height);
+  if (!offset || !validFootprint(building?.footprint)) return [];
+  const footprint = building.footprint;
+  const shifted = footprint.map(([x, y]) => [x + offset[0], y + offset[1]]);
+  return [shifted, ...footprint.map((point, i) => {
+    const next = (i + 1) % footprint.length;
+    return [point, footprint[next], shifted[next], shifted[i]];
+  })];
 }
 
 function pointInOrOnPolygon(point, polygon) {

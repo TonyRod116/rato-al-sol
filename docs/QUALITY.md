@@ -14,7 +14,9 @@ python3 scripts/repo_check.py
 bash scripts/check-ai-instructions.sh
 ```
 
-Los tests de Node comprueban una posición solar de referencia con tolerancia de 0,1°, cambios de horario de Madrid, geometría analítica simple, noche, datos ausentes, filtros, enlace compartido y contrato de la API municipal. La prueba de la biblioteca solar cubre solo ese caso, no su precisión global ni la sombra real en terrazas. Los dos últimos comandos comprueban solo documentación/configuración. El frontend es estático, sin build, compilador de tipos ni linter configurado.
+Los tests de Node comprueban una posición solar de referencia con tolerancia de 0,1°, cambios de horario de Madrid, geometría analítica simple y dirección de sombra dibujada, agrupación de intervalos de 10 minutos, noche, datos ausentes, filtros, enlace compartido y contrato de la API municipal. La prueba de la biblioteca solar cubre solo ese caso, no su precisión global ni la sombra real en terrazas. Los dos últimos comandos comprueban solo documentación/configuración. El frontend es estático, sin build, compilador de tipos ni linter configurado.
+
+En la revisión de la escena en perspectiva del 2026-11-03 se inspeccionaron capturas en Chromium de 320, 390, 768 y 1440 px y con ampliación CSS al 200 %. Se comprobaron la selección, movimiento de las sombras y de la dirección del sol, intervalos, reproducción y pausa, teclado, noche, falta de mesas, filtro vacío, enlace y movimiento reducido. La respuesta municipal se simuló para comprobar el texto no confiable y que la petición solo se hace al pulsar. No se observaron errores de JavaScript. No sustituye pruebas en dispositivos ni la validación de una escena real.
 
 El 2026-11-03 se probó en Chromium a 320, 390, 768 y 1440 px: cambio de fecha y hora, noche, filtros, mapa/lista/detalle, enlace y teclado. La consulta municipal se probó con una respuesta real (tres registros) y con respuestas sintéticas válidas, vacías, fallidas y con texto malicioso; no consulta antes de pulsar ni envía el plan. Se inspeccionaron capturas de cada tamaño. Falta prueba en dispositivos reales, validación geométrica con datos reales y contraste sobre el terreno.
 

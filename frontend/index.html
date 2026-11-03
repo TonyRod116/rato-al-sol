@@ -16,94 +16,87 @@
     <a class="wordmark" href="./" aria-label="Rato al Sol, inicio">
       <span class="brand-sun" aria-hidden="true">✳</span> Rato al Sol<span class="wordmark-dot">.</span>
     </a>
-    <a class="header-link" href="#sobre-ejemplo">Sobre este ejemplo <span aria-hidden="true">↗</span></a>
+    <a class="header-link" href="#madrid">Datos reales de Madrid <span aria-hidden="true">↗</span></a>
   </header>
 
   <main id="contenido">
     <section class="intro" aria-labelledby="titulo">
-      <div class="intro-copy">
-        <h1 id="titulo">Cada terraza tiene <em>su momento.</em></h1>
-        <p class="lead">Encuentra tu sitio al sol, o a la sombra, a la hora que tú elijas.</p>
+      <div>
+        <p class="section-kicker">EXPLORADOR DE SOL Y SOMBRA <span aria-hidden="true">✳</span></p>
+        <h1 id="titulo">Encuentra tu <em>rato de sol.</em></h1>
+        <p class="lead">Elige una terraza y mueve la hora para ver cómo cambia la luz.</p>
       </div>
-      <div class="intro-mark" aria-hidden="true"><span>☀</span><small>UN RATO<br>PARA TI</small></div>
+      <div class="demo-notice" role="note"><span aria-hidden="true">✳</span><p><strong>Estás explorando un barrio inventado.</strong> Edificios, terrazas y sombras son de ejemplo; no sirven para elegir una terraza real.</p></div>
     </section>
-
-    <div class="demo-notice" role="note">
-      <span class="notice-icon" aria-hidden="true">✳</span>
-      <p><strong>Estás viendo un ejemplo interactivo.</strong> Las terrazas y los edificios son inventados. Los resultados no sirven para elegir una terraza real. <a href="#madrid">Ver la prueba con datos reales de Madrid ↓</a></p>
-    </div>
     <noscript><p class="noscript">Activa JavaScript para poder utilizar el ejemplo interactivo.</p></noscript>
 
-    <section class="planner" aria-label="Elige tu momento">
-      <div class="planner-top">
-        <div>
-          <p class="section-kicker">HAZ UN PLAN</p>
-          <h2>¿Cuándo te apetece?</h2>
-        </div>
-        <p class="planner-hint">Mueve la hora para ver cómo funciona.</p>
-      </div>
-      <div class="planner-controls">
-        <div class="date-control">
-          <label for="date">Día</label>
-          <input type="date" id="date" name="fecha" min="2000-01-01" max="2099-12-31" required>
-        </div>
-        <div class="time-control">
-          <div class="time-label"><label for="time">Hora de ejemplo</label><output id="time-value" for="time">12:30</output></div>
-          <input type="range" id="time" name="hora" min="540" max="1200" step="30" value="750">
-          <div class="time-scale" aria-hidden="true"><span>09:00</span><span>12:00</span><span>16:00</span><span>20:00</span></div>
-        </div>
-      </div>
-      <p class="date-note">La luz cambia con la fecha y la hora de Madrid, usando edificios imaginarios.</p>
-    </section>
-
-    <section class="explore" aria-labelledby="explore-title">
-      <div class="explore-header">
-        <div><p class="section-kicker">ELIGE TU RINCÓN</p><h2 id="explore-title">Un barrio imaginario<span class="heading-dot">.</span></h2></div>
-        <fieldset class="filters">
-          <legend>¿Qué prefieres?</legend>
-          <label><input type="radio" name="filter" value="all" checked><span>Todos</span></label>
-          <label><input type="radio" name="filter" value="sun"><span><b aria-hidden="true">☀</b> Sol</span></label>
-          <label><input type="radio" name="filter" value="shade"><span><b aria-hidden="true">◒</b> Sombra</span></label>
-        </fieldset>
-      </div>
-
+    <section class="explore" aria-label="Explora el barrio de ejemplo">
       <div class="explore-grid">
-        <div class="list-column">
-          <div class="list-heading"><h3>Terrazas de ejemplo</h3><p id="result-count" aria-live="polite"></p></div>
-          <div id="place-list" class="place-list"></div>
-          <p id="empty" class="empty-state" hidden>No hay ejemplos con este filtro a esta hora. Prueba otra hora o selecciona «Todos».</p>
-          <p id="unknown-note" class="unknown-note" hidden>Al filtrar por sol o sombra se ocultan los casos sin datos y de noche.</p>
-
-          <aside id="details" class="details" aria-labelledby="detail-title" hidden>
-            <p class="section-kicker">TU ELECCIÓN DE EJEMPLO</p>
-            <div class="detail-title-row"><h3 id="detail-title"></h3><span id="detail-status" class="status"></span></div>
-            <p id="detail-copy"></p>
-            <button id="share" class="share-button" type="button">Compartir este ejemplo <span aria-hidden="true">↗</span></button>
-            <div id="share-panel" class="share-panel" hidden>
-              <label for="share-link">Enlace para compartir</label>
-              <div class="share-row"><input id="share-link" type="text" readonly><button id="copy" type="button">Copiar</button></div>
-              <p id="share-message" aria-live="polite">El enlace solo incluye esta selección de ejemplo.</p>
+        <div class="scene-column">
+          <figure class="map-figure">
+            <div class="map" role="group" aria-label="Barrio imaginario en perspectiva. Selecciona una terraza por su número o usa la lista.">
+              <svg class="map-art" viewBox="0 0 850 490" preserveAspectRatio="none" aria-hidden="true">
+                <defs>
+                  <clipPath id="ground-clip"><polygon points="35,78 605,78 781.8,410.8 211.8,410.8"/></clipPath>
+                  <mask id="shadow-mask" maskUnits="userSpaceOnUse" x="0" y="0" width="850" height="490"><g id="shadow-shapes" fill="white"></g></mask>
+                </defs>
+                <rect width="850" height="490" fill="#e8d8bb"/>
+                <polygon points="35,88 605,88 781.8,420.8 211.8,420.8" fill="#c9b394"/>
+                <polygon points="35,78 605,78 781.8,410.8 211.8,410.8" fill="#f4e7cb"/>
+                <g clip-path="url(#ground-clip)">
+                  <g transform="matrix(.95 0 .34 .64 35 78)">
+                    <path d="M-30 110L640 355M95 -30L385 550M450 -30L210 550M-20 405L650 88" fill="none" stroke="#fdf4df" stroke-width="42"/>
+                    <path d="M-30 110L640 355M95 -30L385 550M450 -30L210 550M-20 405L650 88" fill="none" stroke="#e6d7bb" stroke-width="2" stroke-dasharray="8 9"/>
+                    <path d="M159 256L247 214 303 245 279 310 199 347 136 319Z" fill="#c8d2ac"/>
+                    <path d="M379 305L442 276 490 294 462 350 402 342Z" fill="#c8d2ac"/>
+                    <g fill="#9ead83"><circle cx="191" cy="270" r="10"/><circle cx="226" cy="250" r="8"/><circle cx="265" cy="278" r="12"/><circle cx="223" cy="309" r="9"/><circle cx="410" cy="315" r="9"/><circle cx="444" cy="310" r="12"/></g>
+                  </g>
+                  <rect width="850" height="490" fill="#586e78" opacity=".34" mask="url(#shadow-mask)"/>
+                </g>
+                <g id="map-buildings"></g>
+              </svg>
+              <div class="map-tag"><span aria-hidden="true">✳</span> BARRIO DE EJEMPLO</div>
+              <div id="map-pins"></div>
+              <div class="sun-compass" aria-hidden="true"><svg viewBox="0 0 72 72"><circle cx="36" cy="36" r="27"/><path d="M36 8V64M8 36H64"/><line id="sun-direction" x1="36" y1="36" x2="36" y2="13"/><circle id="sun-dot" cx="36" cy="13" r="5"/></svg><span id="scene-caption">SOL EN EL EJEMPLO</span></div>
             </div>
-          </aside>
+            <figcaption><span>✳</span> Perspectiva ilustrada · edificios y terrazas inventados</figcaption>
+          </figure>
+
+          <section class="planner" aria-label="Elige el día y la hora">
+            <div class="planner-heading"><div><p class="section-kicker">VIAJA A LO LARGO DEL DÍA</p><h2>Mueve la hora <span aria-hidden="true">↗</span></h2></div><output id="time-value" for="time">12:30</output></div>
+            <div class="planner-controls">
+              <div class="date-control"><label for="date">Día</label><input type="date" id="date" name="fecha" min="2000-01-01" max="2099-12-31" required></div>
+              <div class="time-control"><label for="time">Hora del ejemplo</label><input type="range" id="time" name="hora" min="540" max="1200" step="10" value="750"><div class="time-scale" aria-hidden="true"><span>09:00</span><span>12:00</span><span>16:00</span><span>20:00</span></div></div>
+            </div>
+            <div class="planner-footer"><p class="date-note">La posición del sol sigue la fecha y la hora de Madrid; la escena es ficticia.</p><button id="play-day" class="play-day" type="button" aria-pressed="false">▶ Ver pasar el día</button></div>
+          </section>
         </div>
 
-        <figure class="map-figure">
-          <div class="map" role="group" aria-label="Mapa ilustrativo de un barrio imaginario">
-            <svg class="map-art" viewBox="0 0 600 520" preserveAspectRatio="none" aria-hidden="true">
-              <rect width="600" height="520" fill="#e9ddc4"/>
-              <path d="M-30 110L640 355M95 -30L385 550M450 -30L210 550M-20 405L650 88" fill="none" stroke="#fffaf0" stroke-width="30"/>
-              <path d="M-30 110L640 355M95 -30L385 550M450 -30L210 550M-20 405L650 88" fill="none" stroke="#f7f2e8" stroke-width="20"/>
-              <g id="map-buildings" fill="#d6b99c" opacity=".8"></g>
-              <path d="M159 256L247 214 303 245 279 310 199 347 136 319Z" fill="#b2c89d"/>
-              <path d="M379 305L442 276 490 294 462 350 402 342Z" fill="#b2c89d"/>
-              <g fill="#7a9d69"><circle cx="191" cy="270" r="14"/><circle cx="226" cy="250" r="11"/><circle cx="265" cy="278" r="16"/><circle cx="223" cy="309" r="13"/><circle cx="410" cy="315" r="12"/><circle cx="444" cy="310" r="16"/></g>
-              <g fill="#6b7a59" font-family="sans-serif" font-size="11" font-weight="700" letter-spacing="2"><text x="187" y="294">JARDÍN</text><text x="392" y="334">PLAZA</text></g>
-            </svg>
-            <div id="map-pins"></div>
-            <span class="map-north" aria-hidden="true">N <span>↑</span></span>
+        <aside class="inspector" aria-label="Terrazas y horas de sol de ejemplo">
+          <div id="details" class="details" aria-labelledby="detail-title" hidden>
+            <div class="detail-top"><p class="section-kicker">TU TERRAZA DE EJEMPLO</p><span aria-hidden="true">✳</span></div>
+            <div class="detail-title-row"><h2 id="detail-title"></h2><span id="detail-status" class="status"></span></div>
+            <p id="detail-copy"></p>
+            <div class="sun-hours">
+              <div class="hours-heading"><h3>Su día de sol</h3><span>09:00 — 20:00</span></div>
+              <div id="day-timeline" class="day-timeline" role="img"></div>
+              <div class="timeline-scale" aria-hidden="true"><span>09:00</span><span>12:00</span><span>16:00</span><span>20:00</span></div>
+              <div class="timeline-legend"><span><i class="legend-sun"></i> Sol</span><span><i class="legend-shade"></i> Sombra</span><span><i class="legend-night"></i> Noche</span><span><i class="legend-unknown"></i> Sin datos</span></div>
+              <p class="interval-label">TRAMOS DE SOL APROXIMADOS</p>
+              <p id="sun-intervals" class="sun-intervals"></p>
+              <p class="interval-note">Cálculo cada 10 minutos; no incluye nubes, toldos ni árboles.</p>
+            </div>
+            <button id="share" class="share-button" type="button">Compartir este ejemplo <span aria-hidden="true">↗</span></button>
+            <div id="share-panel" class="share-panel" hidden><label for="share-link">Enlace para compartir</label><div class="share-row"><input id="share-link" type="text" readonly><button id="copy" type="button">Copiar</button></div><p id="share-message" aria-live="polite">El enlace solo incluye esta selección de ejemplo.</p></div>
           </div>
-          <figcaption><span>✳</span> Mapa ilustrativo · lugares inventados</figcaption>
-        </figure>
+          <div class="place-explorer">
+            <div class="list-heading"><div><p class="section-kicker">ELIGE TU RINCÓN</p><h3>Terrazas de ejemplo</h3></div><p id="result-count" aria-live="polite"></p></div>
+            <fieldset class="filters"><legend>¿Qué prefieres?</legend><label><input type="radio" name="filter" value="all" checked><span>Todos</span></label><label><input type="radio" name="filter" value="sun"><span><b aria-hidden="true">☀</b> Sol</span></label><label><input type="radio" name="filter" value="shade"><span><b aria-hidden="true">◒</b> Sombra</span></label></fieldset>
+            <div id="place-list" class="place-list"></div>
+            <p id="empty" class="empty-state" hidden>No hay ejemplos con este filtro a esta hora. Prueba otra hora o selecciona «Todos».</p>
+            <p id="unknown-note" class="unknown-note" hidden>Al filtrar por sol o sombra se ocultan los casos sin datos y de noche.</p>
+          </div>
+        </aside>
       </div>
     </section>
 

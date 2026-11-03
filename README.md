@@ -6,7 +6,7 @@ Un mapa sencillo de terrazas con intervalos estimados de sol y sombra, un select
 
 ## Estado real
 
-Existe un ejemplo interactivo de mapa, lista, fecha, hora y filtros. La posición del sol se calcula para Madrid, pero **el barrio y los edificios del mapa son inventados**: sus resultados no sirven para elegir una terraza real. También hay una consulta independiente al censo del Ayuntamiento para mostrar las primeras terrazas registradas en la calle de Ayala; no calcula su sol o sombra porque falta comprobar dónde están las mesas. No hay despliegue.
+Existe un ejemplo interactivo con un barrio en perspectiva, sombras que se mueven, reproducción del día y tramos aproximados de sol y sombra para cada terraza. La posición del sol se calcula para Madrid, pero **el barrio y los edificios del mapa son inventados**: sus resultados no sirven para elegir una terraza real. También hay una consulta independiente al censo del Ayuntamiento para mostrar las primeras terrazas registradas en la calle de Ayala; no calcula su sol o sombra porque falta comprobar dónde están las mesas. No hay despliegue.
 
 ## Orientación obligatoria
 

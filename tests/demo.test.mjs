@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { places, demoSun, outcomeFor, visiblePlaces, parseSharedState, shareUrl } from '../frontend/demo-data.mjs';
+import { places, demoSun, outcomeFor, visiblePlaces, intervalsFor, parseSharedState, shareUrl } from '../frontend/demo-data.mjs';
 
 test('el escenario usa la fecha y hora con geometría inventada', () => {
   const winter = demoSun('2026-12-21', 900);
@@ -33,4 +33,26 @@ test('el enlace compartido solo acepta valores válidos del ejemplo', () => {
   assert.deepEqual(parseSharedState(new URL(url).search, defaults), {
     date: '2026-11-03', minutes: 900, filter: 'shade', selected: 'la-plaza',
   });
+  assert.equal(parseSharedState('?hora=910', defaults).minutes, 910);
+  assert.equal(parseSharedState('?hora=911', defaults).minutes, defaults.minutes);
+});
+
+test('los tramos cubren el día mostrado y reflejan los cambios del mismo motor solar', () => {
+  const place = places[0];
+  const intervals = intervalsFor(place, '2026-12-21');
+  assert.equal(intervals[0].start, 540);
+  assert.equal(intervals.at(-1).end, 1200);
+  assert.ok(intervals.some((interval) => interval.outcome === 'sun'));
+  assert.ok(intervals.some((interval) => interval.outcome === 'night'));
+  for (const [index, interval] of intervals.entries()) {
+    assert.ok(interval.end > interval.start);
+    assert.equal(interval.outcome, outcomeFor(place, demoSun('2026-12-21', interval.start)));
+    if (index) {
+      assert.equal(interval.start, intervals[index - 1].end);
+      assert.notEqual(interval.outcome, intervals[index - 1].outcome);
+    }
+  }
+  const unknown = intervalsFor(places.find((entry) => entry.id === 'el-olivo'), '2026-06-21');
+  assert.ok(unknown.some((interval) => interval.outcome === 'unknown'));
+  assert.ok(!unknown.some((interval) => interval.outcome === 'sun' || interval.outcome === 'shade'));
 });

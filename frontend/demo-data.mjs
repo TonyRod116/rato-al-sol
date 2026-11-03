@@ -36,6 +36,18 @@ export function visiblePlaces(filter, sun) {
   return places.filter((place) => filter === 'all' || outcomeFor(place, sun) === filter);
 }
 
+// Ten-minute samples describe approximate intervals, not exact transition times.
+export function intervalsFor(place, date) {
+  const intervals = [];
+  for (let minutes = 540; minutes < 1200; minutes += 10) {
+    const outcome = outcomeFor(place, demoSun(date, minutes));
+    const previous = intervals.at(-1);
+    if (previous?.outcome === outcome) previous.end = minutes + 10;
+    else intervals.push({ start: minutes, end: minutes + 10, outcome });
+  }
+  return intervals;
+}
+
 function validDate(value) {
   return civilTimeToUtc(value, 720) !== null;
 }
@@ -49,7 +61,7 @@ export function parseSharedState(search, defaults) {
   const selected = params.get('terraza');
   return {
     date: validDate(date ?? '') ? date : defaults.date,
-    minutes: Number.isInteger(minutes) && minutes >= 540 && minutes <= 1200 && minutes % 30 === 0 ? minutes : defaults.minutes,
+    minutes: Number.isInteger(minutes) && minutes >= 540 && minutes <= 1200 && minutes % 10 === 0 ? minutes : defaults.minutes,
     filter: ['all', 'sun', 'shade'].includes(filter) ? filter : defaults.filter,
     selected: places.some((place) => place.id === selected) ? selected : defaults.selected,
   };

@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { civilTimeToUtc, sunPosition, classifyLight } from '../frontend/solar.mjs';
+import { civilTimeToUtc, sunPosition, classifyLight, shadowOffset, shadowPolygons } from '../frontend/solar.mjs';
 
 test('posición solar: caso de referencia independiente del laboratorio NLR', () => {
   // SPA tester del NLR y valores esperados publicados por pvlib para ese caso:
@@ -50,4 +50,27 @@ test('la noche, el horizonte bajo y la geometría incompleta son estados distint
   assert.equal(classifyLight({ ...input, buildings: [{ ...building, height: null }] }), 'unknown');
   assert.equal(classifyLight({ ...input, point: [0, 15] }), 'unknown');
   assert.equal(classifyLight({ ...input, sun: { altitude: NaN, azimuth: 180 } }), 'unknown');
+});
+
+test('la sombra dibujada se proyecta lejos del sol y coincide con el cálculo de luz', () => {
+  const east = { altitude: 45, azimuth: 90 };
+  const offset = shadowOffset(east, 10);
+  assert.ok(Math.abs(offset[0] + 10) < 1e-8);
+  assert.ok(Math.abs(offset[1]) < 1e-8);
+  const north = shadowOffset({ altitude: 45, azimuth: 0 }, 10);
+  assert.ok(Math.abs(north[0]) < 1e-8);
+  assert.ok(Math.abs(north[1] - 10) < 1e-8);
+  const building = { footprint: [[10, -5], [20, -5], [20, 5], [10, 5]], height: 10 };
+  assert.equal(classifyLight({ sun: east, point: [5, 0], buildings: [building], coverage: true }), 'shade');
+  assert.equal(classifyLight({ sun: east, point: [-5, 0], buildings: [building], coverage: true }), 'sun');
+  const shadow = shadowPolygons(east, building);
+  // La cubierta desplazada cubre x=0…10 e y=-5…5 para este caso analítico.
+  assert.ok(Math.abs(shadow[0][0][0]) < 1e-8);
+  assert.ok(Math.abs(shadow[0][1][0] - 10) < 1e-8);
+  assert.deepEqual(shadow[0].map((point) => Math.round(point[1])), [-5, -5, 5, 5]);
+  assert.equal(shadow.length, 5);
+  assert.deepEqual(shadowPolygons({ altitude: -5, azimuth: 90 }, building), []);
+  assert.equal(shadowOffset({ altitude: 2, azimuth: 90 }, 10), null);
+  assert.equal(shadowOffset({ altitude: -5, azimuth: 90 }, 10), null);
+  assert.equal(shadowOffset({ altitude: 45, azimuth: 361 }, 10), null);
 });
