@@ -8,8 +8,9 @@ node tests/solar.test.mjs
 node tests/madrid.test.mjs
 node tests/map-shadows.test.mjs
 node tests/map-atmosphere.test.mjs
-node --test tests/mobile.test.mjs
+node tests/mobile.test.mjs
 node --check frontend/app.mjs
+node --check frontend/explore-search.mjs
 node --check frontend/demo-data.mjs
 node --check frontend/solar.mjs
 node --check frontend/madrid.mjs
@@ -27,6 +28,8 @@ bash scripts/check-ai-instructions.sh
 Los tests de Node comprueban una posición solar de referencia con tolerancia de 0,1°, cambios de horario de Madrid, geometría analítica simple y dirección de sombra dibujada, intervalos, noche, datos ausentes, filtros, privacidad de consultas y contratos municipales. La prueba solar cubre solo ese caso, no su precisión global ni la sombra real en terrazas. Los dos últimos comandos comprueban solo documentación/configuración. La web anterior es estática; el prototipo nativo usa Expo.
 
 La prueba visual ejecutable `tests/shadow-mask.browser.html`, servida desde la raíz del repositorio en localhost, comprueba en un navegador real que una sombra sola y dos superpuestas tienen los mismos píxeles, que se respetan los huecos y que la máscara se limpia cuando no hay sombras.
+
+En la búsqueda por punto y franja del 2026-11-03 se comprobó un punto real con alturas municipales y una consulta cercana que analizó cuatro puntos de parques. En Chromium se revisaron el mapa 3D y el respaldo 2D, fotografía, marcador, horas, rango, radio, ubicación simulada y denegada, fallo de edificios, respuesta tardía, texto externo no confiable y cambio horario. Se inspeccionaron imágenes a 320, 390, 768 y 1440 px y se corrigió un desbordamiento de 5 px. El respaldo 2D aplicó opacidad 0,82 a las sombras de la fotografía y 0,44 en el plano; no son medidas de contraste perceptivo. La vista web de desarrollo del prototipo nativo se probó con lugares sintéticos y edificios municipales; iOS y Android se empaquetaron, sin ejecución en teléfonos. La búsqueda general respondió 502 y fuera de Madrid sigue sin validarse; tampoco se ha contrastado la luz sobre el terreno.
 
 En la revisión de sombras y foto aérea del 2026-11-03 se inspeccionaron en Chromium capturas de 320, 390 y 1440 px con fotografía y geometría reales. Se comprobaron teclado, visibilidad de atribución y dirección, zoom máximo en 3D, alejamiento adicional y vuelta desde 2D, noche y fallo/recuperación de la fotografía tanto en 3D como en el respaldo 2D. La composición se contrastó por píxeles con polígonos ficticios. Un dibujo de 16.178 polígonos en un lienzo de hasta 700 px tardó 27,9 ms de mediana en 12 iteraciones locales; no incluye toda la representación del mapa ni mide FPS. No se han probado estas mejoras en la app nativa ni en dispositivos reales.
 

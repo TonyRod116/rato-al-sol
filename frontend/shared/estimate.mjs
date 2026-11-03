@@ -1,4 +1,4 @@
-import { classifyLight, shadowOffset, sunPosition } from '../../frontend/solar.mjs';
+import { classifyLight, shadowOffset, sunPosition } from '../solar.mjs';
 import { distanceMetres, validCoordinate } from './places.mjs';
 
 const METRES_PER_DEGREE = 111319.49079327358;
@@ -48,17 +48,46 @@ export function atMinutes(day, minutes) {
   return date.getHours() === Math.floor(minutes / 60) && date.getMinutes() === minutes % 60 ? date : null;
 }
 
-export function solarWindows(scene, day) {
+export function solarWindows(scene, day, instantAt = atMinutes) {
   if (!scene) return [];
   const result = [];
   // Approximate 30-minute samples; deliberately do not imply exact transitions.
   for (let minutes = 0; minutes < 1440; minutes += 30) {
-    const state = lightAt(scene, atMinutes(day, minutes));
+    const state = lightAt(scene, instantAt(day, minutes));
     const last = result.at(-1);
     if (last?.state === state) last.to = minutes + 30;
     else result.push({ state, from: minutes, to: minutes + 30 });
   }
   return result;
+}
+
+// A range matches only when every sampled segment covering it is sunny.
+// An absent segment, an unknown state, or a night segment cannot count as sun.
+export function sunnyInRange(windows, from, to = from) {
+  if (!Array.isArray(windows) || !Number.isInteger(from) || !Number.isInteger(to) ||
+      from < 0 || from >= 1440 || to < from || to > 1440) return false;
+  const end = to === from ? from + 1 : to;
+  let cursor = from;
+  for (const segment of windows) {
+    if (segment.to <= cursor) continue;
+    if (segment.from > cursor || segment.state !== 'sun') return false;
+    cursor = Math.min(end, segment.to);
+    if (cursor >= end) return true;
+  }
+  return false;
+}
+
+// Return a conservative classification for one moment or a sampled interval.
+export function lightForInterval(scene, day, from, to = from, instantAt = atMinutes) {
+  if (!scene || !Number.isInteger(from) || !Number.isInteger(to) ||
+      from < 0 || from >= 1440 || to < from || to > 1440) return 'unknown';
+  if (from === to) return lightAt(scene, instantAt(day, from));
+  const windows = solarWindows(scene, day, instantAt);
+  const edges = [from, to - 1].map((minute) => lightAt(scene, instantAt(day, minute)));
+  if (sunnyInRange(windows, from, to) && edges.every((state) => state === 'sun')) return 'sun';
+  const relevant = windows.filter((window) => window.from < to && window.to > from);
+  return relevant.some((window) => window.state === 'shade' || window.state === 'night') ||
+    edges.some((state) => state === 'shade' || state === 'night') ? 'shade' : 'unknown';
 }
 
 export function shadowShapes(buildings, point, instant) {

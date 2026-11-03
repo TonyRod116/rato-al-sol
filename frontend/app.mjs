@@ -2,8 +2,9 @@ import { civilTimeToUtc, sunPosition } from './solar.mjs';
 import { getMadridTerraces } from './madrid.mjs';
 import { AYALA_CENTER, getMadridBuildings, insideAyala } from './madrid-buildings.mjs';
 import { buildingShadows, shadowDirection } from './map-shadows.mjs';
-import { createOpenMap } from './open-map.mjs?v=20261103-6';
-import { createCityMap } from './city-map.mjs?v=20261103-6';
+import { createOpenMap } from './open-map.mjs?v=20261103-7';
+import { createCityMap } from './city-map.mjs?v=20261103-7';
+import { createExplorer } from './explore-search.mjs?v=20261103-7';
 
 const $ = (selector) => document.querySelector(selector);
 const today = Object.fromEntries(new Intl.DateTimeFormat('en-GB', {
@@ -17,6 +18,18 @@ let mapStarted = false, mapLoading = false, is3D = true, playback, pendingFrame;
 let view = { bearing: 0, pitch: 0, center: AYALA_CENTER };
 let currentDirection = null;
 let buildingsLoading = false, buildingsError = false;
+let searchPins;
+let searchTimeEdited = false;
+const explorer = createExplorer({
+  getCenter: () => ({ latitude: view.center.lat, longitude: view.center.lng }),
+  getDate: () => state.date,
+  getTime: () => state.minutes,
+  onPlaces: (places, onSelect) => { searchPins = { places, onSelect }; activeMap?.showPlaces(places, onSelect); },
+  onPoint: (point, focus) => {
+    activeMap?.setSelectedPoint(point);
+    if (focus) activeMap?.focus({ lat: point.latitude, lng: point.longitude });
+  },
+});
 
 function formattedTime(minutes) {
   return `${String(Math.floor(minutes / 60)).padStart(2, '0')}:${String(minutes % 60).padStart(2, '0')}`;
@@ -47,9 +60,10 @@ function updateShadowStatus() {
 
 function updateSolar() {
   const instant = civilTimeToUtc(state.date, state.minutes);
-  const sun = sunPosition(instant, AYALA_CENTER.lat, AYALA_CENTER.lng);
+  const sun = sunPosition(instant, view.center.lat, view.center.lng);
   currentDirection = shadowDirection(sun);
   const clock = formattedTime(state.minutes);
+  if (!searchTimeEdited) $('#nearby-start').value = clock;
   $('#date').value = state.date;
   $('#time').value = state.minutes;
   $('#time-value').value = clock;
@@ -64,6 +78,7 @@ function updateSolar() {
   $('#direction-symbol').textContent = currentDirection ? '↑' : sun && sun.altitude < -1 ? '☾' : '☼';
   if (!currentDirection) $('#direction-symbol').style.transform = '';
   updateCompass();
+  explorer.updateTime();
   if (pendingFrame) cancelAnimationFrame(pendingFrame);
   pendingFrame = requestAnimationFrame(() => {
     pendingFrame = null;
@@ -102,10 +117,11 @@ function selectMadrid(id, focus = true) {
   }
   const place = madridPlaces.find((entry) => entry.id === id);
   activeMap?.highlight(id);
-  if (focus && place?.position) activeMap?.focus(place.position);
+  if (focus && place?.position) explorer.selectPoint({ latitude: place.position.lat, longitude: place.position.lng, name: place.name, kind: 'business' }, true);
 }
 
 function updateMadridMarkers() {
+  if (explorer.hasSearch()) return;
   activeMap?.showPlaces(madridPlaces, selectMadrid);
   activeMap?.highlight(selectedMadrid);
 }
@@ -167,7 +183,11 @@ function activateMap(map, isCity) {
   $('#map-basemaps').hidden = false;
   $('#map-dimension').hidden = !isCity || !is3D;
   $('#map-message').hidden = true;
-  updateMadridMarkers();
+  $('#select-map-center').disabled = false;
+  $('#use-location').disabled = false;
+  if (searchPins) activeMap.showPlaces(searchPins.places, searchPins.onSelect);
+  else updateMadridMarkers();
+  activeMap.setSelectedPoint(explorer.getSelected());
   if (buildings) activeMap.setBuildings(buildings);
   updateSolar();
   activeMap.invalidate();
@@ -194,7 +214,7 @@ async function loadOpenMap() {
       $('#map-message').hidden = available;
       $('#map-retry').hidden = available;
       if (!available) $('#map-message-text').textContent = 'No hemos podido cargar el mapa. Puedes consultar la lista o volver a intentarlo.';
-    }, onViewChange, basemapError);
+    }, onViewChange, basemapError, (point) => explorer.selectPoint(point));
     activateMap(map, false);
     $('#map-message').hidden = tilesAvailable;
     $('#map-provider-status').hidden = false;
@@ -209,16 +229,38 @@ async function loadOpenMap() {
 async function loadMap() {
   if (mapStarted || mapLoading) return;
   mapStarted = true; mapLoading = true;
-  try { activateMap(await createCityMap($('#city-map'), onViewChange, basemapError), true); }
+  try { activateMap(await createCityMap($('#city-map'), onViewChange, basemapError, (point) => explorer.selectPoint(point)), true); }
   catch { await loadOpenMap(); }
   finally { mapLoading = false; }
 }
 
 $('#time').addEventListener('input', (event) => { stopPlayback(); state.minutes = Number(event.target.value); updateSolar(); });
+$('#nearby-start').addEventListener('input', () => { searchTimeEdited = true; });
+$('#nearby-form').addEventListener('submit', () => { searchTimeEdited = true; });
+$('#select-map-center').addEventListener('click', () => explorer.selectPoint({ latitude: view.center.lat, longitude: view.center.lng }));
+$('#use-location').addEventListener('click', () => {
+  const button = $('#use-location'), status = $('#nearby-status');
+  if (!navigator.geolocation) { status.textContent = 'Tu navegador no ofrece ubicación. Puedes mover el mapa hasta la zona que quieras.'; return; }
+  button.disabled = true;
+  status.textContent = 'Buscando tu ubicación…';
+  navigator.geolocation.getCurrentPosition(({ coords }) => {
+    const { latitude, longitude } = coords;
+    if (!Number.isFinite(latitude) || !Number.isFinite(longitude) || Math.abs(latitude) > 85 || Math.abs(longitude) > 180) {
+      status.textContent = 'No hemos podido localizarte. Puedes mover el mapa.'; button.disabled = false; return;
+    }
+    view = { ...view, center: { lat: latitude, lng: longitude } };
+    activeMap?.focus({ lat: latitude, lng: longitude });
+    status.textContent = 'Mapa centrado en tu ubicación. Elige la hora y busca cerca.';
+    button.disabled = false;
+  }, () => {
+    status.textContent = 'No hemos podido usar tu ubicación. Puedes mover el mapa hasta la zona que quieras.';
+    button.disabled = false;
+  }, { enableHighAccuracy: false, timeout: 10000, maximumAge: 60000 });
+});
 $('#date').addEventListener('change', (event) => {
   stopPlayback();
   if (!event.target.validity.valid || !civilTimeToUtc(event.target.value, 720)) { event.target.value = state.date; return; }
-  state.date = event.target.value; updateSolar();
+  state.date = event.target.value; updateSolar(); explorer.updateDate();
 });
 $('#play-day').addEventListener('click', () => {
   if (playback) return stopPlayback();

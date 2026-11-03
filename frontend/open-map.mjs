@@ -5,7 +5,7 @@ import { drawShadowMask } from './shadow-mask.mjs?v=20261103-6';
 import { AYALA_BOUNDS } from './madrid-buildings.mjs';
 import { AERIAL_TILES, AERIAL_ATTRIBUTION } from './map-basemap.mjs';
 
-export async function createOpenMap(element, onTileStatus, onViewChange = () => {}, onBasemapError = () => {}) {
+export async function createOpenMap(element, onTileStatus, onViewChange = () => {}, onBasemapError = () => {}, onPick = () => {}) {
   const version = 'https://cdn.jsdelivr.net/npm/leaflet@1.9.4/dist/leaflet';
   const css = document.createElement('link');
   css.rel = 'stylesheet'; css.href = `${version}.css`;
@@ -46,14 +46,17 @@ export async function createOpenMap(element, onTileStatus, onViewChange = () => 
       shadowBounds: [bounds.getWest(), bounds.getSouth(), bounds.getEast(), bounds.getNorth()] });
   };
   map.on('moveend', notifyView);
+  map.on('click', (event) => onPick({ latitude: event.latlng.lat, longitude: event.latlng.lng }));
   notifyView();
   let markers = [];
-  let pendingFit = false;
+  let selectedPoint;
+  let pendingFit = false, fittedPlaces = false;
   function fitPlaces() {
     if (!pendingFit || !map.getSize().x || !map.getSize().y) return;
     const bounds = L.latLngBounds(markers.map((marker) => marker.getLatLng()));
     if (bounds.isValid()) map.fitBounds(bounds, { padding: [40, 40], maxZoom: 17, animate: false });
     pendingFit = false;
+    fittedPlaces = true;
   }
   return {
     setBuildings() {},
@@ -66,6 +69,7 @@ export async function createOpenMap(element, onTileStatus, onViewChange = () => 
     },
     setBasemap(kind) {
       aerialSelected = kind === 'aerial';
+      shadows.setOpacity(aerialSelected ? .82 : .44);
       aerialErrors = 0;
       if (aerialSelected) {
         if (!aerial) {
@@ -73,6 +77,7 @@ export async function createOpenMap(element, onTileStatus, onViewChange = () => 
           aerial.on('tileerror', () => {
             if (aerialSelected && ++aerialErrors >= 3) {
               aerialSelected = false;
+              shadows.setOpacity(.44);
               map.removeLayer(aerial); tiles.addTo(map);
               onBasemapError();
             }
@@ -84,18 +89,24 @@ export async function createOpenMap(element, onTileStatus, onViewChange = () => 
         tiles.addTo(map);
       }
     },
+    setSelectedPoint(point) {
+      selectedPoint?.remove();
+      if (!point) return;
+      const icon = L.divIcon({ className: 'open-map-pin', html: '<span class="selected-point-pin"></span>', iconSize: [30, 38], iconAnchor: [15, 38] });
+      selectedPoint = L.marker([point.latitude, point.longitude], { icon, interactive: false, title: 'Punto seleccionado' }).addTo(map);
+    },
     showPlaces(places, onSelect) {
       for (const marker of markers) marker.remove();
       markers = places.flatMap((place, index) => {
         if (!place.position) return [];
         const icon = L.divIcon({ className: 'open-map-pin', html: `<span class="google-pin">${index + 1}</span>`, iconSize: [36, 36], iconAnchor: [18, 18] });
         const marker = L.marker([place.position.lat, place.position.lng], {
-          icon, title: `${place.name}, entrada aproximada`, alt: `${place.name}, entrada aproximada`,
+          icon, title: place.pinLabel || `${place.name}, entrada aproximada`, alt: place.pinLabel || `${place.name}, entrada aproximada`,
         }).addTo(map).on('click', () => onSelect(place.id));
         marker.ratoId = place.id;
         return [marker];
       });
-      pendingFit = markers.length > 0;
+      pendingFit = !fittedPlaces && markers.length > 0;
       fitPlaces();
     },
     focus(position) { if (position) map.panTo([position.lat, position.lng]); },

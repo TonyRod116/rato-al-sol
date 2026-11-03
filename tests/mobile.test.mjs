@@ -1,9 +1,9 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { distanceMetres, getBuildings, searchNearby, searchPlaces } from '../mobile/src/places.mjs';
-import { atMinutes, lightAt, prepareScene, solarWindows } from '../mobile/src/estimate.mjs';
-import { getMadridScene } from '../mobile/src/madrid-scene.mjs';
-import { searchMadridFallback, searchMadridParks } from '../mobile/src/ayala-fallback.mjs';
+import { distanceMetres, getBuildings, searchNearby, searchPlaces } from '../frontend/shared/places.mjs';
+import { atMinutes, lightAt, prepareScene, solarWindows } from '../frontend/shared/estimate.mjs';
+import { getMadridScene } from '../frontend/shared/madrid-scene.mjs';
+import { searchMadridFallback, searchMadridParks } from '../frontend/shared/ayala-fallback.mjs';
 import { sunPosition } from '../frontend/solar.mjs';
 
 const madrid = { latitude: 40.42785, longitude: -3.6873 };
@@ -70,6 +70,7 @@ test('Madrid name fallback searches the public register via POST and keeps entra
     return { ok: true, json: async () => ({ success: true, result: { records: [
       { id_terraza: '42', rotulo: 'Bar de prueba', coordenada_x_local: '443000', coordenada_y_local: '4476000', desc_tipo_acceso_local: 'Puerta Calle' },
       { id_terraza: '43', rotulo: 'Sin entrada', coordenada_x_local: '', coordenada_y_local: '', desc_tipo_acceso_local: 'Interior' },
+      { id_terraza: '44', rotulo: 'Nombre que no coincide', coordenada_x_local: '443000', coordenada_y_local: '4476000', desc_tipo_acceso_local: 'Puerta Calle' },
     ] } }) };
   };
   const places = await searchMadridFallback(madrid, 5000, 'Bar de prueba', fetch);
@@ -92,7 +93,7 @@ test('municipal park fallback filters reference points locally and ignores inval
       { id: '4', title: 'Inválido', location: { latitude: '40.4', longitude: -3.6 } },
     ] }) };
   };
-  const places = await searchMadridParks(madrid, 500, 'jardín', fetch);
+  const places = await searchMadridParks(madrid, 500, 'jardin', fetch);
   assert.equal(places.length, 1);
   assert.equal(places[0].name, 'Jardín cercano');
   assert.equal(places[0].kind, 'public');
@@ -140,4 +141,46 @@ test('phone local time does not silently shift the skipped DST hour', () => {
   } finally {
     if (previous === undefined) delete process.env.TZ; else process.env.TZ = previous;
   }
+});
+
+test('time range accepts sun only when every covered sample is sunny', async () => {
+  const { sunnyInRange } = await import('../frontend/shared/estimate.mjs');
+  const windows = [
+    { from: 0, to: 600, state: 'night' },
+    { from: 600, to: 720, state: 'sun' },
+    { from: 720, to: 750, state: 'unknown' },
+    { from: 750, to: 900, state: 'shade' },
+    { from: 900, to: 1440, state: 'sun' },
+  ];
+  assert.equal(sunnyInRange(windows, 610, 700), true);
+  assert.equal(sunnyInRange(windows, 719, 721), false);
+  assert.equal(sunnyInRange(windows, 720, 720), false);
+  assert.equal(sunnyInRange(windows, 1440, 1440), false);
+  assert.equal(sunnyInRange(windows, 900, 800), false);
+  assert.equal(sunnyInRange([{ from: 600, to: 630, state: 'sun' }, { from: 660, to: 700, state: 'sun' }], 600, 700), false);
+});
+
+test('Madrid windows use an explicit timezone and preserve the skipped DST hour', async () => {
+  const { civilTimeToUtc } = await import('../frontend/solar.mjs');
+  const scene = { point: madrid, radius: 400, buildings: [{ footprint: [[-30,-30],[-20,-30],[-20,-20],[-30,-20]], height: 20 }] };
+  const previous = process.env.TZ;
+  try {
+    process.env.TZ = 'America/Los_Angeles';
+    const windows = solarWindows(scene, '2026-03-29', civilTimeToUtc);
+    assert.equal(windows.find((entry) => entry.from <= 150 && entry.to > 150)?.state, 'unknown');
+    assert.equal(windows.find((entry) => entry.from <= 90 && entry.to > 90)?.state, 'night');
+  } finally {
+    if (previous === undefined) delete process.env.TZ; else process.env.TZ = previous;
+  }
+});
+
+test('range classification refuses gaps, night and unavailable geometry', async () => {
+  const { lightForInterval } = await import('../frontend/shared/estimate.mjs');
+  const { civilTimeToUtc } = await import('../frontend/solar.mjs');
+  const scene = { point: madrid, radius: 400, buildings: [{ footprint: [[-20,-100],[20,-100],[20,-80],[-20,-80]], height: 20 }] };
+  assert.equal(lightForInterval(scene, '2026-06-21', 720, 900, civilTimeToUtc), 'sun');
+  assert.equal(lightForInterval(scene, '2026-06-21', 720, 1440, civilTimeToUtc), 'shade');
+  assert.equal(lightForInterval(null, '2026-06-21', 720, 900, civilTimeToUtc), 'unknown');
+  assert.equal(lightForInterval(scene, '2026-06-21', 900, 720, civilTimeToUtc), 'unknown');
+  assert.equal(lightForInterval(scene, '2026-03-29', 150, 150, civilTimeToUtc), 'unknown');
 });

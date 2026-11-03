@@ -7,8 +7,8 @@
   <meta name="description" content="Explora las sombras estimadas a lo largo del día en la calle de Ayala, Madrid.">
   <title>Rato al Sol — Explora la luz en Madrid</title>
   <link rel="icon" href="./favicon.svg" type="image/svg+xml">
-  <link rel="stylesheet" href="./styles.css?v=20261103-6">
-  <script type="module" src="./app.mjs?v=20261103-6"></script>
+  <link rel="stylesheet" href="./styles.css?v=20261103-7">
+  <script type="module" src="./app.mjs?v=20261103-7"></script>
 </head>
 <body>
   <a class="skip-link" href="#contenido">Saltar al contenido</a>
@@ -29,19 +29,22 @@
             <div class="real-map-shell">
               <div id="city-map" class="google-map" aria-label="Mapa tridimensional de los alrededores de la calle de Ayala"></div>
               <div id="open-map" class="google-map" aria-label="Mapa de los alrededores de la calle de Ayala" hidden></div>
-              <div class="real-map-tag"><span aria-hidden="true">⌖</span> <span class="tag-city">MADRID · </span>AYALA <b id="map-dimension" hidden>3D</b></div>
+              <div class="real-map-tag"><span aria-hidden="true">⌖</span> EXPLORAR MAPA <b id="map-dimension" hidden>3D</b></div>
+              <span class="map-center-crosshair" aria-hidden="true">⌖</span>
               <div id="city-controls" class="city-controls" aria-label="Controles del mapa tridimensional" hidden>
                 <button id="map-rotate" type="button" aria-label="Girar el mapa 45 grados">↻ <span>Girar</span></button>
                 <button id="map-pitch" type="button" aria-pressed="true">Vista 3D</button>
               </div>
               <div class="shadow-compass" id="shadow-compass" aria-hidden="true"><span class="compass-arrow" id="compass-arrow">↑</span><span><small>LA SOMBRA VA HACIA</small><strong id="compass-label">—</strong></span></div>
+              <a class="map-selection-link" id="map-selection" href="#point-info" hidden>⌖ Punto marcado · Ver sus horas ↓</a>
               <div id="map-message" class="map-message" role="status"><span aria-hidden="true">✳</span><p id="map-message-text">Preparando el mapa…</p><button id="map-retry" type="button" hidden>Reintentar mapa ↗</button></div>
             </div>
-            <figcaption><span>✳</span> Sombras estimadas de edificios en el entorno de Ayala. Los puntos son entradas aproximadas, no mesas.</figcaption>
+            <figcaption><span>✳</span> Toca el lugar exacto donde quieres estar para consultar sus horas de luz. Las sombras dibujadas cubren el entorno de Ayala.</figcaption>
             <div id="map-basemaps" class="map-basemaps" role="group" aria-label="Fondo del mapa" hidden>
               <span>Fondo del mapa</span><div><button id="basemap-street" type="button" aria-pressed="true">Plano</button><button id="basemap-aerial" type="button" aria-pressed="false">Foto aérea</button></div>
             </div>
             <p id="basemap-status" class="map-provider-status" role="status" hidden></p>
+            <button id="select-map-center" class="select-map-center" type="button" disabled>⌖ Marcar el centro del mapa</button>
             <div id="map-options" class="map-options" hidden><p>Para alejarte más o mejorar el rendimiento</p><button id="map-detail" type="button" aria-pressed="false">Pasar a vista 2D ↗</button></div>
             <p id="map-provider-status" class="map-provider-status" role="status" hidden></p>
           </figure>
@@ -56,15 +59,46 @@
             <div class="shadow-status"><p id="shadow-status" role="status">Cargando alturas de edificios…</p><button id="shadows-retry" type="button" hidden>Reintentar ↻</button></div>
           </section>
         </div>
-        <aside class="real-inspector" aria-label="Terrazas registradas en Ayala">
-          <div class="real-inspector-head"><div><p class="section-kicker">UN PASEO POR MADRID</p><h2 id="madrid-title">Calle de Ayala<span class="heading-dot">.</span></h2><p>Recoletos · Madrid</p></div><span class="neighborhood-icon" aria-hidden="true">✳</span></div>
-          <div class="real-explanation"><span aria-hidden="true">✳</span><p>Elige un local para verlo en el mapa y mueve la hora para explorar las sombras del barrio.</p></div>
-          <div class="real-results"><div class="real-list-heading"><h3>Terrazas registradas</h3><button id="madrid-load" type="button">Actualizar ↻</button></div>
+        <aside class="real-inspector" aria-label="Buscar lugares y consultar su luz">
+          <div class="real-inspector-head"><div><p class="section-kicker">TU PRÓXIMO RATO AL SOL</p><h2 id="madrid-title">Busca tu sitio<span class="heading-dot">.</span></h2><p>Explora desde el centro del mapa</p></div><span class="neighborhood-icon" aria-hidden="true">✳</span></div>
+          <div class="real-explanation"><span aria-hidden="true">✳</span><p>Busca un lugar o toca cualquier punto del mapa para descubrir cuándo tendrá sol o sombra.</p></div>
+          <section class="explorer-section" aria-labelledby="search-title">
+            <h3 id="search-title">Un lugar concreto</h3>
+            <form id="place-form" class="place-form">
+              <label for="place-query">Nombre del lugar</label>
+              <div class="search-line"><input id="place-query" type="search" placeholder="Terraza, parque, plaza…" minlength="2" maxlength="80" required><button type="submit">Buscar ↗</button></div>
+            </form>
+            <p id="place-status" class="explorer-status" role="status" aria-live="polite">Buscamos cerca del centro del mapa, hasta 5 km.</p>
+            <ul id="place-results" class="explorer-list" aria-label="Lugares encontrados"></ul>
+          </section>
+          <section id="point-info" class="point-info" aria-labelledby="point-title">
+            <p class="section-kicker">EL PUNTO QUE HAS ELEGIDO</p>
+            <h3 id="point-title">Tu sitio, a lo largo del día</h3>
+            <p id="point-status" class="point-status" role="status" aria-live="polite">Elige un lugar o toca el mapa para ver sus horas.</p>
+            <ul id="point-windows" class="light-windows" aria-label="Horas de sol y sombra estimadas"></ul>
+            <p id="point-note" class="explorer-note" hidden></p>
+          </section>
+          <section class="explorer-section nearby-section" aria-labelledby="nearby-title">
+            <p class="section-kicker">ENCUENTRA TU MOMENTO</p>
+            <h3 id="nearby-title">Sitios con sol cerca</h3>
+            <p class="explorer-intro">Elige una hora o añade una hora final para buscar durante una franja.</p>
+            <button id="use-location" class="use-location" type="button" disabled>⌖ Centrar en mi ubicación</button>
+            <form id="nearby-form" class="nearby-form">
+              <div class="nearby-fields"><label>Desde <input id="nearby-start" type="time" required></label><label>Hasta <span>(opcional)</span><input id="nearby-end" type="time"></label></div>
+              <label for="nearby-radius">Distancia desde el centro del mapa (km)</label>
+              <div class="search-line"><input id="nearby-radius" type="number" value="1" min="0.1" max="5" step="0.1" inputmode="decimal" required><button type="submit">Buscar sol ↗</button></div>
+            </form>
+            <p id="nearby-status" class="explorer-status" role="status" aria-live="polite">Busca parques y terrazas para la fecha seleccionada.</p>
+            <ul id="nearby-results" class="explorer-list" aria-label="Lugares cercanos"></ul>
+            <p class="explorer-note">Se analizan hasta 4 puntos de espacios exteriores. Un punto no representa todo un parque; no se incluyen árboles, nubes, toldos ni sombrillas.</p>
+            <p class="explorer-note">Lugares: <a href="https://www.openstreetmap.org/copyright">OpenStreetMap y colaboradores</a> y Ayuntamiento de Madrid. La búsqueda puede ser incompleta.</p>
+          </section>
+          <details class="real-results"><summary>Terrazas registradas en Ayala</summary><div class="real-list-heading"><h3>Censo municipal</h3><button id="madrid-load" type="button">Actualizar ↻</button></div>
             <p id="madrid-status" class="madrid-status" role="status" aria-live="polite">Consultando el censo municipal…</p>
             <ul id="madrid-list" class="madrid-list" aria-label="Terrazas registradas en la calle de Ayala"></ul>
             <div class="real-light-note"><strong>☼ &nbsp; Aún no sabemos dónde están las mesas</strong><p>Por eso no podemos decirte las horas de sol de cada terraza. El registro tampoco confirma que estén abiertas hoy.</p></div>
             <p class="madrid-source">Fuentes: Ayuntamiento de Madrid, <a href="https://datos.madrid.es/dataset/200085-0-censo-locales/information">censo de terrazas</a> y <a href="https://datos.madrid.es/dataset/300750-0-servicio-mapas">alturas estimadas de edificios</a> · <a href="https://creativecommons.org/licenses/by/4.0/">CC BY 4.0</a>. La consulta no garantiza la actualidad de cada dato.</p>
-          </div>
+          </details>
         </aside>
       </div>
     </section>

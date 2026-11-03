@@ -61,6 +61,17 @@ Al cambiar de etapa: resultado, evidencia, bloqueo y siguiente acción concreta.
 - Evidencia: composición de sombras comparada por píxeles, limpieza nocturna, datos y fotografía reales, vista 3D al máximo alejamiento permitido, paso a 2D y vuelta, teclado, pantallas de 320/390/1440 px y caídas/reintentos simulados del proveedor en 3D y en el respaldo 2D. En una muestra local de 16.178 polígonos el dibujo tuvo una mediana de 27,9 ms en 12 iteraciones; no es una medición de FPS ni de la máquina de Tony.
 - Límites y continuación: el proveedor deja de ofrecer detalle 3D suficiente por debajo del nivel 14, por lo que para alejar más se usa 2D. La foto de España puede ser antigua y conserva sus propias sombras. Falta probar la fluidez en equipos y dispositivos reales e incorporar estas mejoras a la app nativa, que continúa en APP-002/APP-003.
 
+## APP-005 — Buscar luz por punto y franja
+
+- Estado: `in_progress` — petición de Tony del 2026-11-03.
+- Objetivo: mejorar la legibilidad de las sombras sobre la fotografía aérea y permitir elegir un lugar o un punto del mapa, consultar sus tramos estimados y buscar sitios cercanos para una hora o una franja.
+- Aceptación: los dos mapas dibujan sombras más visibles en foto aérea; marcador y cálculo responden al punto elegido; las búsquedas distinguen luz estimada de datos desconocidos y no atribuyen sol a mesas no localizadas; reloj, cobertura, árboles y nubosidad son explícitos. Comprobar fuentes reales y escenarios de fallo, pruebas de cálculo y navegador móvil/escritorio.
+- Alcance: mapa web local y reutilización de cálculo y proveedores con el prototipo nativo; sin alta de servicios ni publicación. Horas en Madrid mientras no haya datos de zona horaria por lugar; cobertura real sujeta al proveedor disponible.
+- Avance: web con sombras más contrastadas en fotografía aérea, selección en el mapa o por nombre, horarios de sol/sombra, búsqueda por hora o franja y distancia, y ubicación opcional. El prototipo nativo comparte el cálculo por franja y también muestra los estados del día. Los locales sin posición de mesas figuran sin confirmar en la búsqueda cercana.
+- Evidencia: consulta y punto reales de Madrid, cuatro puntos exteriores analizados en una búsqueda de ejemplo, 3D y respaldo 2D, franja, errores, cambio de hora y casos con proveedores simulados; diseño inspeccionado en 320/390/768/1440 px. Se empaquetó JavaScript para iOS y Android y se probó la vista web de desarrollo del prototipo, pero no dispositivos nativos. La instancia pública de Overpass respondió 502; los resultados municipales no son un catálogo completo.
+- Límites: las sombras dibujadas cubren Ayala, aunque el cálculo del punto elegido pueda usar otra geometría. La web usa hora de Madrid y el móvil la del teléfono; falta la zona horaria local del destino. No se han contrastado predicciones sobre el terreno ni localizado las mesas; parques no incluyen árboles y la nubosidad es independiente. Cobertura y búsqueda fuera de Madrid siguen sin validarse.
+- Siguiente acción: probar en teléfonos reales, mejorar y validar las fuentes geográficas y temporales fuera de Madrid y contrastar las estimaciones con observaciones. Mantener abierta la tarea hasta demostrar el alcance geográfico y nativo solicitado.
+
 ## REPO-001 — Guardar el proyecto en GitHub
 
 - Estado: `done` — completado y comprobado el 2026-11-02.

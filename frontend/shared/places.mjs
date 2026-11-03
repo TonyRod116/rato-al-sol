@@ -38,7 +38,7 @@ async function queryOverpass(query, fetchFn = fetch) {
       method: 'POST', headers: { 'Content-Type': 'application/x-www-form-urlencoded;charset=UTF-8' },
       body: `data=${encodeURIComponent(`[out:json][timeout:20];${query}`)}`, signal: controller.signal,
     });
-    if (response.status === 406 || response.status === 429) {
+    if (response.status === 406 || response.status === 429 || response.status >= 500) {
       if (live) pauseUntil = Date.now() + 30000;
       throw new Error('El servicio de lugares está ocupado. Espera unos segundos y vuelve a probar.');
     }

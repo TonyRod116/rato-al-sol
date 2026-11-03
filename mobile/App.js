@@ -5,10 +5,10 @@ import Slider from '@react-native-community/slider';
 import * as Location from 'expo-location';
 import { StatusBar } from 'expo-status-bar';
 import MapCanvas from './src/MapCanvas';
-import { distanceMetres, searchNearby, searchPlaces, validCoordinate } from './src/places.mjs';
-import { getScenes } from './src/scene-provider.mjs';
-import { getAyalaFallback, searchMadridFallback, searchMadridParks } from './src/ayala-fallback.mjs';
-import { atMinutes, formatTime, lightAt, prepareScene, shadowShapes, solarWindows } from './src/estimate.mjs';
+import { distanceMetres, searchNearby, searchPlaces, validCoordinate } from '../frontend/shared/places.mjs';
+import { getScenes } from '../frontend/shared/scene-provider.mjs';
+import { getAyalaFallback, searchMadridFallback, searchMadridParks } from '../frontend/shared/ayala-fallback.mjs';
+import { atMinutes, formatTime, lightAt, lightForInterval, prepareScene, shadowShapes, solarWindows } from '../frontend/shared/estimate.mjs';
 import { sunPosition } from '../frontend/solar.mjs';
 import { shadowDirection } from '../frontend/map-shadows.mjs';
 
@@ -41,6 +41,7 @@ function Main() {
   const [customRadius, setCustomRadius] = useState('');
   const [dayOffset, setDayOffset] = useState(0);
   const [minutes, setMinutes] = useState(() => { const now = new Date(); return Math.floor((now.getHours() * 60 + now.getMinutes()) / 15) * 15; });
+  const [endTime, setEndTime] = useState('');
   const [places, setPlaces] = useState([]), [resultsType, setResultsType] = useState(null);
   const [selected, setSelected] = useState(null), [buildings, setBuildings] = useState([]), [coverage, setCoverage] = useState([]);
   const [busy, setBusy] = useState(''), [notice, setNotice] = useState(''), [error, setError] = useState('');
@@ -57,7 +58,7 @@ function Main() {
   const instant = useMemo(() => atMinutes(day, minutes), [day, minutes]);
   const scene = useMemo(() => {
     const area = selected && coverage.find((point) => distanceMetres(point, selected) < 5);
-    return area && !['business', 'place'].includes(selected.kind) ? prepareScene(selected, buildings, area.radius) : null;
+    return area ? prepareScene(selected, buildings, area.radius) : null;
   }, [selected, buildings, coverage]);
   const state = useMemo(() => scene ? lightAt(scene, instant) : 'unknown', [scene, instant]);
   const windows = useMemo(() => scene ? solarWindows(scene, day) : [], [scene, day]);
@@ -76,10 +77,14 @@ function Main() {
     }
     return scenes;
   }, [places, buildings, coverage, resultsType]);
-  const nearbyStates = useMemo(() => Object.fromEntries(Object.entries(nearbyScenes).map(([id, item]) => [id, lightAt(item, instant)])), [nearbyScenes, instant]);
-  const visiblePlaces = sunOnly && resultsType === 'nearby' ? places.filter((place) => nearbyStates[place.id] === 'sun') : places;
-  const sunWindows = windows.filter((window) => window.state === 'sun');
-  const unknownWindows = windows.some((window) => window.state === 'unknown');
+  const endMatch = /^(\d{2}):(\d{2})$/.exec(endTime.trim());
+  const endMinutes = endMatch ? Number(endMatch[1]) * 60 + Number(endMatch[2]) : NaN;
+  const validEnd = !endTime.trim() || (!!endMatch && Number(endMatch[1]) < 24 && Number(endMatch[2]) < 60 && endMinutes > minutes);
+  const nearbyStates = useMemo(() => Object.fromEntries(Object.entries(nearbyScenes).map(([id, item]) => {
+    if (!validEnd) return [id, 'unknown'];
+    return [id, lightForInterval(item, day, minutes, endTime.trim() ? endMinutes : minutes)];
+  })), [nearbyScenes, instant, day, endTime, endMinutes, minutes, validEnd]);
+  const visiblePlaces = sunOnly && resultsType === 'nearby' ? places.filter((place) => !nearbyStates[place.id] || ['sun', 'unknown'].includes(nearbyStates[place.id])).sort((a, b) => Number(nearbyStates[b.id] === 'sun') - Number(nearbyStates[a.id] === 'sun')) : places;
 
   async function search() {
     const seq = ++request.current; setBusy('Buscando lugares…'); setError(''); setNotice('');
@@ -106,7 +111,7 @@ function Main() {
   async function findNearby() {
     if (!validRadius) return;
     const seq = ++request.current; setBusy('Buscando lugares cercanos…'); setError(''); setNotice('');
-    setSelected(null); setBuildings([]); setCoverage([]); setSunOnly(false); setResultsType(null);
+    setSelected(null); setBuildings([]); setCoverage([]); setSunOnly(true); setResultsType(null);
     try {
       const found = await searchNearby(center, searchRadius);
       if (request.current !== seq) return;
@@ -118,7 +123,7 @@ function Main() {
         const geometry = await getScenes(points);
         if (request.current !== seq) return;
         setBuildings(geometry.buildings); setCoverage(points.map((point) => ({ ...point, radius: geometry.radius, source: geometry.source })));
-        setNotice(`Analizados hasta ${points.length} espacios exteriores cercanos. Los locales necesitan una posición de mesas.`);
+        setNotice(`Analizados hasta ${points.length} ${points.length === 1 ? 'espacio exterior cercano' : 'espacios exteriores cercanos'}. Los locales necesitan una posición de mesas.`);
       } catch {
         if (request.current === seq) setNotice('Encontramos lugares, pero no hemos podido obtener los edificios para calcular su luz.');
       }
@@ -152,11 +157,6 @@ function Main() {
     const selectedPoint = { ...point, id: point.id || 'selected-point', name: point.name || 'Punto elegido en el mapa', kind: point.kind || 'point' };
     setSelected(selectedPoint); setError(''); setNotice('');
     setCamera({ latitude: point.latitude, longitude: point.longitude, key: seq });
-    if (selectedPoint.kind === 'business' || selectedPoint.kind === 'place') {
-      setBusy('');
-      setNotice('La marca es el lugar aproximado. Toca en el mapa el punto exterior o las mesas para calcular su luz.');
-      return;
-    }
     if (coverage.some((area) => distanceMetres(area, point) < 5)) {
       setBusy(''); setNotice('Cálculo aproximado para el punto elegido, no para todo el recinto.'); return;
     }
@@ -165,7 +165,7 @@ function Main() {
       const geometry = await getScenes([point]);
       if (request.current !== seq) return;
       setBuildings(geometry.buildings); setCoverage([{ ...point, radius: geometry.radius, source: geometry.source }]);
-      setNotice('Cálculo aproximado para el punto elegido, no para todo el recinto.');
+      setNotice(selectedPoint.kind === 'business' ? 'La marca es la ubicación aproximada del local, no la posición de las mesas. Toca las mesas en el mapa para una estimación de ese punto.' : 'Cálculo aproximado para el punto elegido, no para todo el recinto.');
     } catch { if (request.current === seq) setError('No hay edificios suficientes disponibles para calcular la luz de este punto.'); }
     finally { if (request.current === seq) setBusy(''); }
   }
@@ -228,14 +228,17 @@ function Main() {
           <View style={styles.chips}>{RADIUS.map((r) => <Chip key={r} selected={!radiusText && radius === r} onPress={() => { setRadius(r); setCustomRadius(''); }}>{r < 1000 ? `${r} m` : `${r / 1000} km`}</Chip>)}</View>
           <View style={styles.customDistance}><Text style={styles.distanceLabel}>Otra distancia (km)</Text><TextInput accessibilityLabel="Otra distancia en kilómetros, entre 0,1 y 5" value={customRadius} onChangeText={setCustomRadius} placeholder="0,1 a 5" placeholderTextColor="#9b9b90" keyboardType="decimal-pad" maxLength={6} style={styles.distanceInput} /></View>
           {!validRadius && <Text style={styles.distanceError}>Introduce una distancia entre 0,1 y 5 km.</Text>}
-          <Action onPress={findNearby} disabled={!!busy || !validRadius}>Encontrar lugares cerca  ↗</Action>
+          <View style={styles.customDistance}><Text style={styles.distanceLabel}>Hasta (opcional, HH:MM)</Text><TextInput accessibilityLabel="Hora final opcional en formato HH:MM" value={endTime} onChangeText={setEndTime} placeholder="Ej. 16:30" placeholderTextColor="#9b9b90" keyboardType="numbers-and-punctuation" maxLength={5} style={styles.distanceInput} /></View>
+          <Text style={styles.small}>La hora inicial es la que elijas en el mapa. Sin hora final, buscamos a esa hora.</Text>
+          {!validEnd && <Text style={styles.distanceError}>Introduce una hora final posterior a la del mapa, en formato HH:MM.</Text>}
+          <Action onPress={findNearby} disabled={!!busy || !validRadius || !validEnd}>Encontrar lugares cerca  ↗</Action>
         </>}
         <Text style={styles.privacy}>Al buscar se consulta OpenStreetMap y, en Madrid, el Ayuntamiento. Tu ubicación solo se usa si la eliges.</Text>
       </View>
       {!!busy && <Loading text={busy} />}
       {!!error && <View accessibilityRole="alert" style={[styles.alert, styles.feedback]}><Text style={styles.alertText}>{error}</Text></View>}
       {!!notice && <View style={[styles.note, styles.feedback]}><Text style={styles.noteText}>{notice}</Text></View>}
-      <View style={styles.mapSection}><MapCanvas camera={camera} places={places} selected={selected} shadows={shadows} sun={mapSun} onMove={(point) => { setCenter(point); setOriginLabel(myLocation.current && distanceMetres(myLocation.current, point) < 25 ? 'Tu ubicación' : 'Zona del mapa'); }} onPick={selectPoint} onPlace={selectPoint} />
+      <View style={styles.mapSection}><MapCanvas camera={camera} places={visiblePlaces} selected={selected} shadows={shadows} sun={mapSun} onMove={(point) => { setCenter(point); setOriginLabel(myLocation.current && distanceMetres(myLocation.current, point) < 25 ? 'Tu ubicación' : 'Zona del mapa'); }} onPick={selectPoint} onPlace={selectPoint} />
         <Text style={styles.mapCaption}>✳  Toca el punto exacto donde te sentarías. Las sombras son orientativas.</Text></View>
       <View style={styles.timePanel}>
         <View style={styles.rowBetween}><View><Text style={styles.eyebrow}>DESCUBRE CÓMO CAMBIA LA LUZ</Text><Text style={styles.sectionTitle}>Mueve la hora <Text style={styles.accent}>↗</Text></Text></View><Text style={styles.clock}>{formatTime(minutes)}</Text></View>
@@ -250,21 +253,22 @@ function Main() {
       {selected && <View style={styles.detail}>
         <Text style={styles.eyebrow}>TU PUNTO EN EL MAPA</Text><Text style={styles.detailTitle}>{selected.name}</Text>
         <View style={[styles.status, { borderColor: statusColor[state] }]}><Text style={[styles.statusText, { color: statusColor[state] }]}>{state === 'sun' ? '☼' : state === 'shade' ? '◒' : '○'}  {statusText[state]} · {formatTime(minutes)}</Text></View>
-        {scene ? <><Text style={styles.label}>HORAS CON SOL ESTIMADO</Text>
-          {sunWindows.length ? <View style={styles.windows}>{sunWindows.map((window) => <Text key={window.from} style={styles.window}>≈ {formatTime(window.from)} – {formatTime(window.to)}</Text>)}</View> : <Text style={styles.body}>{unknownWindows ? 'Aún no hay horas de sol que podamos estimar con estos datos.' : 'No se estima sol directo en este punto durante este día.'}</Text>}
-          <Text style={styles.small}>Muestras cada 30 minutos. {unknownWindows ? 'Hay horas sin datos suficientes. ' : ''}Alturas y posición aproximadas; no incluye nubes, árboles, toldos ni sombrillas. {coverage[0]?.source === 'madrid' ? 'Alturas: Ayuntamiento de Madrid · CC BY 4.0.' : 'Edificios: OpenStreetMap.'}</Text></> :
+        {selected.kind === 'business' && <Text style={styles.body}>La marca es la ubicación aproximada del local, no de sus mesas. Toca las mesas en el mapa para consultar ese punto.</Text>}
+        {scene ? <><Text style={styles.label}>LUZ A LO LARGO DEL DÍA</Text>
+          <View style={styles.windows}>{windows.map((window) => <Text key={window.from} style={styles.window}>{statusText[window.state]} · ≈ {formatTime(window.from)} – {window.to === 1440 ? '24:00' : formatTime(window.to)}</Text>)}</View>
+          <Text style={styles.small}>Muestras cada 30 minutos. Alturas y posición aproximadas; no incluye nubes, árboles, toldos ni sombrillas. {coverage[0]?.source === 'madrid' ? 'Alturas: Ayuntamiento de Madrid · CC BY 4.0.' : 'Edificios: OpenStreetMap.'}</Text></> :
           <Text style={styles.body}>Elige en el mapa el punto exterior exacto para intentar calcular sus horas de luz.</Text>}
       </View>}
       {!!resultsType && <View style={styles.results}>
         <View style={styles.rowBetween}><View><Text style={styles.eyebrow}>{resultsType === 'nearby' ? 'CERCA DE TI' : 'RESULTADOS DE LA BÚSQUEDA'}</Text><Text style={styles.sectionTitle}>{resultsType === 'nearby' ? 'Lugares para disfrutar.' : 'Elige un lugar.'}</Text></View><Text style={styles.resultCount}>{places.length}</Text></View>
-        {resultsType === 'nearby' && <View style={styles.filterRow}><Chip selected={!sunOnly} onPress={() => setSunOnly(false)}>Todos</Chip><Chip selected={sunOnly} onPress={() => setSunOnly(true)}>☼ Con sol estimado</Chip></View>}
+        {resultsType === 'nearby' && <View style={styles.filterRow}><Chip selected={!sunOnly} onPress={() => setSunOnly(false)}>Todos</Chip><Chip selected={sunOnly} onPress={() => setSunOnly(true)}>☼ Sol o sin confirmar</Chip></View>}
         {visiblePlaces.length ? visiblePlaces.slice(0, 30).map((place) => {
-          const resultState = nearbyStates[place.id];
+          const resultState = nearbyStates[place.id] || (resultsType === 'nearby' ? 'unknown' : null);
           return <Pressable key={place.id} accessibilityRole="button" onPress={() => selectPoint(place)} style={({ pressed }) => [styles.result, pressed && styles.pressed]}>
-            <View style={styles.resultIcon}><Text style={styles.resultIconText}>{place.kind === 'public' ? '✳' : '↗'}</Text></View><View style={styles.resultBody}><Text style={styles.resultName}>{place.name}</Text><Text style={styles.resultMeta}>{shortDistance(place.distance)} · {place.kind === 'business' ? 'Posición de mesas desconocida' : place.kind === 'public' ? 'Punto aproximado' : 'Lugar aproximado'}</Text>{resultState && <Text style={[styles.resultStatus, { color: statusColor[resultState] }]}>{statusText[resultState]} a las {formatTime(minutes)}</Text>}</View><Text style={styles.arrow}>↗</Text>
+            <View style={styles.resultIcon}><Text style={styles.resultIconText}>{place.kind === 'public' ? '✳' : '↗'}</Text></View><View style={styles.resultBody}><Text style={styles.resultName}>{place.name}</Text><Text style={styles.resultMeta}>{shortDistance(place.distance)} · {place.kind === 'business' ? 'Posición de mesas desconocida' : place.kind === 'public' ? 'Punto aproximado' : 'Lugar aproximado'}</Text>{resultState && <Text style={[styles.resultStatus, { color: statusColor[resultState] }]}>{statusText[resultState]} {endTime.trim() && validEnd ? `de ${formatTime(minutes)} a ${endTime}` : `a las ${formatTime(minutes)}`}</Text>}</View><Text style={styles.arrow}>↗</Text>
           </Pressable>;
         }) : <Text style={styles.body}>{sunOnly ? 'No hay lugares con sol estimado entre los que hemos podido analizar.' : 'Todavía no hay resultados. Prueba otra zona o búsqueda.'}</Text>}
-        {resultsType === 'nearby' && <Text style={styles.small}>Se calculan como máximo 6 puntos exteriores por consulta; en la alternativa municipal, 2. No se modela la sombra de árboles. Los demás lugares pueden tener sol, pero no disponemos de una estimación para ellos.</Text>}
+        {resultsType === 'nearby' && <Text style={styles.small}>El filtro conserva los lugares sin datos identificados como tales. Se calculan como máximo 6 puntos exteriores por consulta; en la alternativa municipal, 2. La franja se estima con muestras cada 30 minutos y no se modela la sombra de árboles.</Text>}
       </View>}
       <View style={styles.footer}><Text style={styles.footerTitle}>Para perseguir el sol.<Text style={styles.accent}> O encontrar sombra.</Text></Text><Text style={styles.small}>La luz es una estimación geométrica y puede variar. Datos de <Text accessibilityRole="link" style={styles.link} onPress={() => Linking.openURL('https://www.openstreetmap.org/copyright')}>OpenStreetMap y sus colaboradores</Text> y <Text accessibilityRole="link" style={styles.link} onPress={() => Linking.openURL('https://datos.madrid.es/dataset/300750-0-servicio-mapas')}>Ayuntamiento de Madrid</Text> (<Text accessibilityRole="link" style={styles.link} onPress={() => Linking.openURL('https://creativecommons.org/licenses/by/4.0/')}>CC BY 4.0</Text>). Los resultados no indican apertura ni disponibilidad.</Text></View>
     </ScrollView>

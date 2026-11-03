@@ -6,7 +6,7 @@ Un mapa sencillo de terrazas con intervalos estimados de sol y sombra, un select
 
 ## Estado real
 
-La web reúne el mapa 3D de Ayala y sombras orientativas. El selector abarca todo el día y el mapa cambia de aspecto con la posición del sol; el botón «Reducir detalle de edificios» ofrece una vista más ligera. En `mobile/` hay un prototipo React Native para iOS y Android con búsqueda por nombre o cercanía, selector de hora, mapa y estimaciones para un punto exterior elegido. La vista web del prototipo comparte la interfaz y el motor solar; la web anterior permanece disponible.
+La web reúne un mapa 3D con sombras orientativas de Ayala, plano o fotografía aérea, búsqueda por nombre o cercanía y horarios estimados de luz para un punto elegido. Puede buscar espacios exteriores para una hora o una franja, con distancia y ubicación opcional. En `mobile/` hay un prototipo React Native para iOS y Android con el mismo motor solar, selección de punto y filtro por hora o franja.
 
 Madrid aporta alturas estimadas municipales; en otras zonas la geometría y las alturas dependen de OpenStreetMap y pueden ser insuficientes. La fuente pública de búsqueda general no respondió en las pruebas de este entorno; se ha probado una alternativa con parques municipales y nombres del censo de Madrid, además de la selección manual de un punto. Las entradas de locales **no identifican las mesas** y la sombra de los árboles no está modelada. Ni las estimaciones ni las sombras se han contrastado sobre el terreno; faltan pruebas en dispositivos nativos y no hay despliegue.
 
@@ -16,7 +16,7 @@ Leer [PROYECTO_Y_DESPLIEGUE.md](PROYECTO_Y_DESPLIEGUE.md): qué construir, rutas
 
 ## Empezar
 
-Para abrir la web anterior, desde la raíz del proyecto y con el puerto libre:
+Para abrir la web, desde la raíz del proyecto y con el puerto libre:
 
 ```bash
 python3 -m http.server 5182 --bind 127.0.0.1 --directory frontend
@@ -42,7 +42,7 @@ node tests/solar.test.mjs
 node tests/madrid.test.mjs
 node tests/map-shadows.test.mjs
 node tests/map-atmosphere.test.mjs
-node --test tests/mobile.test.mjs
+node tests/mobile.test.mjs
 node --check frontend/app.mjs
 python3 scripts/repo_check.py
 bash scripts/check-ai-instructions.sh

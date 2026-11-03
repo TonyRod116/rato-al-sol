@@ -1,15 +1,16 @@
-import { getMadridTerraces, madridUtmToLatLng } from '../../frontend/madrid.mjs';
+import { getMadridTerraces, madridUtmToLatLng } from '../madrid.mjs';
 import { distanceMetres, validCoordinate } from './places.mjs';
 import { inMadridArea } from './madrid-scene.mjs';
 
 const PARKS_URL = 'https://datos.madrid.es/dataset/200761-0-parques-jardines/resource/200761-5-parques-jardines-json/download/200761-0-parques-jardines.json';
 let parksCache = null;
+const fold = (text) => text.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLocaleLowerCase('es');
 
 // Madrid's list covers major parks, not every green space. Its coordinates are
 // reference points rather than surveyed sunny seating locations.
 export async function searchMadridParks(center, radius, query = '', fetchFn = fetch) {
   if (!validCoordinate(center) || !inMadridArea(center) || !Number.isFinite(radius) || radius < 100 || radius > 5000) return [];
-  const name = typeof query === 'string' ? query.trim().toLocaleLowerCase('es') : '';
+  const name = typeof query === 'string' ? fold(query.trim()) : '';
   if (name.length > 80) return [];
   let parks = fetchFn === fetch && parksCache?.expires > Date.now() ? parksCache.items : null;
   if (!parks) {
@@ -28,7 +29,7 @@ export async function searchMadridParks(center, radius, query = '', fetchFn = fe
       if (fetchFn === fetch) parksCache = { items: parks, expires: Date.now() + 5 * 60 * 1000 };
     } finally { clearTimeout(timer); }
   }
-  return parks.filter((park) => !name || park.name.toLocaleLowerCase('es').includes(name))
+  return parks.filter((park) => !name || fold(park.name).includes(name))
     .map((park) => ({ ...park, distance: distanceMetres(center, park) }))
     .filter((park) => park.distance <= radius).sort((a, b) => a.distance - b.distance);
 }
@@ -66,7 +67,8 @@ export async function searchMadridFallback(center, radius, query, fetchFn = fetc
       const location = madridUtmToLatLng(item.coordenada_x_local, item.coordenada_y_local);
       return location && { id: `madrid/${item.id_terraza}`, name: item.rotulo.trim(), latitude: location.lat,
         longitude: location.lng, kind: 'business', outdoor: true };
-    }).filter(Boolean).map((place) => ({ ...place, distance: distanceMetres(center, place) }))
+    }).filter(Boolean).filter((place) => fold(place.name).includes(fold(name)))
+      .map((place) => ({ ...place, distance: distanceMetres(center, place) }))
       .filter((place) => place.distance <= radius).sort((a, b) => a.distance - b.distance);
   } finally { clearTimeout(timer); }
 }

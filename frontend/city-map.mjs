@@ -3,7 +3,7 @@ import { mapAtmosphere } from './map-atmosphere.mjs';
 import { drawShadowMask } from './shadow-mask.mjs?v=20261103-6';
 import { AERIAL_TILES, AERIAL_ATTRIBUTION } from './map-basemap.mjs';
 
-export async function createCityMap(element, onViewChange = () => {}, onBasemapError = () => {}) {
+export async function createCityMap(element, onViewChange = () => {}, onBasemapError = () => {}, onPick = () => {}) {
   const base = 'https://cdn.jsdelivr.net/npm/maplibre-gl@5.24.0/dist/maplibre-gl';
   const css = document.createElement('link');
   css.rel = 'stylesheet'; css.href = `${base}.css`;
@@ -115,6 +115,7 @@ export async function createCityMap(element, onViewChange = () => {}, onBasemapE
   map.on('error', (event) => {
     if (aerialSelected && event.sourceId === aerialSourceId) {
       aerialSelected = false;
+      map.setPaintProperty('ayala-shadows', 'raster-opacity', .44);
       map.removeLayer('pnoa-aerial');
       map.removeSource(aerialSourceId);
       onBasemapError();
@@ -130,8 +131,10 @@ export async function createCityMap(element, onViewChange = () => {}, onBasemapE
   map.on('rotate', () => notifyView());
   map.on('pitch', () => notifyView());
   map.on('moveend', () => notifyView(true));
+  map.on('click', (event) => onPick({ latitude: event.lngLat.lat, longitude: event.lngLat.lng }));
   notifyView(true);
   let markers = [];
+  let selectedPoint;
   let fittedPlaces = false;
   const duration = () => window.matchMedia('(prefers-reduced-motion: reduce)').matches ? 0 : 350;
   return {
@@ -156,6 +159,7 @@ export async function createCityMap(element, onViewChange = () => {}, onBasemapE
     },
     setBasemap(kind) {
       aerialSelected = kind === 'aerial';
+      map.setPaintProperty('ayala-shadows', 'raster-opacity', aerialSelected ? .82 : .44);
       if (aerialSelected && !map.getLayer('pnoa-aerial')) {
         aerialSourceId = `pnoa-aerial-${++aerialGeneration}`;
         map.addSource(aerialSourceId, { type: 'raster', tiles: [AERIAL_TILES], tileSize: 256,
@@ -182,8 +186,8 @@ export async function createCityMap(element, onViewChange = () => {}, onBasemapE
         const pin = document.createElement('button');
         pin.type = 'button'; pin.className = 'google-pin city-map-pin';
         pin.textContent = String(index + 1);
-        pin.setAttribute('aria-label', `${place.name}, entrada aproximada`);
-        pin.addEventListener('click', () => onSelect(place.id));
+        pin.setAttribute('aria-label', place.pinLabel || `${place.name}, entrada aproximada`);
+        pin.addEventListener('click', (event) => { event.stopPropagation(); onSelect(place.id); });
         const marker = new gl.Marker({ element: pin, anchor: 'center' })
           .setLngLat([place.position.lng, place.position.lat]).addTo(map);
         return [{ marker, pin, id: place.id }];
@@ -197,6 +201,16 @@ export async function createCityMap(element, onViewChange = () => {}, onBasemapE
         });
         fittedPlaces = true;
       }
+    },
+    setSelectedPoint(point) {
+      selectedPoint?.remove();
+      if (!point) return;
+      const pin = document.createElement('span');
+      pin.className = 'selected-point-pin';
+      pin.setAttribute('aria-label', 'Punto seleccionado');
+      pin.setAttribute('role', 'img');
+      selectedPoint = new gl.Marker({ element: pin, anchor: 'bottom' })
+        .setLngLat([point.longitude, point.latitude]).addTo(map);
     },
     focus(position) { if (position) map.easeTo({ center: [position.lng, position.lat], duration: duration() }); },
     highlight(id) { for (const entry of markers) entry.pin.classList.toggle('is-selected', entry.id === id); },
