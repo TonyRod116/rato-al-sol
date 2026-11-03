@@ -32,7 +32,9 @@ npm ci
 npx expo start --host localhost
 ```
 
-Expo usa el puerto 8081 si está libre. `localhost` limita la conexión a este ordenador; para acceder desde un teléfono en la misma red se puede iniciar expresamente con `npx expo start --host lan` y escanear el QR con una versión compatible de Expo Go. La app usa mapas nativos de Apple o Google, no una página web incrustada. El aspecto y el rendimiento en iPhone y Android todavía necesitan comprobarse en dispositivos reales; para publicar se deben configurar credenciales propias de los mapas y revisar costes y permisos.
+Expo usa el puerto 8081 si está libre. `localhost` limita la conexión a este ordenador; para acceder desde un teléfono en la misma red se puede iniciar expresamente con `npx expo start --host lan` y escanear el QR con una versión compatible de Expo Go. La app usa mapas nativos de Apple o Google, no una página web incrustada. El aspecto y el rendimiento en iPhone y Android todavía necesitan comprobarse en dispositivos reales; para publicar se deben configurar credenciales propias de los mapas y revisar costes y permisos. Los perfiles para pruebas internas y futuras compilaciones de tienda se explican en [preparación de publicación](docs/RELEASE.md).
+
+Para generar una carpeta web limpia y prepararla para la ruta elegida `tony-r.com/rato-al-sol/`, ejecutar `node scripts/build-web.mjs`. El resultado se guarda en `dist/web/rato-al-sol/`; el comando no sobrescribe una carpeta ya existente. La URL elegida todavía no muestra esta app y su alojamiento no se ha configurado. El procedimiento de prueba local y los pasos pendientes están en [publicación](docs/RELEASE.md).
 
 Para las comprobaciones locales se necesitan Python 3.11 o posterior y Node.js:
 
@@ -43,6 +45,7 @@ node tests/madrid.test.mjs
 node tests/map-shadows.test.mjs
 node tests/map-atmosphere.test.mjs
 node tests/mobile.test.mjs
+node tests/release.test.mjs
 node --check frontend/app.mjs
 python3 scripts/repo_check.py
 bash scripts/check-ai-instructions.sh
@@ -64,6 +67,7 @@ Los tests comprueban casos solares y geométricos concretos, no la precisión de
 - [Fuentes, relojes y cobertura](docs/DATA_SOURCES.md)
 - [Criterios de calidad](docs/QUALITY.md)
 - [Fases de desarrollo](docs/ROADMAP.md)
+- [Preparación para tiendas y web](docs/RELEASE.md)
 - [Estado y siguiente paso](NOTES.md)
 - [Arquitectura](.memory/architecture.md), [decisiones](.memory/decisions.md) y [tareas](.memory/todo.md)
 - [Qué se ha aprovechado de BuildApp y MTM](docs/INHERITED_PRACTICES.md)

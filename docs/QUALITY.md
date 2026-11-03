@@ -9,6 +9,7 @@ node tests/madrid.test.mjs
 node tests/map-shadows.test.mjs
 node tests/map-atmosphere.test.mjs
 node tests/mobile.test.mjs
+node tests/release.test.mjs
 node --check frontend/app.mjs
 node --check frontend/explore-search.mjs
 node --check frontend/demo-data.mjs
@@ -28,6 +29,8 @@ bash scripts/check-ai-instructions.sh
 Los tests de Node comprueban una posición solar de referencia con tolerancia de 0,1°, cambios de horario de Madrid, geometría analítica simple y dirección de sombra dibujada, intervalos, noche, datos ausentes, filtros, privacidad de consultas y contratos municipales. La prueba solar cubre solo ese caso, no su precisión global ni la sombra real en terrazas. Los dos últimos comandos comprueban solo documentación/configuración. La web anterior es estática; el prototipo nativo usa Expo.
 
 La prueba visual ejecutable `tests/shadow-mask.browser.html`, servida desde la raíz del repositorio en localhost, comprueba en un navegador real que una sombra sola y dos superpuestas tienen los mismos píxeles, que se respetan los huecos y que la máscara se limpia cuando no hay sombras.
+
+El 2026-11-03 se prepararon icono, arranque, permisos y perfiles de compilación nativos. `expo prebuild` generó proyectos de Android e iOS en una copia temporal: el manifiesto de Android incorporó una clave sintética y marcó para eliminar permisos de almacenamiento, superposición y vibración; iOS conservó el permiso de ubicación en uso con texto en castellano, sin entradas de ubicación permanente ni movimiento. Se generaron los iconos y las pantallas de arranque, y el JavaScript se empaquetó para ambas plataformas. No se compilaron ni instalaron APK, AAB o IPA. El paquete web se sirvió en `/rato-al-sol/` y se revisó en Chromium a 390 y 1440 px: punto, barra y selector funcionaron con datos municipales y mapas 3D y 2D; en una primera carga lenta se utilizó el respaldo y la segunda cargó 3D. Se comprobó que los módulos locales no fallaran y la configuración local no estuviera disponible. La auditoría npm mostró 14 avisos, dos altos relacionados con herramientas de Expo; revisión pendiente antes de distribuir.
 
 El 2026-11-03 se revisaron los controles adyacentes y el cálculo de sombras con cobertura parcial en Chromium, con capturas de 320, 390 y 1440 px, teclado y cambio a 2D. En Soho New York se eligió un punto exterior aproximado tanto desde el resultado del local como desde el centro del mapa. En ese punto y fecha, la corrección redujo de 14 a 3 las muestras desconocidas de 30 minutos; no es una medida general de cobertura ni de precisión. Una comparación local en Node de tres puntos y 1.603 edificios dio medianas de 165 ms antes y 327 ms después para calcular el día, sin incluir red ni dibujar el mapa; no mide la fluidez en un teléfono. La vista web del prototipo móvil mostró el mismo resultado y respondió al teclado; iOS y Android se empaquetaron sin probarse en teléfonos. Las pruebas incluyen edificios con altura desconocida, punto interior, noche y sol próximo al horizonte. Overpass devolvió 502 y la búsqueda municipal encontró el local. No se han contrastado sombras ni mesas sobre el terreno.
 

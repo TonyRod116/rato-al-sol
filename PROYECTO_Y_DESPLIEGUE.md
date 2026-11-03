@@ -16,11 +16,11 @@ El detalle del MVP y sus límites está en [producto](docs/PRODUCT.md), los dato
 
 ## 2. Estado real y primera lectura de cualquier IA
 
-Hay una web con sombras orientativas en Ayala y un prototipo React Native/Expo que permite elegir un punto y estimar su luz usando edificios disponibles. Madrid aporta alturas municipales; la búsqueda general usa una fuente pública no garantizada. El censo aporta entradas aproximadas, no la posición de las mesas. **No hay estimaciones contrastadas sobre el terreno, backend compartido, dominios asignados ni servicios publicados.**
+Hay una web con sombras orientativas en Ayala y un prototipo React Native/Expo que permite elegir un punto y estimar su luz usando edificios disponibles. Madrid aporta alturas municipales; la búsqueda general usa una fuente pública no garantizada. El censo aporta entradas aproximadas, no la posición de las mesas. Tony ha elegido una ruta de su dominio personal para la futura web. **No hay estimaciones contrastadas sobre el terreno ni servicios de esta app publicados.**
 
 Al entrar desde CLI: leer `AGENTS.md` (o su copia de la herramienta), este archivo, `NOTES.md` y la tarea pertinente de `.memory/todo.md`. Revisar la evidencia actual antes de decidir qué implementar; no repetir trabajo terminado ni interpretar una ruta propuesta como un servicio existente.
 
-Los nombres y las carpetas de las tres apps están confirmados. La web anterior usa HTML/CSS/JavaScript sin build; `mobile/` usa React Native y Expo y comparte el motor solar. Los destinos externos siguen siendo **propuestas**; no hay API propia instalada.
+Los nombres y las carpetas de las tres apps están confirmados. La web usa HTML/CSS/JavaScript estático y un empaquetado local; `mobile/` usa React Native y Expo y comparte el motor solar. La ruta web elegida todavía no está publicada y no hay API propia instalada.
 
 ## 3. Mapa de carpetas y conexiones
 
@@ -29,13 +29,13 @@ Los nombres y las carpetas de las tres apps están confirmados. La web anterior 
 | Proyecto actual | `/home/tonirod/code/Cool_Projects/rato-al-sol/` | Existe; entrar aquí para las instrucciones y la documentación |
 | Código frontend propio | `/home/tonirod/code/Cool_Projects/rato-al-sol/frontend/` | Web estática y motor solar compartido |
 | App nativa | `/home/tonirod/code/Cool_Projects/rato-al-sol/mobile/` | React Native/Expo; prototipo local, sin publicación ni prueba en dispositivo todavía |
-| Build frontend | Web anterior: no aplica; app: Expo | Los comandos y límites están en el README |
+| Build frontend | Web: `dist/web/rato-al-sol/`; app: Expo | El paquete web se genera localmente; no hay binarios nativos distribuidos |
 | Frontend local | `http://127.0.0.1:5182/` | Puerto usado en las pruebas locales; requiere arrancar el servidor indicado en el README |
 | Repo nuevo de API común | `/home/tonirod/code/Cool_Projects/cool-projects-api/` | Propuesto y NO creado; separado de los tres frontends y de BuildApp |
 | Backend local común | `http://127.0.0.1:8091/` | Puerto propuesto; no hay backend arrancado |
 | Contrato de esta app en API común | `/api/v1/rato-al-sol/terraces` y `/api/v1/rato-al-sol/sun-windows` | Endpoints de diseño, NO implementados |
 | Salud de API común | `/health` | Endpoint propuesto para comprobar disponibilidad e identidad de la versión propia |
-| Web pública de esta app | `https://<DOMINIO_PROPIO_DE_ESTA_APP>/` | Marcador, no URL real ni dominio registrado |
+| Web futura de esta app | `https://tony-r.com/rato-al-sol/` | Ruta elegida por Tony; hoy devuelve su web personal, no Rato al Sol |
 | API pública común | `https://<HOST_NUEVO_COOL_PROJECTS_API>/` | Marcador, no URL real ni servicio creado |
 
 Antes de usar puertos locales, comprobar que estén libres. No detener procesos de BuildApp u otros trabajos para liberar un puerto; elegir otro y registrarlo. Un valor propuesto no sustituye esa comprobación.
@@ -71,17 +71,17 @@ Puede haber una sola API de Cool Projects con módulos/rutas separados para las 
 
 ## 5. Cómo se publicaría el FRONTEND
 
-**Esquema de referencia de BuildApp: build estático -> IONOS -> Cloudflare. Para esta app se usaría un sitio/raíz propio y un dominio separado.** Ese patrón está documentado localmente; no se ha consultado el estado online de BuildApp ni se necesita hacerlo para esta preparación.
+**Destino elegido por Tony: `https://tony-r.com/rato-al-sol/`.** El alojamiento y la forma de aislar esa ruta todavía no están identificados; no se ha modificado el sitio existente. El patrón de referencia de BuildApp no autoriza a utilizar sus recursos. La preparación y los requisitos están en [publicación](docs/RELEASE.md).
 
 Rutas que debe conocer la IA:
 
 - Trabajar en el frontend de **este** proyecto: `/home/tonirod/code/Cool_Projects/rato-al-sol/frontend/`.
-- El ejemplo actual no tiene build. Si se adopta uno, registrar su salida real; no usar la salida `apps/web/public/` de BuildApp.
+- Paquete local: `node scripts/build-web.mjs`, con salida `dist/web/rato-al-sol/`. Incluye solo archivos públicos necesarios; no usar la salida `apps/web/public/` de BuildApp.
 - Destino remoto: `<WEB_ROOT_IONOS_NUEVO_Y_EXCLUSIVO_DE_ESTA_APP>`, aún sin asignar. La IA debe recuperar el valor real registrado aquí antes de subir nada; nunca adivinarlo por la cuenta SFTP ni usar la raíz de BuildApp.
-- Dominio: `<DOMINIO_PROPIO_DE_ESTA_APP>`, pendiente. Paneles de referencia: [IONOS](https://www.ionos.es/) y [Cloudflare](https://dash.cloudflare.com/). No hay un sitio o zona nuevos configurados por esta guía.
+- URL: `https://tony-r.com/rato-al-sol/`, elegida pero aún no desplegada. Identificar el alojamiento real y confirmar que el destino no es un recurso protegido de BuildApp antes de operar sobre él; no asumir que utiliza ningún proveedor concreto.
 - Configuración pública del cliente: URL de la API **nueva** de Cool Projects. Si se elige Vite, una variable pública como `VITE_API_BASE_URL` podría contener esa URL, jamás claves EMT/AEMET o contraseñas.
 
-Cuando haya autorización para publicar, el recorrido será: comprobar el artefacto y la interfaz de esta app; confirmar sitio/raíz/dominio propios; subir solo los archivos de cliente necesarios; conservar sus reglas de hosting; invalidar únicamente su caché si procede; verificar sus URLs y, si existe, una consulta a la API nueva. No subir `.env`, código privado de servidor, `node_modules` ni credenciales.
+Cuando haya autorización para publicar, el recorrido será: comprobar el artefacto y la interfaz de esta app; identificar y confirmar un destino aislado para la subruta elegida; subir solo los archivos de cliente necesarios; conservar las reglas y el resto del sitio; invalidar únicamente su caché si procede; verificar sus URLs y, si existe, una consulta a la API nueva. No subir `.env`, código privado de servidor, `node_modules` ni credenciales.
 
 Si se automatiza, el workflow pertenecerá al repo de esta app, por ejemplo `.github/workflows/frontend-deploy.yml`, con secretos y destino nuevos. **Ese archivo no se crea ni se activa ahora.** No copiar el workflow de BuildApp junto con sus secretos ni sus destinos.
 
@@ -110,9 +110,9 @@ Configurar CORS solo para los orígenes de estas apps que realmente se publiquen
 | Dato que debe quedar registrado | Valor actual |
 |---|---|
 | Repo remoto frontend y rama de publicación | [TonyRod116/rato-al-sol](https://github.com/TonyRod116/rato-al-sol), privado; rama de publicación pendiente |
-| Comando real y carpeta real de build frontend | El ejemplo estático no tiene build; publicación pendiente |
+| Comando real y carpeta real de build frontend | `node scripts/build-web.mjs` → `dist/web/rato-al-sol/`; publicación pendiente |
 | Sitio/destino SFTP y web root propios | PENDIENTE; no usar el de BuildApp |
-| Dominio/URL de esta app y zona propia | PENDIENTE |
+| URL de esta app y enrutado | `https://tony-r.com/rato-al-sol/`, elegido; alojamiento y publicación PENDIENTES |
 | Repo remoto y raíz de código de API común | PENDIENTE; carpeta propuesta `cool-projects-api/` |
 | ID/nombre y URL del servicio Render nuevo | PENDIENTE; no usar servicios de BuildApp |
 | Workflow/commit de despliegue propio | PENDIENTE |
@@ -125,9 +125,7 @@ Registrar identificadores no secretos y enlaces de consola verificados cuando se
 
 ## 8. Qué se puede hacer ahora
 
-Este encargo: documentar propósito, rutas, procedimiento e independencia de BuildApp; sincronizar instrucciones y comprobar los enlaces. Nada de implementación ni operaciones de infraestructura.
-
-Próximo encargo de desarrollo: leer el [roadmap](docs/ROADMAP.md), resolver las decisiones mínimas con evidencia y construir la primera pieza autorizada. Si incluye backend, usar/crear únicamente la API propia de Cool Projects dentro de ese alcance. Antes de publicar deben existir y estar comprobados los destinos reales de la ficha anterior.
+La implementación y preparación locales continúan según [tareas](.memory/todo.md). La web y las apps aún requieren las comprobaciones y decisiones de [publicación](docs/RELEASE.md); preparar archivos no equivale a autorizar ni efectuar despliegues. Si se incluye backend, usar únicamente recursos propios de Cool Projects dentro del alcance autorizado.
 
 ## 9. Referencias de BuildApp consultadas SOLO para aprender
 

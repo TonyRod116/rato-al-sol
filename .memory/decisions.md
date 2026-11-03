@@ -60,3 +60,8 @@ Documentar el motivo y la evidencia al resolverlas. No convertir una propuesta e
 - Tony pidió priorizar una app nativa iOS/Android, además de web, con búsqueda por nombre o por hora y distancia. Se elige React Native/Expo para compartir interfaz y motor solar sin incrustar la web; la web anterior se conserva.
 - Se calcula para puntos exteriores elegidos y para una muestra acotada de espacios públicos, nunca para mesas inferidas de la entrada de un local. Madrid proporciona alturas estimadas; OpenStreetMap es candidato para cobertura más amplia, pero el servicio público de consultas no respondió en las pruebas locales y no está validado para producción.
 - Expo SDK 57 permite la ruta de prueba con Expo Go durante la transición a SDK 58. La auditoría de npm identifica avisos en Expo CLI que deben revisarse antes de distribuir. Las pruebas de empaquetado no equivalen a probar iOS o Android en un dispositivo.
+
+## 2026-11-03 — destinos de publicación elegidos
+
+- Tony quiere publicar más adelante en Android, iPhone y `https://tony-r.com/rato-al-sol/`. La ruta web elegida reemplaza la antigua propuesta de un dominio distinto; el alojamiento concreto aún no se ha identificado ni modificado. La prohibición de utilizar recursos de BuildApp sigue vigente.
+- Se preparan perfiles EAS, iconos y pantalla de arranque con la identidad existente, y un paquete estático para esa subruta. Android necesitará una clave de Maps propia y restringida a las firmas utilizadas; Apple Maps es el proveedor actual en iPhone. La configuración local no crea cuentas, claves, binarios firmados ni publicaciones. Ver [publicación](../docs/RELEASE.md).

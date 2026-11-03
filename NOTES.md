@@ -4,6 +4,7 @@ Actualizado: 2026-11-03.
 
 - **Estado**: web 3D de Ayala y prototipo React Native con búsqueda, mapa y estimaciones para puntos elegidos. Faltan prueba en dispositivo, fuente general fiable y validación sobre el terreno; no se conocen las mesas de los locales. Ver [tareas](.memory/todo.md).
 - **Orientación de producto y publicación**: [guía obligatoria](PROYECTO_Y_DESPLIEGUE.md). BuildApp protegido; backend nuevo de Cool Projects compartible entre las tres apps, aún inexistente.
+- **Destinos elegidos**: Android, iPhone y futura web en `tony-r.com/rato-al-sol/`. La [preparación de publicación](docs/RELEASE.md) distingue configuración local y pendientes de cuentas, mapas, hosting y pruebas reales.
 - **Referencia principal**: BuildApp; adaptación documentada en [prácticas heredadas](docs/INHERITED_PRACTICES.md).
 - **Verdad del producto**: [alcance](docs/PRODUCT.md), [fuentes](docs/DATA_SOURCES.md), [calidad](docs/QUALITY.md).
 - **Siguiente acción útil**: probar la app en iOS/Android, resolver la disponibilidad de la búsqueda general y contrastar las sombras y las posiciones de mesas sobre el terreno.

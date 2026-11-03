@@ -91,6 +91,17 @@ Al cambiar de etapa: resultado, evidencia, bloqueo y siguiente acción concreta.
 - Evidencia: se corrigió el cálculo compartido conservando como desconocidos el sol sin cobertura suficiente, los puntos dentro de edificios y la cercanía al horizonte. Soho ofrece puntos exteriores también al marcar el centro del mapa; se comprobó el punto este y sus horas en la web y la vista web del prototipo móvil, controles táctiles/teclado, 2D, y capturas de 320, 390 y 1440 px. Las pruebas de dominio y el empaquetado JavaScript de iOS y Android pasan. Se corrigió además la caché de módulos que mantenía el cálculo anterior tras recargar.
 - Límites y continuación: los intervalos son aproximados, no se han contrastado en la calle ni se conocen las mesas. Pueden seguir apareciendo tramos sin datos; Overpass respondió 502 y el resultado de Soho llegó del censo municipal. Falta probar en teléfonos reales y continuar APP-002 y APP-006.
 
+## APP-008 — Preparar Android, iPhone y web en la ruta elegida
+
+- Estado: `done` para la preparación local — petición de Tony del 2026-11-03; distribución y publicación siguen pendientes.
+- Objetivo: preparar la app nativa para futuras distribuciones de Android e iPhone y la web para `https://tony-r.com/rato-al-sol/`.
+- Aceptación: configuración reproducible para ambos sistemas, iconos propios y mapa de Android configurado sin guardar claves; paquete web limitado a archivos públicos y comprobado bajo la subruta real; guía de publicación y pendientes verificables. Diferenciar preparación, compilación nativa, pruebas en dispositivos y publicación.
+- Evidencia inicial: la URL elegida devuelve actualmente la web personal de Tony; no se conoce su configuración de alojamiento ni se ha desplegado allí. El prototipo comparte código con la web y todavía no tiene pruebas en teléfonos ni catálogo general fiable. No hay herramientas nativas de Android/iOS en este entorno.
+- Permisos: implementación y pruebas locales y actualización de la rama privada ya autorizada. La petición expresa que quiere publicar más adelante; no autoriza por sí sola desplegar, presentar en tiendas, crear cuentas, activar pagos ni usar recursos protegidos de BuildApp.
+- Evidencia: configuración, iconos, arranque y permisos generados para ambas plataformas en una copia temporal; clave sintética de Android presente en el manifiesto y falta de clave rechazada para esa compilación; JavaScript empaquetado para iOS y Android. La web se sirvió desde `/rato-al-sol/` con 22 archivos explícitos y se probaron marcador, selector y barra solar en 3D/2D a 390/1440 px; no se publicó su configuración local. Pruebas de producto, empaquetado, documentación e instrucciones superadas.
+- Límites: no hay APK, AAB, IPA, firma ni proyecto EAS verificado y no se han probado teléfonos. Android requiere una clave de mapas propia con restricciones. La auditoría npm encontró 14 avisos, dos altos en herramientas de Expo; falta evaluar la solución antes de distribuir. La fuente general, las sombras y las mesas continúan pendientes de validación según APP-002 y APP-006. El alojamiento de la URL elegida sigue sin identificar y sin modificar.
+- Siguiente acción: continuar las tareas de producto, probar Android/iPhone reales y, cuando se autorice la distribución, completar las cuentas, firma, clave de mapas, privacidad, revisión de dependencias y destino aislado descritos en [publicación](../docs/RELEASE.md).
+
 ## REPO-001 — Guardar el proyecto en GitHub
 
 - Estado: `done` — completado y comprobado el 2026-11-02.
