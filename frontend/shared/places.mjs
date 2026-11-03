@@ -1,10 +1,18 @@
 // Public OpenStreetMap pilot: queries are explicit, bounded and sent in the POST body.
 const ENDPOINT = 'https://overpass-api.de/api/interpreter';
+// The public Europe extract is used for the Barcelona pilot; elsewhere retain
+// the worldwide endpoint so an empty regional extract is not treated as data.
+const BARCELONA_ENDPOINT = 'https://ovp.dresel.systems/api/interpreter';
 const EARTH_RADIUS = 6371000;
 const MAX_PLACES = 80;
 const MAX_BUILDINGS = 4000;
 const recent = new Map();
-let pauseUntil = 0;
+const pauseUntil = new Map();
+
+function endpointFor(points) {
+  return points.every((point) => point.latitude >= 41.1 && point.latitude <= 41.65 && point.longitude >= 1.75 && point.longitude <= 2.5)
+    ? BARCELONA_ENDPOINT : ENDPOINT;
+}
 
 const fold = (text) => text.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLocaleLowerCase('es').trim();
 
@@ -77,21 +85,24 @@ function around(point, radius) {
   return `${radius},${point.latitude.toFixed(6)},${point.longitude.toFixed(6)}`;
 }
 
-async function queryOverpass(query, fetchFn = fetch) {
+async function queryOverpass(query, fetchFn = fetch, endpoint = ENDPOINT) {
   const live = fetchFn === globalThis.fetch;
   const now = Date.now();
-  const cached = live && recent.get(query);
+  const cacheKey = `${endpoint}|${query}`;
+  const cached = live && recent.get(cacheKey);
   if (cached && cached.until > now) return cached.elements;
-  if (live && now < pauseUntil) throw new Error('El servicio de lugares está ocupado. Espera unos segundos y vuelve a probar.');
+  if (live && now < (pauseUntil.get(endpoint) || 0)) throw new Error('El servicio de lugares está ocupado. Espera unos segundos y vuelve a probar.');
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), 27000);
   try {
-    const response = await fetchFn(ENDPOINT, {
-      method: 'POST', headers: { 'Content-Type': 'application/x-www-form-urlencoded;charset=UTF-8' },
+    const headers = { 'Content-Type': 'application/x-www-form-urlencoded;charset=UTF-8' };
+    if (typeof navigator !== 'undefined' && navigator.product === 'ReactNative') headers['User-Agent'] = 'RatoAlSol/1.0 (https://tony-r.com/rato-al-sol)';
+    const response = await fetchFn(endpoint, {
+      method: 'POST', headers,
       body: `data=${encodeURIComponent(`[out:json][timeout:20];${query}`)}`, signal: controller.signal,
     });
     if (response.status === 406 || response.status === 429 || response.status >= 500) {
-      if (live) pauseUntil = Date.now() + 30000;
+      if (live) pauseUntil.set(endpoint, Date.now() + 30000);
       throw new Error('El servicio de lugares está ocupado. Espera unos segundos y vuelve a probar.');
     }
     if (!response.ok) throw new Error('El servicio de lugares no está disponible.');
@@ -99,7 +110,7 @@ async function queryOverpass(query, fetchFn = fetch) {
     if (!data || !Array.isArray(data.elements) || data.remark) throw new Error('La respuesta de lugares está incompleta.');
     if (live) {
       if (recent.size >= 8) recent.delete(recent.keys().next().value);
-      recent.set(query, { elements: data.elements, until: Date.now() + 60000 });
+      recent.set(cacheKey, { elements: data.elements, until: Date.now() + 60000 });
     }
     return data.elements;
   } finally { clearTimeout(timeout); }
@@ -134,7 +145,7 @@ export async function searchPlaces(text, center, radius = 5000, fetchFn = fetch)
   // Escape both the regex and Overpass string; only our bounded alternatives are operators.
   const literal = namePattern(name).replace(/\\/g, '\\\\').replace(/"/g, '\\"');
   const filter = category ? `${category.filter}["name"]` : `["name"~"${literal}",i]`;
-  const elements = await queryOverpass(`nwr(around:${around(center, radius)})${filter};out center tags ${MAX_PLACES};`, fetchFn);
+  const elements = await queryOverpass(`nwr(around:${around(center, radius)})${filter};out center tags ${MAX_PLACES};`, fetchFn, endpointFor([center]));
   return normalizePlaces(elements, center);
 }
 
@@ -145,7 +156,7 @@ export async function searchNearby(center, radius, fetchFn = fetch) {
     `nwr(around:${a})["place"="square"]["name"];` +
     `nwr(around:${a})["amenity"~"^(restaurant|cafe|bar|pub|ice_cream)$"]["outdoor_seating"="yes"]["name"];` +
     `);out center tags ${MAX_PLACES};`;
-  const elements = await queryOverpass(query, fetchFn);
+  const elements = await queryOverpass(query, fetchFn, endpointFor([center]));
   return normalizePlaces(elements, center).filter((place) => place.distance <= radius);
 }
 
@@ -164,7 +175,7 @@ function heightOf(tags) {
 export async function getBuildings(points, fetchFn = fetch) {
   if (!Array.isArray(points) || !points.length || points.length > 6 || !points.every(validCoordinate)) throw new Error('Puntos no válidos.');
   const clauses = points.map((point) => `way(around:${around(point, 400)})["building"];`).join('');
-  const elements = await queryOverpass(`(${clauses});out geom ${MAX_BUILDINGS};`, fetchFn);
+  const elements = await queryOverpass(`(${clauses});out geom ${MAX_BUILDINGS};`, fetchFn, endpointFor(points));
   if (!elements.length || elements.length >= MAX_BUILDINGS) throw new Error('No hay geometría de edificios suficiente para calcular.');
   const buildings = [];
   for (const item of elements) {

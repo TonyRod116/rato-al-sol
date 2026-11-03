@@ -1,5 +1,5 @@
-import { classifyLight, pointInOrOnPolygon, shadowOffset, sunPosition } from '../solar.mjs';
-import { distanceMetres, validCoordinate } from './places.mjs';
+import { classifyLight, pointInOrOnPolygon, sunPosition } from '../solar.mjs';
+import { validCoordinate } from './places.mjs';
 
 const METRES_PER_DEGREE = 111319.49079327358;
 export function prepareScene(point, buildings, radius = 400) {
@@ -121,26 +121,6 @@ export function lightForInterval(scene, day, from, to = from, instantAt = atMinu
   const relevant = windows.filter((window) => window.from < to && window.to > from);
   return relevant.some((window) => window.state === 'shade' || window.state === 'night') ||
     edges.some((state) => state === 'shade' || state === 'night') ? 'shade' : 'unknown';
-}
-
-export function shadowShapes(buildings, point, instant) {
-  if (!validCoordinate(point) || !Array.isArray(buildings)) return [];
-  const sun = sunPosition(instant, point.latitude, point.longitude);
-  const east = METRES_PER_DEGREE * Math.cos(point.latitude * Math.PI / 180);
-  const nearby = buildings.filter((b) => b.height).map((building) => ({ building,
-    distance: building.footprint.reduce((min, vertex) => Math.min(min, distanceMetres(point, vertex)), Infinity) }))
-    .filter((entry) => entry.distance < 250).sort((a, b) => a.distance - b.distance).slice(0, 45).map((entry) => entry.building);
-  const shapes = [];
-  for (const building of nearby) {
-    const offset = shadowOffset(sun, building.height);
-    if (!offset) continue;
-    const roof = building.footprint.map((p) => ({ latitude: p.latitude - offset[1] / METRES_PER_DEGREE, longitude: p.longitude + offset[0] / east }));
-    shapes.push(roof);
-    for (let i = 0; i < building.footprint.length - 1; i++) {
-      shapes.push([building.footprint[i], building.footprint[i + 1], roof[i + 1], roof[i]]);
-    }
-  }
-  return shapes.slice(0, 300);
 }
 
 export function formatTime(minutes) {

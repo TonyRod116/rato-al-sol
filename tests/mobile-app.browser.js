@@ -9,7 +9,8 @@ async page => {
   }
   await page.reload();
   await page.getByRole('radio', { name: 'Español' }).click();
-  const attribution = await page.getByRole('link', { name: 'OpenStreetMap' }).boundingBox();
+  await page.locator('.maplibregl-ctrl-attrib, .leaflet-control-attribution').first().waitFor({ timeout: 35000 });
+  const attribution = await page.locator('.maplibregl-ctrl-attrib, .leaflet-control-attribution').first().boundingBox();
   const handle = await page.getByRole('button', { name: 'Ampliar panel' }).boundingBox();
   if (!attribution || !handle || attribution.y + attribution.height > handle.y) throw new Error('La atribución del mapa queda tapada por la ficha.');
   await page.getByRole('button', { name: 'Buscar lugar, ciudad o dirección' }).click();
@@ -54,6 +55,25 @@ async page => {
   await page.getByRole('radio', { name: 'English' }).click();
   await page.getByText('Parque de prueba', { exact: true }).first().waitFor();
   if (await page.getByRole('slider', { name: 'Time to check sunlight' }).inputValue() !== '780') throw new Error('La hora cambió al cambiar de idioma.');
+  await page.getByRole('radio', { name: 'Español' }).click();
+  await page.unroute('**/overpass-api.de/**');
+  await page.route('**/overpass-api.de/**', route => route.fulfill({ status: 503, body: 'Unavailable' }));
+  await page.route('**/ovp.dresel.systems/**', route => route.fulfill({ status: 503, body: 'Unavailable' }));
+  await page.route('**/opendata-ajuntament.barcelona.cat/**', route => {
+    const metadata = route.request().url().includes('package_show');
+    return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(metadata
+      ? { success: true, result: { resources: [{ id: 'ca298802-c798-4750-b078-021af11ce46b', name: '2026_1S_Data_set.csv', format: 'CSV' }] } }
+      : { success: true, result: { total: 1, records: [{ _id: 1, EMPLACAMENT: 'Passeig de prueba, 10', LATITUD: '41.39172', LONGITUD: '2.16495' }] } }) });
+  });
+  await page.getByRole('button', { name: 'Buscar lugar, ciudad o dirección' }).click();
+  await page.getByRole('button', { name: 'Barcelona ↗' }).click();
+  if (await page.getByRole('slider', { name: 'Hora para consultar el sol' }).inputValue() !== '780') throw new Error('La hora cambió al elegir Barcelona.');
+  await page.getByRole('button', { name: 'Buscar lugar, ciudad o dirección' }).click();
+  await page.getByRole('textbox', { name: 'Nombre o tipo de lugar' }).fill('restaurante');
+  await page.getByRole('button', { name: 'Buscar', exact: true }).click();
+  await page.getByText('Passeig de prueba, 10').waitFor();
+  await page.getByText('Terraza registrada · tipo sin confirmar', { exact: false }).first().waitFor();
+  await page.getByText('Ayuntamiento de Barcelona', { exact: true }).first().waitFor();
   if (failures.length) throw new Error(failures.join('; '));
-  return { providerFailure: 'visible', selectedPlace: 'visible', languageAndTime: 'preserved' };
+  return { providerFailure: 'visible', selectedPlace: 'visible', languageAndTime: 'preserved', barcelonaFallback: 'labelled' };
 }

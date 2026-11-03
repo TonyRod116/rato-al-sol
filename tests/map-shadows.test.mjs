@@ -98,3 +98,12 @@ test('viewport filtering keeps a shadow cast into view by an off-screen building
   assert.deepEqual(buildingShadows(buildings, sun, reachesView), buildingShadows(buildings, sun));
   assert.equal(buildingShadows(buildings, sun, farAway).features.length, 0);
 });
+
+test('shadows cover more than 45 buildings across the view', () => {
+  const features = Array.from({ length: 100 }, (_, i) => {
+    const dx = (i % 10) * .0002, dy = Math.floor(i / 10) * .00015;
+    return { type: 'Feature', properties: { height: 12 }, geometry: { type: 'Polygon', coordinates: [square.map(([x, y]) => [x + dx, y + dy])] } };
+  });
+  const shadows = buildingShadows({ type: 'FeatureCollection', features }, { altitude: 45, azimuth: 180 }, [-3.689, 40.426, -3.685, 40.431]);
+  assert.equal(shadows.features.length, 100);
+});

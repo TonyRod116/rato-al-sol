@@ -4,7 +4,7 @@ import { initialSelectedTime, TIME_END, TIME_START } from './shared/time-selecti
 import { buildingShadows, shadowDirection } from './map-shadows.mjs';
 import { getViewportBuildings, viewportBounds } from './viewport-buildings.mjs';
 import { createOpenMap } from './open-map.mjs?v=20261103-18';
-import { createCityMap } from './city-map.mjs?v=20261103-18';
+import { createCityMap } from './city-map.mjs?v=20261103-19';
 import { createExplorer } from './explore-search.mjs?v=20261103-18';
 import { direction, message, savedLanguage, setLanguage, t } from './i18n.mjs';
 

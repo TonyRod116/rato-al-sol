@@ -148,6 +148,15 @@ Al cambiar de etapa: resultado, evidencia, bloqueo y siguiente acción concreta.
 - Alcance: implementación y verificaciones locales y actualización del repositorio privado ya autorizado; no publicación, cuentas, pagos ni infraestructura nueva.
 - Límite y siguiente acción: probar la app en iPhone y Android reales o emuladores, incluido mapa, gestos, accesibilidad y ubicación; este equipo Linux no dispone de las herramientas nativas. Preparar la firma y distribución solo dentro de una autorización específica. No se han contrastado las sombras sobre el terreno.
 
+## APP-014 — Vista 3D desde arriba y Barcelona
+
+- Estado: `in_progress` — petición de Tony del 2026-11-03.
+- Objetivo: ofrecer edificios en 3D casi desde arriba, con el norte arriba, sombras para toda la pantalla y gestos para inclinar, girar y desplazar, e incorporar Barcelona para uso personal.
+- Aceptación: vista móvil de desarrollo con edificios y sombras que se actualizan por zona visible; controles que conservan la selección y la hora, acceso directo a Barcelona y Madrid y comprobación honesta de datos solares disponibles en Barcelona. Verificar errores de mapas y dispositivos en la medida que permita este equipo.
+- Alcance: implementación y pruebas locales y sincronización del repositorio privado ya autorizado; sin publicación ni alta de servicios.
+- Evidencia: en la vista web de desarrollo se comprobó la cámara inicial al norte, inclinación de 20°, giro e inclinación con dos dedos; un caso con 180 edificios sintéticos mostró sombras en los cuatro tramos del mapa y recargó al desplazarse. La consulta real de Madrid devolvió 1.341 edificios en la zona inicial. Se conectó el catálogo municipal de Barcelona (6.942 registros en la prueba del primer semestre de 2026), etiquetado como ubicación aproximada y sin tipo confirmado; se comprobó la selección de ciudad. En el navegador se vieron sombras reales de Barcelona, con aviso de alturas faltantes: la muestra abarcó 646 edificios, 373 con altura o plantas. La búsqueda local de edificios abarca la vista con margen y pide acercar el mapa si la app nativa necesita más de 4.000 polígonos.
+- Siguiente acción: probar la cobertura de alturas en más zonas de Barcelona y el mapa, gestos y rendimiento en iPhone y Android; no se ha contrastado la precisión sobre el terreno.
+
 ## REPO-001 — Guardar el proyecto en GitHub
 
 - Estado: `done` — completado y comprobado el 2026-11-02.

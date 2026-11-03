@@ -4,10 +4,30 @@ import { distanceMetres, getBuildings, searchNearby, searchPlaces } from '../fro
 import { atMinutes, lightAt, nearbyOutdoorScenes, prepareScene, solarWindows } from '../frontend/shared/estimate.mjs';
 import { getMadridScene } from '../frontend/shared/madrid-scene.mjs';
 import { searchMadridFallback, searchMadridParks } from '../frontend/shared/ayala-fallback.mjs';
+import { searchBarcelonaTerraces } from '../frontend/shared/barcelona-terraces.mjs';
+import { nativeViewport, nativeVisibleViewport, paddedViewport, shadowsFitNativeBudget } from '../mobile/src/viewport.mjs';
 import { sunPosition } from '../frontend/solar.mjs';
 
 const madrid = { latitude: 40.42785, longitude: -3.6873 };
 const reply = (elements) => async (_url, options) => ({ ok: true, json: async () => ({ elements }), options });
+
+test('map coverage follows all visible edges with a margin and falls back to the native region', () => {
+  const bounds = [2.16, 41.39, 2.17, 41.40];
+  const padded = paddedViewport(bounds);
+  assert.ok(padded[0] < bounds[0] && padded[1] < bounds[1] && padded[2] > bounds[2] && padded[3] > bounds[3]);
+  assert.equal(paddedViewport([2.17, 41.39, 2.16, 41.40]), null);
+  const region = { latitude: 41.395, longitude: 2.165, latitudeDelta: .01, longitudeDelta: .01 };
+  const native = nativeViewport(region, { southWest: { latitude: 41.39, longitude: 2.16 }, northEast: { latitude: 41.40, longitude: 2.17 } });
+  assert.deepEqual(native, padded);
+  assert.deepEqual(nativeVisibleViewport(region, { southWest: { latitude: 41.39, longitude: 2.16 }, northEast: { latitude: 41.40, longitude: 2.17 } }), bounds);
+  assert.ok(nativeViewport(region, null));
+});
+
+test('native shadows stay complete or request a closer view when too dense', () => {
+  const shapes = { features: [{ geometry: { coordinates: [[], [], []] } }, { geometry: { coordinates: [[]] } }] };
+  assert.equal(shadowsFitNativeBudget(shapes, 4), true);
+  assert.equal(shadowsFitNativeBudget(shapes, 3), false);
+});
 
 test('place search sends literal bounded input in POST, never in the URL', async () => {
   let sent;
@@ -21,6 +41,14 @@ test('place search sends literal bounded input in POST, never in the URL', async
   assert.ok(query.includes('parque\\\\.\\\\*\\";out;'));
   await assert.rejects(() => searchPlaces('x', madrid, 1000, fetch));
   await assert.rejects(() => searchPlaces('parque', madrid, 100000, fetch));
+});
+
+test('Barcelona uses the European building source without applying its limited coverage elsewhere', async () => {
+  const endpoints = [];
+  const fetch = async (url) => { endpoints.push(url); return { ok: true, json: async () => ({ elements: [] }) }; };
+  await searchPlaces('parque', { latitude: 41.39172, longitude: 2.16495 }, 1000, fetch);
+  await searchPlaces('parque', { latitude: 40.7128, longitude: -74.006 }, 1000, fetch);
+  assert.deepEqual(endpoints, ['https://ovp.dresel.systems/api/interpreter', 'https://overpass-api.de/api/interpreter']);
 });
 
 test('a misspelled category finds nearby restaurants by type, not only by their names', async () => {
@@ -58,6 +86,34 @@ test('municipal category fallback returns nearby terraces without inventing thei
   const places = await searchMadridFallback(madrid, 5000, 'reiaurante', fetch);
   assert.equal(places[0]?.name, 'Casa cercana');
   assert.equal(places[0]?.categoryUnknown, true);
+});
+
+test('Barcelona terrace records use the newest release and retain their uncertainty', async () => {
+  const center = { latitude: 41.39172, longitude: 2.16495 }, requests = [];
+  const resource = 'ca298802-c798-4750-b078-021af11ce46b';
+  const fetch = async (url) => {
+    requests.push(url);
+    if (url.includes('package_show')) return { ok: true, json: async () => ({ success: true, result: { resources: [
+      { id: '3be007e1-d1c8-4480-ab33-ba30da5eda1d', name: '2025_2S_Data_set.csv', format: 'CSV' },
+      { id: resource, name: '2026_1S_Data_set.csv', format: 'CSV' },
+    ] } }) };
+    return { ok: true, json: async () => ({ success: true, result: { total: 3, records: [
+      { _id: 1, EMPLACAMENT: 'Passeig de prova, 10', LATITUD: '41.39172', LONGITUD: '2.16495' },
+      { _id: 2, EMPLACAMENT: 'Lejos, 1', LATITUD: '41.41', LONGITUD: '2.16' },
+      { _id: 3, EMPLACAMENT: 'Sin coordenadas', LATITUD: '', LONGITUD: '' },
+    ] } }) };
+  };
+  const results = await searchBarcelonaTerraces(center, 500, 'restaurante', fetch);
+  assert.equal(results.length, 1);
+  assert.equal(results[0].name, 'Passeig de prova, 10');
+  assert.equal(results[0].categoryUnknown, true);
+  assert.deepEqual(results[0].municipalPeriod, { year: 2026, semester: 1 });
+  assert.ok(requests[1].includes(resource));
+  assert.ok(requests.every((url) => !url.includes(String(center.latitude)) && !url.includes('restaurante')));
+  assert.deepEqual(await searchBarcelonaTerraces(center, 500, 'parque', fetch), []);
+  await assert.rejects(() => searchBarcelonaTerraces(center, 500, '', async (url) => url.includes('package_show')
+    ? { ok: true, json: async () => ({ success: true, result: { resources: [{ id: resource, name: '2026_1S_Data_set.csv', format: 'CSV' }] } }) }
+    : { ok: true, json: async () => ({ success: true, result: { total: 2, records: [] } }) }));
 });
 
 test('nearby results are real entries within the requested radius and restaurants are not terrace points', async () => {

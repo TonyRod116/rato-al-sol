@@ -9,11 +9,14 @@ import MapCanvas from './src/MapCanvas';
 import { distanceMetres, searchCategory, searchNearby, searchPlaces, validCoordinate } from '../frontend/shared/places.mjs';
 import { getScenes } from '../frontend/shared/scene-provider.mjs';
 import { searchMadridFallback, searchMadridParks } from '../frontend/shared/ayala-fallback.mjs';
+import { inBarcelonaArea, searchBarcelonaTerraces } from '../frontend/shared/barcelona-terraces.mjs';
 import { inMadridArea } from '../frontend/shared/madrid-scene.mjs';
-import { atMinutes, formatTime, lightAt, lightForInterval, nearbyOutdoorScenes, prepareScene, sceneInsideBuilding, shadowShapes, solarWindows } from '../frontend/shared/estimate.mjs';
+import { atMinutes, formatTime, lightAt, lightForInterval, nearbyOutdoorScenes, prepareScene, sceneInsideBuilding, solarWindows } from '../frontend/shared/estimate.mjs';
 import { sunPosition } from '../frontend/solar.mjs';
-import { shadowDirection } from '../frontend/map-shadows.mjs';
+import { buildingShadows, shadowDirection } from '../frontend/map-shadows.mjs';
+import { getViewportBuildings, viewportBounds } from '../frontend/viewport-buildings.mjs';
 import { DEFAULT_LOCATION } from '../frontend/shared/default-location.mjs';
+import { shadowsFitNativeBudget } from './src/viewport.mjs';
 import { initialSelectedTime, TIME_END, TIME_START } from '../frontend/shared/time-selection.mjs';
 import { isLanguage, languageKey, translate, translateDirection } from '../frontend/shared/i18n.mjs';
 
@@ -30,6 +33,7 @@ const statusColor = { sun: '#a45b24', shade: '#536b74', night: '#536b74', unknow
 const barColor = { sun: '#eeb54f', shade: '#718991', night: '#3f5062', unknown: '#c8cbc1' };
 const shortDistance = (metres, language) => metres < 1000 ? `${Math.round(metres / 10) * 10} m` : `${(metres / 1000).toFixed(1).replace('.', language === 'en' ? '.' : ',')} km`;
 const clockTime = (minutes) => minutes === 1440 ? '24:00' : formatTime(minutes);
+const emptyShadows = { type: 'FeatureCollection', features: [] };
 
 // Show the first useful catalogue while a slow provider continues independently.
 function firstWithResults(tasks) {
@@ -90,6 +94,7 @@ function Main() {
     languageSave.current = languageSave.current.then(() => AsyncStorage.setItem(languageKey, value)).catch(() => {});
   }
   const [mode, setMode] = useState('place');
+  const [view3D, setView3D] = useState(true), [map3DAvailable, setMap3DAvailable] = useState(true);
   const [searchOpen, setSearchOpen] = useState(false);
   const [sheetExpanded, setSheetExpanded] = useState(false);
   const sheetScroll = useRef(null);
@@ -112,23 +117,47 @@ function Main() {
   const [busy, setBusy] = useState(''), [notice, setNotice] = useState(''), [error, setError] = useState('');
   const [sunOnly, setSunOnly] = useState(false);
   const [showAllResults, setShowAllResults] = useState(false);
-  const [mapBuildings, setMapBuildings] = useState([]), [mapStatus, setMapStatus] = useState('');
+  const [mapBounds, setMapBounds] = useState(null), [mapBuildings, setMapBuildings] = useState(null);
+  const [visibleBounds, setVisibleBounds] = useState(null);
+  const [mapStatus, setMapStatus] = useState(''), [mapIssue, setMapIssue] = useState(false);
   const request = useRef(0);
+  const pendingCamera = useRef(null);
   const myLocation = useRef(null);
 
   const searchRadius = radius;
 
+  function focusCamera(point, key) {
+    const position = { latitude: point.latitude, longitude: point.longitude };
+    pendingCamera.current = { ...position, until: Date.now() + 2000 };
+    setCenter(position);
+    setCamera({ ...position, key });
+  }
+
   useEffect(() => {
+    if (!mapBounds) return;
     let cancelled = false;
-    setMapBuildings([]);
+    setMapBuildings(null); setMapIssue(false);
     setMapStatus(msg('Cargando edificios de la zona…', 'Loading buildings in this area…'));
     const timer = setTimeout(() => {
-      getScenes([center]).then((geometry) => {
-        if (!cancelled) { setMapBuildings(geometry.buildings); setMapStatus(msg('Sombras aproximadas: hasta 45 edificios cercanos.', 'Approximate shadows: up to 45 nearby buildings.')); }
-      }).catch(() => { if (!cancelled) setMapStatus(msg('No hay alturas disponibles para dibujar las sombras de esta zona.', 'Building heights are unavailable to draw shadows in this area.')); });
+      getViewportBuildings(mapBounds).then((geometry) => {
+        if (!cancelled) {
+          setMapBuildings(geometry);
+          setMapIssue(Boolean(geometry.omitted));
+          setMapStatus(geometry.omitted
+            ? msg('Sombras aproximadas; algunos edificios no tienen altura disponible.', 'Approximate shadows; some buildings have no available height.')
+            : msg('Sombras aproximadas de los edificios de la zona visible.', 'Approximate building shadows in the visible area.'));
+        }
+      }).catch((error) => {
+        if (!cancelled) {
+          setMapIssue(true);
+          setMapStatus(error?.message?.startsWith('Acerca el mapa')
+            ? msg('Acerca el mapa para cargar las sombras.', 'Zoom in to load shadows.')
+            : msg('No hay alturas disponibles para dibujar las sombras de esta zona.', 'Building heights are unavailable to draw shadows in this area.'));
+        }
+      });
     }, 600);
     return () => { cancelled = true; clearTimeout(timer); };
-  }, [center.latitude, center.longitude]);
+  }, [mapBounds]);
 
   const day = useMemo(() => { const value = new Date(); value.setHours(12, 0, 0, 0); value.setDate(value.getDate() + dayOffset); return value; }, [dayOffset]);
   const instant = useMemo(() => atMinutes(day, minutes), [day, minutes]);
@@ -138,10 +167,11 @@ function Main() {
   }, [selected, buildings, coverage]);
   const state = useMemo(() => scene ? lightAt(scene, instant) : 'unknown', [scene, instant]);
   const windows = useMemo(() => scene ? solarWindows(scene, day) : [], [scene, day]);
-  const shadows = useMemo(() => shadowShapes(mapBuildings, center, instant), [mapBuildings, center, instant]);
   const mapSun = useMemo(() => {
     return sunPosition(instant, center.latitude, center.longitude);
   }, [center, instant]);
+  const shadows = useMemo(() => mapBuildings ? buildingShadows(mapBuildings, mapSun, visibleBounds) : emptyShadows, [mapBuildings, mapSun, visibleBounds]);
+  const nativeShadowsOverBudget = useMemo(() => Platform.OS !== 'web' && !shadowsFitNativeBudget(shadows), [shadows]);
   const direction = useMemo(() => shadowDirection(mapSun), [mapSun]);
   const choices = useMemo(() => selected && scene ? nearbyOutdoorScenes(scene, buildings).map((choice) => ({ ...choice, windows: solarWindows(choice.scene, day) })) : [], [selected, scene, buildings, day]);
   const nearbyScenes = useMemo(() => {
@@ -167,12 +197,15 @@ function Main() {
     if (name.length < 2 || name.length > 80 || /[\x00-\x1f]/.test(name)) {
       setBusy(''); setError(msg('Escribe entre 2 y 80 caracteres para buscar.', 'Enter 2 to 80 characters to search.')); return;
     }
+    const city = name.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
+    if (city === 'barcelona' || city === 'madrid') { goToCity(city); return; }
     const sources = [searchPlaces(name, center)];
     if (inMadridArea(center)) {
       const category = searchCategory(name);
       if (!category || category.kind !== 'public') sources.push(searchMadridFallback(center, 5000, name));
       if (!category || (category.kind === 'public' && !category.filter.includes('square'))) sources.push(searchMadridParks(center, 5000, name));
     }
+    if (inBarcelonaArea(center)) sources.push(searchBarcelonaTerraces(center, 5000, name));
     let waiting = sources.length, successes = 0, merged = [];
     await Promise.all(sources.map(async (source) => {
       try {
@@ -209,6 +242,7 @@ function Main() {
         if (results.every((result) => result.status === 'rejected')) throw new Error('Catálogos municipales no disponibles.');
         return { places: results.flatMap((result) => result.status === 'fulfilled' ? result.value : []).sort((a, b) => a.distance - b.distance), source: 'madrid' };
       }));
+      if (inBarcelonaArea(center)) sources.push(searchBarcelonaTerraces(center, searchRadius).then((places) => ({ places, source: 'barcelona' })));
       const { places: found, source } = await firstWithResults(sources);
       if (request.current !== seq) return;
       setPlaces(found); setResultsType('nearby');
@@ -238,7 +272,7 @@ function Main() {
     const seq = ++request.current;
     const selectedPoint = { ...point, id: point.id || 'selected-point', name: point.name || point.i18nName?.es || 'Punto elegido en el mapa', i18nName: point.i18nName || (!point.name ? msg('Punto elegido en el mapa', 'Point selected on the map') : null), kind: point.kind || 'point' };
     setSelected(selectedPoint); setError(''); setNotice('');
-    setCamera({ latitude: point.latitude, longitude: point.longitude, key: seq });
+    focusCamera(point, seq);
     if (coverage.some((area) => distanceMetres(area, point) < 5)) {
       setBusy(''); setNotice(msg('Cálculo aproximado para el punto elegido, no para todo el recinto.', 'Approximate calculation for the selected point, not the whole area.')); return;
     }
@@ -257,7 +291,7 @@ function Main() {
     const point = { ...choice.point, id: `outside-${choice.direction}`, kind: 'approx', name: `Punto al ${choice.direction.toLocaleLowerCase('es')} de ${selected.i18nName?.es || selected.name}`, i18nName: msg(`Punto al ${choice.direction.toLocaleLowerCase('es')} de ${selected.i18nName?.es || selected.name}`, `Point ${translateDirection('en', choice.direction.toLocaleLowerCase('es'))} of ${selected.i18nName?.en || selected.name}`) };
     const area = coverage.find((item) => distanceMetres(item, selected) < 5);
     setCoverage((previous) => [...previous, { ...point, radius: choice.scene.radius, source: area?.source }]);
-    setSelected(point); setCamera({ ...point, key: seq }); setError(''); setBusy(''); setSheetExpanded(false);
+    setSelected(point); focusCamera(point, seq); setError(''); setBusy(''); setSheetExpanded(false);
     sheetScroll.current?.scrollTo({ y: 0, animated: false });
     setNotice(msg('Punto exterior aproximado; confirma en el mapa dónde están las mesas.', 'Approximate outdoor point; check where the tables are on the map.'));
   }
@@ -272,11 +306,20 @@ function Main() {
       const point = { latitude: result.coords.latitude, longitude: result.coords.longitude };
       if (!validCoordinate(point)) throw new Error('No hemos podido localizarte.');
       myLocation.current = point;
-      setCenter(point); setCamera({ ...point, key: seq }); setOriginLabel('Tu ubicación');
+      focusCamera(point, seq); setOriginLabel('Tu ubicación');
       setPlaces([]); setSelected(null); setBuildings([]); setCoverage([]); setResultsType(null);
       setNotice(msg('Ubicación lista. Busca cerca cuando quieras.', 'Location ready. Search nearby whenever you like.'));
     } catch (err) { if (request.current === seq) setError(describeError(err, 'No hemos podido localizarte.', 'Could not find your location.')); }
     finally { if (request.current === seq) setBusy(''); }
+  }
+
+  function goToCity(city) {
+    const seq = ++request.current;
+    const point = city === 'barcelona' ? { latitude: 41.39172, longitude: 2.16495 } : DEFAULT_LOCATION;
+    focusCamera(point, seq); setOriginLabel('Zona del mapa');
+    setPlaces([]); setSelected(null); setBuildings([]); setCoverage([]); setResultsType(null);
+    setBusy(''); setError(''); setNotice('');
+    setSearchOpen(false); setMode('place'); setSheetExpanded(false);
   }
 
   async function findCity() {
@@ -293,7 +336,7 @@ function Main() {
       const point = matches.find(validCoordinate);
       if (!point) throw new Error('El teléfono no ha encontrado esa ciudad o dirección.');
       if (request.current !== seq) return;
-      setCenter(point); setCamera({ latitude: point.latitude, longitude: point.longitude, key: seq }); setOriginLabel('Zona del mapa');
+      focusCamera(point, seq); setOriginLabel('Zona del mapa');
       setPlaces([]); setSelected(null); setBuildings([]); setCoverage([]); setResultsType(null);
       setNotice(msg('Zona localizada. Toca un punto del mapa o busca lugares cerca.', 'Area found. Tap a point on the map or search for nearby places.'));
       setSearchOpen(false); setMode('place'); setSheetExpanded(false);
@@ -321,7 +364,7 @@ function Main() {
     const resultState = resultsType === 'nearby' ? (nearbyStates[place.id] || 'unknown') : null;
     return <Pressable key={place.id} accessibilityRole="button" onPress={() => choosePoint(place)} style={({ pressed }) => [styles.result, pressed && styles.pressed]}>
       <View style={styles.resultIcon}><Text style={styles.resultIconText}>{place.kind === 'public' ? '✳' : '⌖'}</Text></View>
-      <View style={styles.resultBody}><Text style={styles.resultName}>{pointName(place)}</Text><Text style={styles.resultMeta}>{shortDistance(place.distance, language)} · {place.categoryUnknown ? t('Terraza registrada · tipo sin confirmar', 'Registered outdoor seating · type unconfirmed') : place.kind === 'business' ? t('Posición de mesas desconocida', 'Table location unknown') : t('Punto aproximado', 'Approximate point')}</Text>{resultState && <Text style={[styles.resultStatus, { color: statusColor[resultState] }]}>{statusText[resultState]} {endEnabled ? t(`de ${formatTime(minutes)} a ${clockTime(endMinutes)}`, `from ${formatTime(minutes)} to ${clockTime(endMinutes)}`) : t(`a las ${formatTime(minutes)}`, `at ${formatTime(minutes)}`)}</Text>}</View>
+      <View style={styles.resultBody}><Text style={styles.resultName}>{pointName(place)}</Text><Text style={styles.resultMeta}>{shortDistance(place.distance, language)} · {place.categoryUnknown ? t('Terraza registrada · tipo sin confirmar', 'Registered outdoor seating · type unconfirmed') : place.kind === 'business' ? t('Posición de mesas desconocida', 'Table location unknown') : t('Punto aproximado', 'Approximate point')}{place.municipalPeriod ? t(` · ${place.municipalPeriod.semester === 1 ? '1.er' : '2.º'} sem. ${place.municipalPeriod.year}`, ` · H${place.municipalPeriod.semester} ${place.municipalPeriod.year}`) : ''}</Text>{resultState && <Text style={[styles.resultStatus, { color: statusColor[resultState] }]}>{statusText[resultState]} {endEnabled ? t(`de ${formatTime(minutes)} a ${clockTime(endMinutes)}`, `from ${formatTime(minutes)} to ${clockTime(endMinutes)}`) : t(`a las ${formatTime(minutes)}`, `at ${formatTime(minutes)}`)}</Text>}</View>
       <Text accessibilityElementsHidden importantForAccessibility="no" style={styles.arrow}>›</Text>
     </Pressable>;
   });
@@ -348,6 +391,7 @@ function Main() {
     {resultsType === 'nearby' && <View style={styles.filterRow}><Chip selected={!sunOnly} onPress={() => setSunOnly(false)}>{t('Todos', 'All')}</Chip><Chip selected={sunOnly} onPress={() => setSunOnly(true)}>{t('Sol o sin confirmar', 'Sun or unconfirmed')}</Chip></View>}
     {visiblePlaces.length ? resultRows(visiblePlaces) : <Text style={styles.body}>{sunOnly ? t('No hay lugares con sol estimado entre los que hemos podido analizar.', 'No places with estimated sun among those analysed.') : t('No hay resultados. Prueba otra zona o búsqueda.', 'No results. Try another area or search.')}</Text>}
     {visiblePlaces.length > 5 && <Pressable accessibilityRole="button" onPress={() => setShowAllResults(!showAllResults)} style={styles.textAction}><Text style={styles.textActionLabel}>{showAllResults ? t('Ver menos ↑', 'Show less ↑') : t(`Ver más (${Math.min(visiblePlaces.length, 30)}) ↓`, `Show more (${Math.min(visiblePlaces.length, 30)}) ↓`)}</Text></Pressable>}
+    {visiblePlaces.some((place) => place.municipalPeriod) && <Text style={styles.small}>{t('Fuente:', 'Source:')} <Text accessibilityRole="link" style={styles.link} onPress={() => Linking.openURL('https://opendata-ajuntament.barcelona.cat/data/en/dataset/terrasses-comercos-vigents')}>{t('Ayuntamiento de Barcelona', 'Barcelona City Council')}</Text> · <Text accessibilityRole="link" style={styles.link} onPress={() => Linking.openURL('https://creativecommons.org/licenses/by/4.0/')}>CC BY 4.0</Text>. {t('Autorizaciones; apertura y posición de mesas sin confirmar.', 'Permits; opening and table positions unconfirmed.')}</Text>}
     {resultsType === 'nearby' && <Text style={styles.small}>{t('Los lugares sin datos siguen apareciendo identificados. Se analizan hasta 6 puntos exteriores (2 con datos municipales). La franja se estima cada 30 minutos; no incluye árboles.', 'Places without data remain visible and labelled. Up to 6 outdoor points are analysed (2 with municipal data). Time ranges are sampled every 30 minutes; trees are not included.')}</Text>}
   </View>;
 
@@ -355,7 +399,18 @@ function Main() {
     <StatusBar style="dark" />
     <View style={styles.app} accessibilityElementsHidden={searchOpen} importantForAccessibility={searchOpen ? 'no-hide-descendants' : 'auto'} {...(Platform.OS === 'web' ? { 'aria-hidden': searchOpen, inert: searchOpen } : {})}>
       <View style={[styles.mapArea, { bottom: sheetHeight }]}>
-        <MapCanvas camera={camera} places={resultsAreForMode ? visiblePlaces : []} selected={selected ? { ...selected, name: pointName(selected) } : null} language={language} shadows={shadows} sun={mapSun} onMove={(point) => { setCenter(point); setOriginLabel(myLocation.current && distanceMetres(myLocation.current, point) < 25 ? 'Tu ubicación' : 'Zona del mapa'); }} onPick={choosePoint} onPlace={choosePoint} />
+        <MapCanvas camera={camera} places={resultsAreForMode ? visiblePlaces : []} selected={selected ? { ...selected, name: pointName(selected) } : null} language={language} shadows={nativeShadowsOverBudget ? emptyShadows : shadows} sun={mapSun} view3D={view3D} on3DAvailable={(available) => { setMap3DAvailable(available); if (!available) setView3D(false); }} onMove={(point) => {
+          const pending = pendingCamera.current;
+          if (pending && Date.now() < pending.until && distanceMetres(pending, point) > 40) return;
+          pendingCamera.current = null;
+          const bounds = viewportBounds(point.bounds);
+          setCenter({ latitude: point.latitude, longitude: point.longitude });
+          setMapBounds((previous) => bounds?.join(',') === previous?.join(',') ? previous : bounds);
+          setVisibleBounds((previous) => point.visibleBounds?.join(',') === previous?.join(',') ? previous : point.visibleBounds);
+          setOriginLabel(myLocation.current && distanceMetres(myLocation.current, point) < 25 ? 'Tu ubicación' : 'Zona del mapa');
+        }} onPick={choosePoint} onPlace={choosePoint} />
+        {!map3DAvailable && <Text style={styles.mapFallback}>{t('3D no disponible · mapa en 2D', '3D unavailable · showing 2D map')}</Text>}
+        {(mapIssue || nativeShadowsOverBudget) && <Text style={[styles.mapFallback, { top: map3DAvailable ? 115 : 150 }]}>{nativeShadowsOverBudget ? t('Acerca el mapa para ver todas las sombras.', 'Zoom in to see all shadows.') : localized(mapStatus)}</Text>}
       </View>
       <View pointerEvents="box-none" style={styles.topControls}>
         <View style={styles.brandRow}>
@@ -364,6 +419,7 @@ function Main() {
         </View>
         <View style={styles.searchBarRow}>
           <Pressable accessibilityRole="button" accessibilityLabel={t('Buscar lugar, ciudad o dirección', 'Search for a place, city or address')} onPress={() => { setView('place'); setSearchOpen(true); }} style={({ pressed }) => [styles.searchBar, pressed && styles.pressed]}><Text style={styles.searchIcon}>⌕</Text><Text style={styles.searchPlaceholder} numberOfLines={1}>{t('Busca un lugar', 'Search for a place')}</Text></Pressable>
+          <Pressable accessibilityRole="button" accessibilityLabel={view3D ? t('Ver mapa en 2D', 'View map in 2D') : t('Ver mapa en 3D', 'View map in 3D')} accessibilityState={{ disabled: !map3DAvailable, pressed: view3D }} disabled={!map3DAvailable} onPress={() => setView3D(!view3D)} style={({ pressed }) => [styles.locationButton, !map3DAvailable && styles.disabled, pressed && styles.pressed]}><Text style={styles.mapModeText}>{view3D ? '3D' : '2D'}</Text></Pressable>
           <Pressable accessibilityRole="button" accessibilityLabel={t('Usar mi ubicación', 'Use my location')} onPress={useLocation} disabled={!!busy} style={({ pressed }) => [styles.locationButton, pressed && styles.pressed]}><Text style={styles.locationIcon}>⌖</Text></Pressable>
         </View>
       </View>
@@ -395,7 +451,7 @@ function Main() {
               {direction && <Text style={styles.direction}>{t(`A las ${formatTime(minutes)}, las sombras apuntan hacia el ${direction.label}.`, `At ${formatTime(minutes)}, shadows point ${translateDirection(language, direction.label)}.`)}</Text>}
               <Text style={styles.small}>{t('Horas aproximadas, calculadas cada 30 minutos. No incluyen nubes, árboles, toldos ni sombrillas.', 'Approximate times, calculated every 30 minutes. Clouds, trees, awnings and parasols are not included.')}</Text>
               <Text style={styles.small}>{localized(mapStatus)} {t('Hora del teléfono', 'Phone time')}: {timezone}.</Text>
-              <Text style={styles.small}>{t('Datos de', 'Data from')} <Text accessibilityRole="link" style={styles.link} onPress={() => Linking.openURL('https://www.openstreetmap.org/copyright')}>OpenStreetMap</Text> {t('y', 'and')} <Text accessibilityRole="link" style={styles.link} onPress={() => Linking.openURL('https://datos.madrid.es/dataset/300750-0-servicio-mapas')}>{t('Ayuntamiento de Madrid', 'Madrid City Council')}</Text> (<Text accessibilityRole="link" style={styles.link} onPress={() => Linking.openURL('https://creativecommons.org/licenses/by/4.0/')}>CC BY 4.0</Text>). {t('No indican apertura ni disponibilidad.', 'Results do not indicate opening times or availability.')}</Text>
+              <Text style={styles.small}>{t('Datos de', 'Data from')} <Text accessibilityRole="link" style={styles.link} onPress={() => Linking.openURL('https://www.openstreetmap.org/copyright')}>OpenStreetMap</Text>, <Text accessibilityRole="link" style={styles.link} onPress={() => Linking.openURL('https://datos.madrid.es/dataset/300750-0-servicio-mapas')}>{t('Ayuntamiento de Madrid', 'Madrid City Council')}</Text> {t('y', 'and')} <Text accessibilityRole="link" style={styles.link} onPress={() => Linking.openURL('https://opendata-ajuntament.barcelona.cat/data/en/dataset/terrasses-comercos-vigents')}>{t('Ayuntamiento de Barcelona', 'Barcelona City Council')}</Text> (<Text accessibilityRole="link" style={styles.link} onPress={() => Linking.openURL('https://creativecommons.org/licenses/by/4.0/')}>CC BY 4.0</Text>). {t('No indican apertura ni disponibilidad.', 'Results do not indicate opening times or availability.')}</Text>
             </>}
           </> : <>
             <Text style={styles.miniHeading}>{t('ENCUENTRA UN RATO AL SOL', 'FIND YOUR PLACE IN THE SUN')}</Text><Text style={styles.placeTitle}>{t('Busca cerca', 'Find places nearby')}</Text>
@@ -409,7 +465,7 @@ function Main() {
             </View>
             <Action onPress={findNearby} disabled={!!busy} style={styles.nearbyAction}>{t('Buscar lugares con sol', 'Find sunny places')}</Action>
             {feedback}{results}
-            <Text style={styles.small}>{t('La ubicación solo se usa si la eliges. Consultamos OpenStreetMap y, en Madrid, el Ayuntamiento.', 'Your location is only used if you choose it. We consult OpenStreetMap and, in Madrid, the City Council.')}</Text>
+            <Text style={styles.small}>{t('La ubicación solo se usa si la eliges. Consultamos OpenStreetMap y los datos municipales disponibles.', 'Your location is only used if you choose it. We consult OpenStreetMap and available city data.')}</Text>
           </>}
         </ScrollView>
         <View style={[styles.nav, { paddingBottom: Math.max(insets.bottom, 6) }]}>
@@ -424,6 +480,7 @@ function Main() {
         <View style={styles.searchInputRow}><TextInput accessibilityLabel={t('Nombre o tipo de lugar', 'Name or type of place')} value={query} onChangeText={setQuery} onSubmitEditing={search} placeholder={t('Restaurante, parque, ciudad…', 'Restaurant, park, city…')} placeholderTextColor="#89948b" returnKeyType="search" autoFocus style={styles.input} /><Action onPress={search} disabled={!!busy}>{t('Buscar', 'Search')}</Action></View>
         <ScrollView keyboardShouldPersistTaps="handled" contentContainerStyle={styles.searchResults}>
           <Text style={styles.body}>{t('Busca por nombre o tipo cerca del mapa, o localiza una ciudad.', 'Search by name or type near the map, or locate a city.')}</Text>
+          <View style={styles.cityShortcuts}><Pressable accessibilityRole="button" onPress={() => goToCity('barcelona')} style={styles.cityShortcut}><Text style={styles.cityShortcutText}>Barcelona ↗</Text></Pressable><Pressable accessibilityRole="button" onPress={() => goToCity('madrid')} style={styles.cityShortcut}><Text style={styles.cityShortcutText}>Madrid ↗</Text></Pressable></View>
           <Pressable accessibilityRole="button" onPress={findCity} disabled={!!busy} style={styles.textAction}><Text style={styles.textActionLabel}>{t('Buscar ciudad o dirección con el teléfono ↗', 'Find a city or address with your phone ↗')}</Text></Pressable>
           {feedback}{results}
         </ScrollView>
@@ -437,7 +494,7 @@ const styles = StyleSheet.create({
   safe: { flex: 1, backgroundColor: '#faf7ee' }, app: { flex: 1, width: '100%', maxWidth: 760, alignSelf: 'center', backgroundColor: '#e9e5d9', overflow: 'hidden' }, mapArea: { position: 'absolute', top: 0, left: 0, right: 0 },
   topControls: { position: 'absolute', top: 0, left: 0, right: 0, paddingHorizontal: 16, paddingTop: 6 }, brandRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }, brandBadge: { backgroundColor: '#fffcf5', borderRadius: 18, paddingHorizontal: 11, paddingVertical: 7 }, brand: { color: '#263f32', fontFamily: Platform.OS === 'ios' ? 'Georgia' : 'serif', fontSize: 20, fontWeight: '700', letterSpacing: -0.7 }, brandSun: { color: '#cb8d24', fontFamily: 'System' }, accent: { color: '#c66e4e' },
   languageControl: { flexDirection: 'row', backgroundColor: '#fcfaf3', borderRadius: 22, overflow: 'hidden', elevation: 2 }, languageOption: { minWidth: 44, minHeight: 44, alignItems: 'center', justifyContent: 'center' }, languageSelected: { backgroundColor: '#304a3a' }, languageText: { color: '#617266', fontSize: 10, fontWeight: '800' }, languageSelectedText: { color: '#fffdf7' },
-  searchBarRow: { flexDirection: 'row', gap: 9 }, searchBar: { flex: 1, minHeight: 50, backgroundColor: '#fffdf8', borderRadius: 15, flexDirection: 'row', alignItems: 'center', paddingHorizontal: 14, gap: 10, elevation: 4, shadowColor: '#263f32', shadowOpacity: 0.16, shadowRadius: 8, shadowOffset: { width: 0, height: 3 } }, searchIcon: { fontSize: 28, color: '#304a3a', lineHeight: 32 }, searchPlaceholder: { color: '#79867b', fontSize: 14, flex: 1 }, locationButton: { width: 50, minHeight: 50, borderRadius: 15, backgroundColor: '#fffdf8', alignItems: 'center', justifyContent: 'center', elevation: 4, shadowColor: '#263f32', shadowOpacity: 0.16, shadowRadius: 8, shadowOffset: { width: 0, height: 3 } }, locationIcon: { color: '#304a3a', fontSize: 27 },
+  searchBarRow: { flexDirection: 'row', gap: 7 }, searchBar: { flex: 1, minWidth: 0, minHeight: 50, backgroundColor: '#fffdf8', borderRadius: 15, flexDirection: 'row', alignItems: 'center', paddingHorizontal: 14, gap: 10, elevation: 4, shadowColor: '#263f32', shadowOpacity: 0.16, shadowRadius: 8, shadowOffset: { width: 0, height: 3 } }, searchIcon: { fontSize: 28, color: '#304a3a', lineHeight: 32 }, searchPlaceholder: { color: '#79867b', fontSize: 14, flex: 1 }, locationButton: { width: 46, minHeight: 50, borderRadius: 15, backgroundColor: '#fffdf8', alignItems: 'center', justifyContent: 'center', elevation: 4, shadowColor: '#263f32', shadowOpacity: 0.16, shadowRadius: 8, shadowOffset: { width: 0, height: 3 } }, locationIcon: { color: '#304a3a', fontSize: 27 }, mapModeText: { color: '#304a3a', fontSize: 13, fontWeight: '800' }, mapFallback: { position: 'absolute', top: 115, alignSelf: 'center', maxWidth: '90%', textAlign: 'center', backgroundColor: '#fffcf5', color: '#526b5b', paddingHorizontal: 10, paddingVertical: 6, borderRadius: 9, fontSize: 11 },
   sheet: { position: 'absolute', left: 0, right: 0, bottom: 0, backgroundColor: '#fffcf5', borderTopLeftRadius: 25, borderTopRightRadius: 25, overflow: 'hidden', elevation: 10, shadowColor: '#25372d', shadowOpacity: 0.16, shadowRadius: 14, shadowOffset: { width: 0, height: -4 } }, handleArea: { height: 25, alignItems: 'center' }, handleButton: { width: 90, height: 25, alignItems: 'center', justifyContent: 'center' }, handle: { width: 42, height: 4, borderRadius: 3, backgroundColor: '#d8c6a5' }, sheetScroll: { flex: 1 }, sheetContent: { paddingHorizontal: 20, paddingBottom: 14 },
   rowBetween: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', gap: 8 }, titleWrap: { flex: 1, minWidth: 0 }, miniHeading: { color: '#7b897b', fontSize: 10, fontWeight: '800', letterSpacing: 1, marginBottom: 4 }, placeTitle: { color: '#263e31', fontFamily: Platform.OS === 'ios' ? 'Georgia' : 'serif', fontWeight: '700', fontSize: 23, letterSpacing: -0.5 }, largeSun: { color: '#e3a52f', fontSize: 36, lineHeight: 42, marginLeft: 8 }, placeStatus: { color: '#657568', fontSize: 13, lineHeight: 19, marginTop: 3, fontWeight: '600' }, businessHint: { color: '#805d48', fontSize: 11, lineHeight: 16, marginTop: 4 },
   timelineBlock: { marginTop: 10 }, inlineDetails: { minHeight: 30, justifyContent: 'center', paddingHorizontal: 2 }, daylightTrack: { height: 11, borderRadius: 6, overflow: 'hidden', flexDirection: 'row', backgroundColor: '#dfdfd5', marginTop: 3, marginBottom: 5 }, scale: { color: '#7b897b', fontSize: 10 }, subtle: { color: '#79877b', fontSize: 11 },
@@ -449,5 +506,5 @@ const styles = StyleSheet.create({
   chip: { minHeight: 44, paddingHorizontal: 12, alignItems: 'center', justifyContent: 'center', borderWidth: 1, borderColor: '#d9ddd1', borderRadius: 22, backgroundColor: '#fffcf6' }, chipSelected: { borderColor: '#354d3e', backgroundColor: '#354d3e' }, chipText: { color: '#66796b', fontSize: 12, fontWeight: '700' }, chipSelectedText: { color: '#fffdf8' },
   loading: { flexDirection: 'row', gap: 8, alignItems: 'center', paddingVertical: 12 }, muted: { color: '#687b6b', fontSize: 12, flex: 1 }, alert: { backgroundColor: '#f7e9df', padding: 12, borderRadius: 9, marginTop: 10 }, alertText: { color: '#98543c', lineHeight: 18, fontSize: 12 }, notice: { color: '#627569', fontSize: 12, lineHeight: 18, marginTop: 10 },
   results: { marginTop: 18 }, filterRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 7, marginTop: 12 }, result: { flexDirection: 'row', alignItems: 'center', borderBottomWidth: 1, borderColor: '#eee8dc', paddingVertical: 12, gap: 11 }, resultIcon: { width: 36, height: 36, borderRadius: 18, backgroundColor: '#f3e5cf', alignItems: 'center', justifyContent: 'center' }, resultIconText: { color: '#bd754f', fontSize: 20 }, resultBody: { flex: 1, minWidth: 0 }, resultName: { color: '#30483a', fontSize: 14, fontWeight: '700' }, resultMeta: { color: '#79877b', fontSize: 11, lineHeight: 16, marginTop: 3 }, resultStatus: { fontSize: 11, fontWeight: '800', marginTop: 4 }, arrow: { color: '#718576', fontSize: 27 }, textAction: { alignSelf: 'flex-start', minHeight: 44, justifyContent: 'center', paddingVertical: 8 }, textActionLabel: { color: '#a75e42', fontSize: 12, fontWeight: '700' },
-  modalSafe: { flex: 1, backgroundColor: '#fffcf5' }, modalContent: { flex: 1, width: '100%', maxWidth: 760, alignSelf: 'center', paddingHorizontal: 18 }, modalHeader: { flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 12 }, backButton: { width: 44, height: 44, justifyContent: 'center', alignItems: 'center', marginLeft: -8 }, backIcon: { color: '#304b3b', fontSize: 36, lineHeight: 42 }, modalTitle: { color: '#30483a', fontFamily: Platform.OS === 'ios' ? 'Georgia' : 'serif', fontSize: 23, fontWeight: '700' }, searchInputRow: { flexDirection: 'row', gap: 8 }, input: { flex: 1, minWidth: 0, minHeight: 50, backgroundColor: '#f2f0e7', borderRadius: 12, paddingHorizontal: 13, fontSize: 15, color: '#263e31' }, searchResults: { paddingBottom: 30, paddingTop: 14 },
+  modalSafe: { flex: 1, backgroundColor: '#fffcf5' }, modalContent: { flex: 1, width: '100%', maxWidth: 760, alignSelf: 'center', paddingHorizontal: 18 }, modalHeader: { flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 12 }, backButton: { width: 44, height: 44, justifyContent: 'center', alignItems: 'center', marginLeft: -8 }, backIcon: { color: '#304b3b', fontSize: 36, lineHeight: 42 }, modalTitle: { color: '#30483a', fontFamily: Platform.OS === 'ios' ? 'Georgia' : 'serif', fontSize: 23, fontWeight: '700' }, searchInputRow: { flexDirection: 'row', gap: 8 }, input: { flex: 1, minWidth: 0, minHeight: 50, backgroundColor: '#f2f0e7', borderRadius: 12, paddingHorizontal: 13, fontSize: 15, color: '#263e31' }, searchResults: { paddingBottom: 30, paddingTop: 14 }, cityShortcuts: { flexDirection: 'row', gap: 8, marginTop: 12 }, cityShortcut: { minHeight: 44, borderWidth: 1, borderColor: '#d8ddcf', borderRadius: 12, paddingHorizontal: 14, justifyContent: 'center' }, cityShortcutText: { color: '#405b49', fontSize: 13, fontWeight: '700' },
 });

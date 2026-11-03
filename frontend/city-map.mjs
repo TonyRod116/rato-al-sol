@@ -1,10 +1,10 @@
 import { AYALA_BOUNDS } from './madrid-buildings.mjs';
 import { mapAtmosphere } from './map-atmosphere.mjs';
-import { drawShadowMask } from './shadow-mask.mjs?v=20261103-6';
+import { drawShadowMask } from './shadow-mask.mjs';
 import { AERIAL_TILES, AERIAL_ATTRIBUTION } from './map-basemap.mjs';
 import { DEFAULT_LOCATION } from './shared/default-location.mjs';
 
-export async function createCityMap(element, onViewChange = () => {}, onBasemapError = () => {}, onPick = () => {}) {
+export async function createCityMap(element, onViewChange = () => {}, onBasemapError = () => {}, onPick = () => {}, options = {}) {
   const base = 'https://cdn.jsdelivr.net/npm/maplibre-gl@5.24.0/dist/maplibre-gl';
   const css = document.createElement('link');
   css.rel = 'stylesheet'; css.href = `${base}.css`;
@@ -29,7 +29,7 @@ export async function createCityMap(element, onViewChange = () => {}, onBasemapE
   const map = new gl.Map({
     container: element,
     style: 'https://tiles.openfreemap.org/styles/liberty',
-    center: [DEFAULT_LOCATION.longitude, DEFAULT_LOCATION.latitude], zoom: 18, pitch: 55, bearing: -20,
+    center: [DEFAULT_LOCATION.longitude, DEFAULT_LOCATION.latitude], zoom: options.zoom ?? 18, pitch: options.pitch ?? 20, bearing: options.bearing ?? 0,
     minZoom: 14, maxZoom: 19,
     scrollZoom: false,
   });
@@ -130,6 +130,7 @@ export async function createCityMap(element, onViewChange = () => {}, onBasemapE
     const x = (bounds.getEast() - bounds.getWest()) * .2;
     const y = (bounds.getNorth() - bounds.getSouth()) * .2;
     onViewChange({ bearing: map.getBearing(), pitch: map.getPitch(), center: map.getCenter(), settled,
+      bounds: [bounds.getWest(), bounds.getSouth(), bounds.getEast(), bounds.getNorth()],
       shadowBounds: [bounds.getWest() - x, bounds.getSouth() - y, bounds.getEast() + x, bounds.getNorth() + y] });
   };
   map.on('rotate', () => notifyView());
@@ -137,6 +138,10 @@ export async function createCityMap(element, onViewChange = () => {}, onBasemapE
   map.on('moveend', () => notifyView(true));
   map.on('click', (event) => onPick({ latitude: event.lngLat.lat, longitude: event.lngLat.lng }));
   notifyView(true);
+  if (options.plainMarkers) {
+    const attribution = element.querySelector('.maplibregl-ctrl-attrib.maplibregl-compact-show');
+    attribution?.querySelector('summary')?.click();
+  }
   let markers = [];
   let selectedPoint;
   let fittedPlaces = false;
@@ -182,22 +187,23 @@ export async function createCityMap(element, onViewChange = () => {}, onBasemapE
       map.setLayoutProperty('ayala-buildings-2d', 'visibility', enabled ? 'none' : 'visible');
       // Below zoom 14 the provider omits almost every building from its tiles.
       map.setMinZoom(enabled ? 14 : 13);
-      map.easeTo({ pitch: enabled ? 55 : 0, duration: duration() });
+      map.easeTo({ pitch: enabled ? options.pitch ?? 20 : 0, duration: duration() });
     },
     showPlaces(places, onSelect) {
       for (const entry of markers) entry.marker.remove();
-      markers = places.flatMap((place, index) => {
+      markers = places.slice(0, options.maxMarkers ?? places.length).flatMap((place, index) => {
         if (!place.position) return [];
         const pin = document.createElement('button');
         pin.type = 'button'; pin.className = 'google-pin city-map-pin';
-        pin.textContent = String(index + 1);
+        pin.textContent = options.plainMarkers ? '' : String(index + 1);
+        if (options.plainMarkers) Object.assign(pin.style, { width: '16px', height: '16px', padding: '0', borderRadius: '50%', border: '2px solid #fffaf0', background: '#cf7554', cursor: 'pointer' });
         pin.setAttribute('aria-label', place.pinLabel || `${place.name}, entrada aproximada`);
         pin.addEventListener('click', (event) => { event.stopPropagation(); onSelect(place.id); });
         const marker = new gl.Marker({ element: pin, anchor: 'center' })
           .setLngLat([place.position.lng, place.position.lat]).addTo(map);
         return [{ marker, pin, id: place.id }];
       });
-      if (!fittedPlaces && markers.length) {
+      if (!options.keepCamera && !fittedPlaces && markers.length) {
         const bounds = new gl.LngLatBounds();
         for (const entry of markers) bounds.extend(entry.marker.getLngLat());
         map.fitBounds(bounds, {
@@ -212,14 +218,16 @@ export async function createCityMap(element, onViewChange = () => {}, onBasemapE
       if (!point) return;
       const pin = document.createElement('span');
       pin.className = 'selected-point-pin';
+      if (options.plainMarkers) Object.assign(pin.style, { display: 'block', width: '20px', height: '20px', borderRadius: '50%', border: '3px solid #fffaf0', background: '#273e33' });
       pin.setAttribute('aria-label', point.name);
       pin.setAttribute('role', 'img');
-      selectedPoint = new gl.Marker({ element: pin, anchor: 'bottom' })
+      selectedPoint = new gl.Marker({ element: pin, anchor: options.plainMarkers ? 'center' : 'bottom' })
         .setLngLat([point.longitude, point.latitude]).addTo(map);
     },
     focus(position) { if (position) map.easeTo({ center: [position.lng, position.lat], duration: duration() }); },
     highlight(id) { for (const entry of markers) entry.pin.classList.toggle('is-selected', entry.id === id); },
     invalidate() { map.resize(); },
     rotate() { map.easeTo({ bearing: map.getBearing() + 45, duration: duration() }); },
+    destroy() { map.remove(); },
   };
 }
