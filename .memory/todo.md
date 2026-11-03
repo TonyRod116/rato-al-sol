@@ -107,9 +107,10 @@ Al cambiar de etapa: resultado, evidencia, bloqueo y siguiente acción concreta.
 - Estado: `in_progress` — petición de Tony del 2026-11-03.
 - Objetivo: proponer cinco variantes del icono y, con su visto bueno, mejorar la experiencia y la interfaz existente con `redesign-existing-projects` mediante el flujo `frontend-ui-engineering`.
 - Aceptación: cinco propuestas visuales comparables y reconocibles en pequeño, conservando el icono actual hasta que se elija uno; después del visto bueno, revisar y mejorar los recorridos reales y comprobar el resultado en navegador y, para cambios nativos, en un dispositivo o emulador.
-- Alcance: preparar las propuestas en el repositorio. Tony pidió conocer la skill antes de dar el OK al repaso general; no empezarlo antes de su respuesta.
-- Evidencia: cinco diseños vectoriales y una comparativa local inspeccionada en Chromium a 320, 390 y 1600 píxeles, también a tamaño reducido. No se han aplicado al icono de la app ni se ha comprobado su apariencia en teléfonos reales.
-- Siguiente acción: presentar las opciones y esperar su elección y visto bueno.
+- Alcance: Tony eligió la propuesta 1 y autorizó expresamente el repaso con `redesign-existing-projects`. Conservar el nombre «Rato al Sol» y la identidad existente; aplicar el icono a las superficies web y nativas, y mejorar los problemas de uso constatados sin cambiar el alcance de las estimaciones solares.
+- Avance: aplicado el icono 1 a la web y a los recursos de iPhone y Android; el nombre sigue siendo «Rato al Sol». En la web móvil la búsqueda aparece antes del mapa y al elegir un resultado el foco vuelve al mapa. En el prototipo de app los resultados aparecen junto al buscador, se muestran cuatro inicialmente y la selección deja espacio al mapa; se han mejorado la legibilidad y los controles táctiles.
+- Evidencia: cinco propuestas revisadas, recursos nativos generados en una copia temporal y JavaScript empaquetado para iOS y Android. En Chromium se revisaron capturas de web y vista web del prototipo a 320, 390 y escritorio; se probó con cinco lugares simulados buscar, ampliar resultados, seleccionar, cambiar de lugar y ajustar la hora. Las pruebas del proyecto pasan. La aplicación nativa y su icono no se han probado en teléfonos ni emuladores.
+- Siguiente acción: comprobar el aspecto, el icono y la navegación en iPhone y Android reales o emuladores como parte de APP-002; mantener la tarea abierta hasta disponer de esa evidencia.
 
 ## REPO-001 — Guardar el proyecto en GitHub
 

@@ -5,7 +5,7 @@ import { buildingShadows, shadowDirection } from './map-shadows.mjs';
 import { getViewportBuildings, viewportBounds } from './viewport-buildings.mjs';
 import { createOpenMap } from './open-map.mjs?v=20261103-8';
 import { createCityMap } from './city-map.mjs?v=20261103-8';
-import { createExplorer } from './explore-search.mjs?v=20261103-10';
+import { createExplorer } from './explore-search.mjs?v=20261103-12';
 
 const $ = (selector) => document.querySelector(selector);
 const today = Object.fromEntries(new Intl.DateTimeFormat('en-GB', {

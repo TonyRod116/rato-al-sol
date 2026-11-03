@@ -145,7 +145,15 @@ export function createExplorer({ getCenter, getDate, getTime, onPlaces, onPoint 
     button.type = 'button'; icon.className = 'result-icon'; icon.textContent = place.kind === 'public' ? '✳' : '↗';
     title.textContent = place.name; subtitle.textContent = `${distance(place.distance)} · ${detail}`;
     text.append(title, subtitle); button.append(icon, text); item.append(button);
-    button.addEventListener('click', () => selectPoint(place, true));
+    button.addEventListener('click', () => {
+      selectPoint(place, true);
+      const searchPanel = document.querySelector('.search-panel');
+      const map = document.querySelector('.map-figure');
+      if (searchPanel && map && searchPanel.getBoundingClientRect().bottom <= map.getBoundingClientRect().top) {
+        map.focus({ preventScroll: true });
+        map.scrollIntoView({ block: 'start' });
+      }
+    });
     return item;
   }
 

@@ -6,9 +6,9 @@
   <meta name="theme-color" content="#faf6ec">
   <meta name="description" content="Explora las horas estimadas de sol y sombra para un lugar o un punto del mapa.">
   <title>Rato al Sol — Explora la luz en Madrid</title>
-  <link rel="icon" href="./favicon.svg" type="image/svg+xml">
-  <link rel="stylesheet" href="./styles.css?v=20261103-11">
-  <script type="module" src="./app.mjs?v=20261103-10"></script>
+  <link rel="icon" href="./favicon.svg?v=20261103-12" type="image/svg+xml">
+  <link rel="stylesheet" href="./styles.css?v=20261103-13">
+  <script type="module" src="./app.mjs?v=20261103-12"></script>
 </head>
 <body>
   <a class="skip-link" href="#contenido">Saltar al contenido</a>
@@ -24,8 +24,21 @@
     <p id="old-link-note" class="old-link-note" hidden>Este enlace era de un barrio de ejemplo; ahora estás viendo Madrid.</p>
     <section class="explore real-explore" id="madrid" aria-labelledby="madrid-title">
       <div class="explore-grid">
+        <div class="search-panel">
+          <div class="real-inspector-head"><div><p class="section-kicker">TU PRÓXIMO RATO AL SOL</p><h2 id="madrid-title">Busca tu sitio<span class="heading-dot">.</span></h2><p>Explora desde el centro del mapa</p></div><span class="neighborhood-icon" aria-hidden="true">✳</span></div>
+          <div class="real-explanation"><span aria-hidden="true">✳</span><p>Busca un lugar o toca cualquier punto del mapa para descubrir cuándo tendrá sol o sombra.</p></div>
+          <section class="explorer-section" aria-labelledby="search-title">
+            <h3 id="search-title">Un lugar concreto</h3>
+            <form id="place-form" class="place-form">
+              <label for="place-query">Nombre o tipo de lugar</label>
+              <div class="search-line"><input id="place-query" type="search" placeholder="Restaurante, parque, Soho…" minlength="2" maxlength="80" required><button type="submit">Buscar ↗</button></div>
+            </form>
+            <p id="place-status" class="explorer-status" role="status" aria-live="polite">Buscamos cerca del centro del mapa, hasta 5 km.</p>
+            <ul id="place-results" class="explorer-list" aria-label="Lugares encontrados"></ul>
+          </section>
+        </div>
         <div class="scene-column">
-          <figure class="map-figure">
+          <figure class="map-figure" tabindex="-1" aria-label="Mapa del lugar seleccionado">
             <div class="real-map-shell">
               <div id="city-map" class="google-map" aria-label="Mapa tridimensional interactivo"></div>
               <div id="open-map" class="google-map" aria-label="Mapa interactivo" hidden></div>
@@ -69,17 +82,6 @@
           </div>
         </div>
         <aside class="real-inspector" aria-label="Buscar lugares y consultar su luz">
-          <div class="real-inspector-head"><div><p class="section-kicker">TU PRÓXIMO RATO AL SOL</p><h2 id="madrid-title">Busca tu sitio<span class="heading-dot">.</span></h2><p>Explora desde el centro del mapa</p></div><span class="neighborhood-icon" aria-hidden="true">✳</span></div>
-          <div class="real-explanation"><span aria-hidden="true">✳</span><p>Busca un lugar o toca cualquier punto del mapa para descubrir cuándo tendrá sol o sombra.</p></div>
-          <section class="explorer-section" aria-labelledby="search-title">
-            <h3 id="search-title">Un lugar concreto</h3>
-            <form id="place-form" class="place-form">
-              <label for="place-query">Nombre o tipo de lugar</label>
-              <div class="search-line"><input id="place-query" type="search" placeholder="Restaurante, parque, Soho…" minlength="2" maxlength="80" required><button type="submit">Buscar ↗</button></div>
-            </form>
-            <p id="place-status" class="explorer-status" role="status" aria-live="polite">Buscamos cerca del centro del mapa, hasta 5 km.</p>
-            <ul id="place-results" class="explorer-list" aria-label="Lugares encontrados"></ul>
-          </section>
           <section id="point-info" class="point-info" aria-labelledby="point-title">
             <p class="section-kicker">EL PUNTO QUE HAS ELEGIDO</p>
             <h3 id="point-title">Tu sitio, a lo largo del día</h3>
