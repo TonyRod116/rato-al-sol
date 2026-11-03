@@ -2,8 +2,8 @@ import { civilTimeToUtc, sunPosition } from './solar.mjs';
 import { getMadridTerraces } from './madrid.mjs';
 import { AYALA_CENTER, getMadridBuildings, insideAyala } from './madrid-buildings.mjs';
 import { buildingShadows, shadowDirection } from './map-shadows.mjs';
-import { createOpenMap } from './open-map.mjs';
-import { createCityMap } from './city-map.mjs';
+import { createOpenMap } from './open-map.mjs?v=20261103-6';
+import { createCityMap } from './city-map.mjs?v=20261103-6';
 
 const $ = (selector) => document.querySelector(selector);
 const today = Object.fromEntries(new Intl.DateTimeFormat('en-GB', {
@@ -13,7 +13,7 @@ const today = Object.fromEntries(new Intl.DateTimeFormat('en-GB', {
 const state = { date: `${today.year}-${today.month}-${today.day}`, minutes: Math.floor((Number(today.hour) * 60 + Number(today.minute)) / 10) * 10 };
 const empty = { type: 'FeatureCollection', features: [] };
 let buildings, activeMap, madridPlaces = [], selectedMadrid = '', madridConsulted = '';
-let mapStarted = false, mapLoading = false, is3D = true, lightweight = false, playback, pendingFrame;
+let mapStarted = false, mapLoading = false, is3D = true, playback, pendingFrame;
 let view = { bearing: 0, pitch: 0, center: AYALA_CENTER };
 let currentDirection = null;
 let buildingsLoading = false, buildingsError = false;
@@ -69,7 +69,7 @@ function updateSolar() {
     pendingFrame = null;
     if (activeMap) {
       activeMap.setSun?.(sun);
-      activeMap.setShadows(buildings && currentDirection ? buildingShadows(buildings, sun, view.shadowBounds) : empty);
+      activeMap.setShadows(buildings && currentDirection ? buildingShadows(buildings, sun, view.shadowBounds) : empty, view.shadowBounds);
     }
   });
 }
@@ -164,12 +164,25 @@ function activateMap(map, isCity) {
   $('#open-map').hidden = isCity;
   $('#city-controls').hidden = !isCity;
   $('#map-options').hidden = !isCity;
+  $('#map-basemaps').hidden = false;
   $('#map-dimension').hidden = !isCity || !is3D;
   $('#map-message').hidden = true;
   updateMadridMarkers();
   if (buildings) activeMap.setBuildings(buildings);
   updateSolar();
   activeMap.invalidate();
+}
+
+function updateBasemapButtons(aerial) {
+  $('#basemap-street').setAttribute('aria-pressed', String(!aerial));
+  $('#basemap-aerial').setAttribute('aria-pressed', String(aerial));
+  $('.real-map-shell').classList.toggle('has-aerial', aerial);
+}
+
+function basemapError() {
+  updateBasemapButtons(false);
+  $('#basemap-status').hidden = false;
+  $('#basemap-status').textContent = 'No hemos podido cargar la foto aérea. Mostramos el plano; puedes volver a intentarlo.';
 }
 
 async function loadOpenMap() {
@@ -181,7 +194,7 @@ async function loadOpenMap() {
       $('#map-message').hidden = available;
       $('#map-retry').hidden = available;
       if (!available) $('#map-message-text').textContent = 'No hemos podido cargar el mapa. Puedes consultar la lista o volver a intentarlo.';
-    }, onViewChange);
+    }, onViewChange, basemapError);
     activateMap(map, false);
     $('#map-message').hidden = tilesAvailable;
     $('#map-provider-status').hidden = false;
@@ -196,7 +209,7 @@ async function loadOpenMap() {
 async function loadMap() {
   if (mapStarted || mapLoading) return;
   mapStarted = true; mapLoading = true;
-  try { activateMap(await createCityMap($('#city-map'), onViewChange), true); }
+  try { activateMap(await createCityMap($('#city-map'), onViewChange, basemapError), true); }
   catch { await loadOpenMap(); }
   finally { mapLoading = false; }
 }
@@ -222,19 +235,27 @@ $('#madrid-load').addEventListener('click', loadMadrid);
 $('#shadows-retry').addEventListener('click', loadBuildings);
 $('#map-retry').addEventListener('click', () => window.location.reload());
 $('#map-rotate').addEventListener('click', () => activeMap?.rotate?.());
-$('#map-detail').addEventListener('click', (event) => {
-  lightweight = !lightweight;
-  event.currentTarget.setAttribute('aria-pressed', String(lightweight));
-  event.currentTarget.textContent = lightweight ? 'Volver al detalle normal ↗' : 'Reducir detalle de edificios ↗';
-  activeMap?.setLightweight?.(lightweight);
-});
-$('#map-pitch').addEventListener('click', () => {
-  is3D = !is3D;
+function setView3D(enabled) {
+  is3D = enabled;
   $('#map-pitch').setAttribute('aria-pressed', String(is3D));
   $('#map-pitch').textContent = is3D ? 'Vista 3D' : 'Vista 2D';
+  $('#map-detail').setAttribute('aria-pressed', String(!is3D));
+  $('#map-detail').textContent = is3D ? 'Pasar a vista 2D ↗' : 'Volver a edificios en 3D ↗';
   $('#map-dimension').hidden = !is3D;
   activeMap?.set3D?.(is3D);
-});
+}
+$('#map-detail').addEventListener('click', () => setView3D(!is3D));
+$('#map-pitch').addEventListener('click', () => setView3D(!is3D));
+for (const [id, kind] of [['basemap-street', 'street'], ['basemap-aerial', 'aerial']]) {
+  $(`#${id}`).addEventListener('click', () => {
+    updateBasemapButtons(kind === 'aerial');
+    $('#basemap-status').hidden = false;
+    $('#basemap-status').textContent = kind === 'aerial'
+      ? 'Foto aérea PNOA/IGN: puede ser antigua y conserva las sombras del momento en que se tomó.' : '';
+    if (kind === 'street') $('#basemap-status').hidden = true;
+    activeMap?.setBasemap(kind);
+  });
+}
 const oldParams = new URLSearchParams(window.location.search);
 if (['fecha', 'hora', 'filtro', 'terraza'].some((key) => oldParams.has(key))) $('#old-link-note').hidden = false;
 updateSolar();

@@ -15,6 +15,8 @@ node --check frontend/solar.mjs
 node --check frontend/madrid.mjs
 node --check frontend/madrid-buildings.mjs
 node --check frontend/map-shadows.mjs
+node --check frontend/shadow-mask.mjs
+node --check frontend/map-basemap.mjs
 node --check frontend/google-map.mjs
 node --check frontend/open-map.mjs
 node --check frontend/city-map.mjs
@@ -23,6 +25,10 @@ bash scripts/check-ai-instructions.sh
 ```
 
 Los tests de Node comprueban una posición solar de referencia con tolerancia de 0,1°, cambios de horario de Madrid, geometría analítica simple y dirección de sombra dibujada, intervalos, noche, datos ausentes, filtros, privacidad de consultas y contratos municipales. La prueba solar cubre solo ese caso, no su precisión global ni la sombra real en terrazas. Los dos últimos comandos comprueban solo documentación/configuración. La web anterior es estática; el prototipo nativo usa Expo.
+
+La prueba visual ejecutable `tests/shadow-mask.browser.html`, servida desde la raíz del repositorio en localhost, comprueba en un navegador real que una sombra sola y dos superpuestas tienen los mismos píxeles, que se respetan los huecos y que la máscara se limpia cuando no hay sombras.
+
+En la revisión de sombras y foto aérea del 2026-11-03 se inspeccionaron en Chromium capturas de 320, 390 y 1440 px con fotografía y geometría reales. Se comprobaron teclado, visibilidad de atribución y dirección, zoom máximo en 3D, alejamiento adicional y vuelta desde 2D, noche y fallo/recuperación de la fotografía tanto en 3D como en el respaldo 2D. La composición se contrastó por píxeles con polígonos ficticios. Un dibujo de 16.178 polígonos en un lienzo de hasta 700 px tardó 27,9 ms de mediana en 12 iteraciones locales; no incluye toda la representación del mapa ni mide FPS. No se han probado estas mejoras en la app nativa ni en dispositivos reales.
 
 Para comprobar el empaquetado nativo, desde `mobile/`: `npx expo export --platform android --output-dir /tmp/rato-android-export` y equivalente con `--platform ios`. Esto verifica el empaquetado JavaScript, no instala ni prueba una app en un dispositivo.
 

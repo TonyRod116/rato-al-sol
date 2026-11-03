@@ -311,6 +311,11 @@ footer { display: flex; align-items: center; justify-content: space-between; gap
 .real-map-shell .maplibregl-ctrl-group button { min-width: 36px; min-height: 36px; }
 .real-map-shell .maplibregl-ctrl-attrib { font-size: 10px; }
 .map-message { z-index: 4; }
+.map-basemaps { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 6px 12px; margin-top: 12px; color: #59685b; font-size: .72rem; font-weight: 750; }
+.map-basemaps > div { display: flex; border: 1px solid #d7cebd; }
+.map-basemaps button { min-height: 44px; min-width: 74px; padding: 0 13px; border: 0; background: #fffcf3; color: #536052; font-size: .72rem; font-weight: 750; }
+.map-basemaps button[aria-pressed="true"] { background: #455d4b; color: #fff; }
+.map-basemaps button + button { border-left: 1px solid #d7cebd; }
 .map-options { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-top: 5px; }
 .map-options p { margin: 0; color: #777c6f; font-size: .7rem; }
 .map-options button { min-height: 40px; padding: 0 2px; border: 0; background: none; color: #855740; font-size: .72rem; font-weight: 750; text-align: right; }
@@ -337,6 +342,7 @@ footer { display: flex; align-items: center; justify-content: space-between; gap
 .shadow-status button { flex: none; min-height: 44px; padding: 0 6px; border: 0; background: transparent; color: #855740; font-weight: 750; }
 @media (max-width: 650px) {
   .shadow-compass { left: 10px; bottom: 58px; gap: 7px; padding: 8px 10px; }
+  .real-map-shell.has-aerial .shadow-compass { top: 58px; bottom: auto; }
   .shadow-compass small { font-size: .5rem; }
   .shadow-compass strong { font-size: .95rem; }
 }

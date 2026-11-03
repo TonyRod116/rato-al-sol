@@ -1,8 +1,11 @@
 // Fallback when the 3D map is unavailable. Official Leaflet 1.9.4 files
 // are pinned with the integrity hashes published by the project.
 import { mapAtmosphere } from './map-atmosphere.mjs';
+import { drawShadowMask } from './shadow-mask.mjs?v=20261103-6';
+import { AYALA_BOUNDS } from './madrid-buildings.mjs';
+import { AERIAL_TILES, AERIAL_ATTRIBUTION } from './map-basemap.mjs';
 
-export async function createOpenMap(element, onTileStatus, onViewChange = () => {}) {
+export async function createOpenMap(element, onTileStatus, onViewChange = () => {}, onBasemapError = () => {}) {
   const version = 'https://cdn.jsdelivr.net/npm/leaflet@1.9.4/dist/leaflet';
   const css = document.createElement('link');
   css.rel = 'stylesheet'; css.href = `${version}.css`;
@@ -33,7 +36,10 @@ export async function createOpenMap(element, onTileStatus, onViewChange = () => 
   tiles.on('tileload', () => { loaded = true; clearTimeout(tileTimeout); onTileStatus(true); });
   tiles.on('tileerror', () => { if (!loaded && ++failed >= 3) onTileStatus(false); });
   tiles.addTo(map);
-  const shadows = L.geoJSON(null, { interactive: false, style: { stroke: false, fillColor: '#536a70', fillOpacity: .25 } }).addTo(map);
+  const shadowCanvas = document.createElement('canvas');
+  const toLatLngBounds = ([west, south, east, north]) => [[south, west], [north, east]];
+  const shadows = L.imageOverlay('', toLatLngBounds(AYALA_BOUNDS), { opacity: .44, interactive: false }).addTo(map);
+  let aerial, aerialSelected = false, aerialErrors = 0;
   const notifyView = () => {
     const bounds = map.getBounds().pad(.2);
     onViewChange({ bearing: 0, center: map.getCenter(), settled: true,
@@ -52,7 +58,32 @@ export async function createOpenMap(element, onTileStatus, onViewChange = () => 
   return {
     setBuildings() {},
     setSun(sun) { map.getPane('tilePane').style.filter = mapAtmosphere(sun).cssFilter; },
-    setShadows(data) { shadows.clearLayers(); shadows.addData(data); },
+    setShadows(data, bounds = AYALA_BOUNDS) {
+      const size = Math.max(element.clientWidth, element.clientHeight) * (window.devicePixelRatio || 1) * 1.4;
+      drawShadowMask(shadowCanvas, data, bounds, size);
+      shadows.setBounds(toLatLngBounds(bounds));
+      shadows.setUrl(shadowCanvas.toDataURL('image/png'));
+    },
+    setBasemap(kind) {
+      aerialSelected = kind === 'aerial';
+      aerialErrors = 0;
+      if (aerialSelected) {
+        if (!aerial) {
+          aerial = L.tileLayer(AERIAL_TILES, { maxZoom: 19, attribution: AERIAL_ATTRIBUTION });
+          aerial.on('tileerror', () => {
+            if (aerialSelected && ++aerialErrors >= 3) {
+              aerialSelected = false;
+              map.removeLayer(aerial); tiles.addTo(map);
+              onBasemapError();
+            }
+          });
+        }
+        map.removeLayer(tiles); aerial.addTo(map);
+      } else {
+        if (aerial) map.removeLayer(aerial);
+        tiles.addTo(map);
+      }
+    },
     showPlaces(places, onSelect) {
       for (const marker of markers) marker.remove();
       markers = places.flatMap((place, index) => {

@@ -52,6 +52,15 @@ Al cambiar de etapa: resultado, evidencia, bloqueo y siguiente acción concreta.
 - Siguiente acción: abrir Expo Go en un iPhone y un Android reales, comprobar mapa, colores y respuesta al deslizar; confirmar con Tony si el modo ligero resuelve la saturación de su equipo. Mantener abierta la tarea hasta tener esa evidencia.
 - Permisos: exponer el servidor de desarrollo en la red local, implementar y verificar localmente y actualizar la rama privada ya autorizada. No publicar ni crear infraestructura.
 
+## APP-004 — Sombras uniformes y fondo aéreo
+
+- Estado: `done` — petición de Tony del 2026-11-03; entrega web local comprobada.
+- Objetivo: evitar el oscurecimiento por sombras superpuestas, mantener edificios parcialmente transparentes en 3D a cualquier escala y permitir alternar plano e imagen aérea.
+- Aceptación: misma intensidad de sombra en los solapes, edificios 3D visibles también al alejar, modo 2D coherente, fotografía atribuida con recuperación ante fallo, y comprobación funcional y visual en navegador.
+- Alcance: mapa web local y respaldo 2D; no se cambian cálculos de sol ni se atribuye la luz a mesas desconocidas.
+- Evidencia: composición de sombras comparada por píxeles, limpieza nocturna, datos y fotografía reales, vista 3D al máximo alejamiento permitido, paso a 2D y vuelta, teclado, pantallas de 320/390/1440 px y caídas/reintentos simulados del proveedor en 3D y en el respaldo 2D. En una muestra local de 16.178 polígonos el dibujo tuvo una mediana de 27,9 ms en 12 iteraciones; no es una medición de FPS ni de la máquina de Tony.
+- Límites y continuación: el proveedor deja de ofrecer detalle 3D suficiente por debajo del nivel 14, por lo que para alejar más se usa 2D. La foto de España puede ser antigua y conserva sus propias sombras. Falta probar la fluidez en equipos y dispositivos reales e incorporar estas mejoras a la app nativa, que continúa en APP-002/APP-003.
+
 ## REPO-001 — Guardar el proyecto en GitHub
 
 - Estado: `done` — completado y comprobado el 2026-11-02.

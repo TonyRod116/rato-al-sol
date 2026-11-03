@@ -7,8 +7,8 @@
   <meta name="description" content="Explora las sombras estimadas a lo largo del día en la calle de Ayala, Madrid.">
   <title>Rato al Sol — Explora la luz en Madrid</title>
   <link rel="icon" href="./favicon.svg" type="image/svg+xml">
-  <link rel="stylesheet" href="./styles.css">
-  <script type="module" src="./app.mjs"></script>
+  <link rel="stylesheet" href="./styles.css?v=20261103-6">
+  <script type="module" src="./app.mjs?v=20261103-6"></script>
 </head>
 <body>
   <a class="skip-link" href="#contenido">Saltar al contenido</a>
@@ -38,7 +38,11 @@
               <div id="map-message" class="map-message" role="status"><span aria-hidden="true">✳</span><p id="map-message-text">Preparando el mapa…</p><button id="map-retry" type="button" hidden>Reintentar mapa ↗</button></div>
             </div>
             <figcaption><span>✳</span> Sombras estimadas de edificios en el entorno de Ayala. Los puntos son entradas aproximadas, no mesas.</figcaption>
-            <div id="map-options" class="map-options" hidden><p>¿El mapa va lento?</p><button id="map-detail" type="button" aria-pressed="false">Reducir detalle de edificios ↗</button></div>
+            <div id="map-basemaps" class="map-basemaps" role="group" aria-label="Fondo del mapa" hidden>
+              <span>Fondo del mapa</span><div><button id="basemap-street" type="button" aria-pressed="true">Plano</button><button id="basemap-aerial" type="button" aria-pressed="false">Foto aérea</button></div>
+            </div>
+            <p id="basemap-status" class="map-provider-status" role="status" hidden></p>
+            <div id="map-options" class="map-options" hidden><p>Para alejarte más o mejorar el rendimiento</p><button id="map-detail" type="button" aria-pressed="false">Pasar a vista 2D ↗</button></div>
             <p id="map-provider-status" class="map-provider-status" role="status" hidden></p>
           </figure>
           <section class="planner" aria-label="Elige el día y la hora">
