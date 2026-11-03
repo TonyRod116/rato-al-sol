@@ -6,7 +6,7 @@ Un mapa sencillo de terrazas con intervalos estimados de sol y sombra, un select
 
 ## Estado real
 
-La primera pantalla muestra Ayala, en Madrid, con edificios en 3D, controles para girar el mapa y terrazas incluidas en el censo municipal. Sus volúmenes y alturas son orientativos. Los puntos corresponden a las **entradas aproximadas de los locales**, no a sus mesas; todavía no se calculan sus horas de sol. En «Prueba de sol» hay un barrio inventado con sombras que se mueven, reproducción y tramos de luz aproximados: esos resultados no describen terrazas reales. No hay despliegue.
+La pantalla reúne el mapa 3D de Ayala, los edificios con alturas estimadas del Ayuntamiento y sus sombras orientativas. El selector cambia la hora y la fecha y muestra la dirección de las sombras. Los puntos corresponden a las **entradas aproximadas de los locales**, no a sus mesas; todavía no se pueden calcular sus horas de sol. Las sombras no incluyen nubes, árboles ni toldos y no se han contrastado sobre el terreno. No hay despliegue.
 
 ## Orientación obligatoria
 
@@ -20,7 +20,7 @@ Para abrir el ejemplo, desde la raíz del proyecto y con el puerto libre:
 python3 -m http.server 5182 --bind 127.0.0.1 --directory frontend
 ```
 
-Abrir `http://127.0.0.1:5182/` y parar el servidor con `Ctrl+C`. Si el puerto está ocupado, elegir otro; no detener procesos ajenos. El frontend es estático y no necesita instalar paquetes ni ejecutar un build. El mapa y el censo necesitan conexión a internet; la consulta municipal comienza al abrir la página y se puede actualizar manualmente.
+Abrir `http://127.0.0.1:5182/` y parar el servidor con `Ctrl+C`. Si el puerto está ocupado, elegir otro; no detener procesos ajenos. El frontend es estático y no necesita instalar paquetes ni ejecutar un build. El mapa, las alturas y el censo necesitan conexión a internet; las consultas municipales se hacen al abrir la página y se pueden repetir si fallan.
 
 Para las comprobaciones locales se necesitan Python 3.11 o posterior y Node.js:
 
@@ -28,6 +28,7 @@ Para las comprobaciones locales se necesitan Python 3.11 o posterior y Node.js:
 node tests/demo.test.mjs
 node tests/solar.test.mjs
 node tests/madrid.test.mjs
+node tests/map-shadows.test.mjs
 node --check frontend/app.mjs
 python3 scripts/repo_check.py
 bash scripts/check-ai-instructions.sh
@@ -55,7 +56,7 @@ Los tests comprueban casos solares y geométricos concretos, no la precisión de
 
 ## Configuración
 
-El mapa inicial utiliza MapLibre y OpenFreeMap, con datos de OpenStreetMap y atribución visible. Si no se puede abrir, se muestra un mapa 2D con Leaflet y OpenStreetMap. La integración opcional de Google Maps usa exclusivamente una clave **de navegador** para Maps JavaScript, con restricciones de origen y API. Copiar `frontend/maps-config.example.json` a `frontend/maps-config.local.json` y configurar ahí la clave; el archivo local está ignorado por Git. No usar claves privadas de servidor, Routes o Places. La clave compartida de desarrollo rechaza actualmente `http://127.0.0.1:5182/`. Tony autorizó añadir este origen, pero no había una sesión de Google Cloud con acceso a la clave para efectuar el cambio. La integración real de Google requiere una prueba tras el ajuste; `DEMO_MAP_ID` es solo para desarrollo. Véase [fuentes y contratos](docs/DATA_SOURCES.md) antes de publicar o ampliar tráfico.
+El mapa utiliza MapLibre y OpenFreeMap, con datos de OpenStreetMap y atribución visible; Leaflet y OpenStreetMap proporcionan un respaldo 2D. El código anterior de Google Maps se conserva, pero no aparece como opción en esta vista porque aún no está verificado con las sombras: la clave compartida rechaza el origen local y falta acceso a su cuenta de Cloud para ajustar la restricción previamente autorizada por Tony. No copiar claves privadas de servidor. Véase [fuentes y contratos](docs/DATA_SOURCES.md) antes de publicar o ampliar tráfico.
 
 `.env.example` contiene nombres internos propuestos, sin credenciales. Mantener claves privadas fuera del cliente y del repositorio.
 

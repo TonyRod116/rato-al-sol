@@ -1,6 +1,6 @@
-// Fallback when Google Maps cannot authenticate. Official Leaflet 1.9.4 files
+// Fallback when the 3D map is unavailable. Official Leaflet 1.9.4 files
 // are pinned with the integrity hashes published by the project.
-export async function createOpenMap(element, onTileStatus) {
+export async function createOpenMap(element, onTileStatus, onViewChange = () => {}) {
   const version = 'https://cdn.jsdelivr.net/npm/leaflet@1.9.4/dist/leaflet';
   const css = document.createElement('link');
   css.rel = 'stylesheet'; css.href = `${version}.css`;
@@ -31,6 +31,10 @@ export async function createOpenMap(element, onTileStatus) {
   tiles.on('tileload', () => { loaded = true; clearTimeout(tileTimeout); onTileStatus(true); });
   tiles.on('tileerror', () => { if (!loaded && ++failed >= 3) onTileStatus(false); });
   tiles.addTo(map);
+  const shadows = L.geoJSON(null, { interactive: false, style: { stroke: false, fillColor: '#536a70', fillOpacity: .25 } }).addTo(map);
+  const notifyView = () => onViewChange({ bearing: 0, center: map.getCenter() });
+  map.on('moveend', notifyView);
+  notifyView();
   let markers = [];
   let pendingFit = false;
   function fitPlaces() {
@@ -40,6 +44,8 @@ export async function createOpenMap(element, onTileStatus) {
     pendingFit = false;
   }
   return {
+    setBuildings() {},
+    setShadows(data) { shadows.clearLayers(); shadows.addData(data); },
     showPlaces(places, onSelect) {
       for (const marker of markers) marker.remove();
       markers = places.flatMap((place, index) => {

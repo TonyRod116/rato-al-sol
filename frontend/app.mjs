@@ -1,290 +1,94 @@
-import { buildings, places, demoSun, outcomeFor, visiblePlaces, intervalsFor, parseSharedState, shareUrl } from './demo-data.mjs';
-import { shadowOffset, shadowPolygons } from './solar.mjs';
+import { civilTimeToUtc, sunPosition } from './solar.mjs';
 import { getMadridTerraces } from './madrid.mjs';
-import { createMadridMap } from './google-map.mjs';
+import { AYALA_CENTER, getMadridBuildings, insideAyala } from './madrid-buildings.mjs';
+import { buildingShadows, shadowDirection } from './map-shadows.mjs';
 import { createOpenMap } from './open-map.mjs';
 import { createCityMap } from './city-map.mjs';
 
 const $ = (selector) => document.querySelector(selector);
-const time = $('#time');
-const date = $('#date');
-const list = $('#place-list');
-const pins = $('#map-pins');
-const timeValue = $('#time-value');
-const details = $('#details');
-const sharePanel = $('#share-panel');
-const shareLink = $('#share-link');
-
-const todayParts = Object.fromEntries(new Intl.DateTimeFormat('en-GB', {
+const today = Object.fromEntries(new Intl.DateTimeFormat('en-GB', {
   timeZone: 'Europe/Madrid', year: 'numeric', month: '2-digit', day: '2-digit',
 }).formatToParts(new Date()).map(({ type, value }) => [type, value]));
-const localDate = `${todayParts.year}-${todayParts.month}-${todayParts.day}`;
-const state = parseSharedState(window.location.search, { date: localDate, minutes: 750, filter: 'all', selected: 'la-parra' });
-const labels = { sun: 'Sol de ejemplo', shade: 'Sombra de ejemplo', night: 'De noche', unknown: 'Sin datos' };
-const shortLabels = { sun: 'Sol', shade: 'Sombra', night: 'De noche', unknown: 'Sin datos' };
-const icons = { sun: '☀', shade: '◒', night: '☾', unknown: '?' };
-
-const svgNamespace = 'http://www.w3.org/2000/svg';
-const project = ([x, y], z = 0) => [35 + .95 * x + .34 * y, 78 + .64 * y - 1.15 * z];
-const points = (vertices, z = 0) => vertices.map((point) => project(point, z).map((n) => n.toFixed(2)).join(',')).join(' ');
-function svgPolygon(vertices, className) {
-  const polygon = document.createElementNS(svgNamespace, 'polygon');
-  polygon.setAttribute('points', vertices.map((point) => point.map((n) => n.toFixed(2)).join(',')).join(' '));
-  if (className) polygon.setAttribute('class', className);
-  return polygon;
-}
-
-// The architectural illustration uses the very same footprints and heights as the model.
-for (const building of [...buildings].sort((a, b) => Math.max(...a.footprint.map((p) => p[1])) - Math.max(...b.footprint.map((p) => p[1])))) {
-  const group = document.createElementNS(svgNamespace, 'g');
-  for (let i = 0; i < building.footprint.length; i++) {
-    const a = building.footprint[i];
-    const b = building.footprint[(i + 1) % building.footprint.length];
-    if (project(b)[0] >= project(a)[0]) continue;
-    group.append(svgPolygon([project(a), project(b), project(b, building.height), project(a, building.height)], 'building-wall'));
-    const edgeLength = Math.hypot(project(b)[0] - project(a)[0], project(b)[1] - project(a)[1]);
-    const windows = Math.max(1, Math.floor(edgeLength / 18));
-    const floors = Math.max(1, Math.floor(building.height / 12));
-    const along = (t) => [a[0] + (b[0] - a[0]) * t, a[1] + (b[1] - a[1]) * t];
-    for (let floor = 0; floor < floors; floor++) {
-      const bottom = building.height * (floor + .27) / floors;
-      const top = building.height * (floor + .66) / floors;
-      for (let window = 0; window < windows; window++) {
-        const left = along((window + .35) / windows), right = along((window + .65) / windows);
-        group.append(svgPolygon([project(left, bottom), project(right, bottom), project(right, top), project(left, top)], 'building-window'));
-      }
-    }
-  }
-  const roof = document.createElementNS(svgNamespace, 'polygon');
-  roof.setAttribute('points', points(building.footprint, building.height));
-  roof.setAttribute('class', 'building-roof');
-  group.append(roof);
-  const centre = building.footprint.reduce((sum, point) => [sum[0] + point[0] / building.footprint.length, sum[1] + point[1] / building.footprint.length], [0, 0]);
-  const parapet = building.footprint.map(([x, y]) => [centre[0] + (x - centre[0]) * .9, centre[1] + (y - centre[1]) * .9]);
-  group.append(svgPolygon(parapet.map((point) => project(point, building.height)), 'building-parapet'));
-  $('#map-buildings').append(group);
-}
-
-function renderShadows(sun) {
-  const shadows = $('#shadow-shapes');
-  shadows.replaceChildren();
-  for (const building of buildings) {
-    for (const polygon of shadowPolygons(sun, building)) shadows.append(svgPolygon(polygon.map((point) => project(point))));
-  }
-  const available = shadowOffset(sun, 1) !== null;
-  const night = sun && sun.altitude < -1;
-  $('.map').dataset.light = available ? 'day' : night ? 'night' : 'low';
-  $('#scene-caption').textContent = available ? 'DIRECCIÓN DEL SOL' : night ? 'DE NOCHE' : 'SOL BAJO · SIN DATOS';
-  const direction = $('#sun-direction');
-  const dot = $('#sun-dot');
-  direction.toggleAttribute('hidden', !available);
-  dot.toggleAttribute('hidden', !available);
-  if (available) {
-    const radians = sun.azimuth * Math.PI / 180;
-    const dx = Math.sin(radians), dy = -Math.cos(radians);
-    const px = .95 * dx + .34 * dy, py = .64 * dy;
-    const length = Math.hypot(px, py);
-    const x = 36 + 23 * px / length, y = 36 + 23 * py / length;
-    direction.setAttribute('x2', x); direction.setAttribute('y2', y);
-    dot.setAttribute('cx', x); dot.setAttribute('cy', y);
-  }
-}
-
-let timelineKey = '';
-function renderTimeline(place) {
-  const key = `${place.id}:${state.date}`;
-  if (timelineKey === key) return;
-  timelineKey = key;
-  const intervals = intervalsFor(place, state.date);
-  const timeline = $('#day-timeline');
-  timeline.replaceChildren();
-  for (const interval of intervals) {
-    const segment = document.createElement('span');
-    segment.className = `timeline-${interval.outcome}`;
-    segment.style.flexGrow = String(interval.end - interval.start);
-    timeline.append(segment);
-  }
-  const plainLabels = { sun: 'sol', shade: 'sombra', night: 'noche', unknown: 'sin datos' };
-  timeline.setAttribute('aria-label', `Día de ejemplo: ${intervals.map(({ start, end, outcome }) => `${plainLabels[outcome]} de ${formattedTime(start)} a ${formattedTime(end)}`).join('; ')}. Horas aproximadas.`);
-  const sunny = intervals.filter((interval) => interval.outcome === 'sun');
-  $('#sun-intervals').textContent = sunny.length
-    ? sunny.map(({ start, end }) => `${formattedTime(start)} – ${formattedTime(end)}`).join(' · ')
-    : intervals.some((interval) => interval.outcome === 'unknown')
-      ? 'Sin datos suficientes para calcular los tramos de sol.'
-      : 'No hay tramos de sol en el horario mostrado.';
-}
+const state = { date: `${today.year}-${today.month}-${today.day}`, minutes: 750 };
+const empty = { type: 'FeatureCollection', features: [] };
+let buildings, activeMap, madridPlaces = [], selectedMadrid = '', madridConsulted = '';
+let mapStarted = false, mapLoading = false, is3D = true, playback, pendingFrame;
+let view = { bearing: 0, pitch: 0, center: AYALA_CENTER };
+let currentDirection = null;
+let buildingsLoading = false, buildingsError = false;
 
 function formattedTime(minutes) {
   return `${String(Math.floor(minutes / 60)).padStart(2, '0')}:${String(minutes % 60).padStart(2, '0')}`;
 }
 
-for (const place of places) {
-  const item = document.createElement('button');
-  item.type = 'button';
-  item.className = 'place';
-  item.dataset.place = place.id;
-  item.innerHTML = '<span class="place-number"></span><span class="place-text"><strong></strong><small></small></span><span class="place-status status"></span><span class="place-arrow" aria-hidden="true">↗</span>';
-  item.querySelector('.place-number').textContent = place.number;
-  item.querySelector('strong').textContent = place.name;
-  item.querySelector('small').textContent = place.description;
-  item.addEventListener('click', () => selectPlace(place.id));
-  list.append(item);
-
-  const pin = document.createElement('button');
-  pin.type = 'button';
-  pin.className = 'map-pin';
-  pin.dataset.place = place.id;
-  pin.dataset.number = place.number;
-  const [x, y] = project([place.x * 6, place.y * 5.2]);
-  pin.style.left = `${x / 850 * 100}%`;
-  pin.style.top = `${y / 490 * 100}%`;
-  pin.textContent = place.number;
-  pin.addEventListener('click', () => selectPlace(place.id));
-  pins.append(pin);
+function updateCompass() {
+  const direction = currentDirection;
+  $('#shadow-compass').hidden = !direction;
+  if (!direction) return;
+  const radians = (direction.bearing - view.bearing) * Math.PI / 180;
+  const pitch = (view.pitch || 0) * Math.PI / 180;
+  const screenAngle = Math.atan2(Math.sin(radians), Math.cos(radians) * Math.cos(pitch)) * 180 / Math.PI;
+  $('#compass-arrow').style.transform = `rotate(${screenAngle}deg)`;
+  $('#compass-label').textContent = direction.label;
+  $('#direction-symbol').style.transform = `rotate(${direction.bearing}deg)`;
 }
 
-function selectPlace(id) {
-  state.selected = id;
-  sharePanel.hidden = true;
-  render();
+function updateShadowStatus() {
+  const status = $('#shadow-status');
+  $('#shadows-retry').hidden = !buildingsError;
+  if (buildingsLoading) status.textContent = 'Cargando alturas de edificios…';
+  else if (buildingsError) status.textContent = 'No hemos podido cargar las alturas. No se pueden mostrar las sombras; inténtalo de nuevo.';
+  else if (!buildings) status.textContent = 'Las sombras aún no están disponibles.';
+  else if (!insideAyala(view.center)) status.textContent = 'Fuera de la zona estudiada: las sombras solo se calculan en el entorno de Ayala.';
+  else if (buildings.omitted) status.textContent = 'Sombras orientativas en Ayala; faltan alturas válidas para algunos edificios.';
+  else status.textContent = 'Sombras orientativas · alturas municipales del entorno de Ayala.';
 }
 
-function render() {
-  const sun = demoSun(state.date, state.minutes);
-  renderShadows(sun);
-  const visible = visiblePlaces(state.filter, sun);
-  if (!visible.some((place) => place.id === state.selected)) state.selected = visible[0]?.id ?? '';
-  const selected = places.find((place) => place.id === state.selected);
+function updateSolar() {
+  const instant = civilTimeToUtc(state.date, state.minutes);
+  const sun = sunPosition(instant, AYALA_CENTER.lat, AYALA_CENTER.lng);
+  currentDirection = shadowDirection(sun);
   const clock = formattedTime(state.minutes);
-
-  date.value = state.date;
-  time.value = state.minutes;
-  timeValue.value = clock;
-  time.setAttribute('aria-valuetext', clock);
-  time.style.setProperty('--progress', `${(state.minutes - 540) / 660 * 100}%`);
-  $('#day-timeline').style.setProperty('--current', `${(state.minutes - 540) / 660 * 100}%`);
-  document.querySelector(`input[name="filter"][value="${state.filter}"]`).checked = true;
-  const resultCount = `${visible.length} ${visible.length === 1 ? 'opción' : 'opciones'}`;
-  if ($('#result-count').textContent !== resultCount) $('#result-count').textContent = resultCount;
-  $('#empty').hidden = visible.length !== 0;
-  $('#unknown-note').hidden = state.filter === 'all';
-
-  for (const place of places) {
-    const outcome = outcomeFor(place, sun);
-    const shown = visible.some((entry) => entry.id === place.id);
-    const active = place.id === state.selected;
-    const item = list.querySelector(`[data-place="${place.id}"]`);
-    const pin = pins.querySelector(`[data-place="${place.id}"]`);
-    const status = item.querySelector('.place-status');
-    item.hidden = pin.hidden = !shown;
-    item.classList.toggle('is-selected', active);
-    item.setAttribute('aria-pressed', String(active));
-    status.className = `place-status status status-${outcome}`;
-    status.textContent = `${icons[outcome]} ${shortLabels[outcome]}`;
-    pin.className = `map-pin pin-${outcome}${active ? ' is-selected' : ''}`;
-    pin.setAttribute('aria-pressed', String(active));
-    pin.setAttribute('aria-label', `Seleccionar ${place.name}, ${labels[outcome].toLowerCase()}`);
-  }
-
-  details.hidden = !selected;
-  if (selected) {
-    const outcome = outcomeFor(selected, sun);
-    $('#detail-title').textContent = selected.name;
-    $('#detail-status').className = `status status-${outcome}`;
-    $('#detail-status').textContent = `${icons[outcome]} ${labels[outcome]}`;
-    const descriptions = {
-      sun: 'El cálculo encuentra sol en este lugar imaginario. No incluye nubes, toldos ni árboles.',
-      shade: 'Un edificio simulado tapa el sol en este lugar imaginario. No incluye nubes, toldos ni árboles.',
-      night: 'A esta hora el sol está bajo el horizonte. Este lugar es imaginario.',
-      unknown: !selected.hasTables
-        ? 'No conocemos la posición de las mesas de este lugar imaginario, así que no podemos calcular su sombra.'
-        : 'El sol está demasiado cerca del horizonte o faltan datos para calcular el resultado con confianza.',
-    };
-    $('#detail-copy').textContent = descriptions[outcome];
-    renderTimeline(selected);
-    if (!sharePanel.hidden) shareLink.value = shareUrl(window.location.href, state);
-  }
+  $('#date').value = state.date;
+  $('#time').value = state.minutes;
+  $('#time-value').value = clock;
+  $('#time').setAttribute('aria-valuetext', `${clock}, hora de Madrid`);
+  $('#time').style.setProperty('--progress', `${(state.minutes - 540) / 660 * 100}%`);
+  $('#direction-text').textContent = currentDirection
+    ? `A las ${clock}, las sombras apuntan hacia el ${currentDirection.label}.`
+    : sun && sun.altitude < -1 ? `A las ${clock} es de noche; no hay sombra solar.`
+      : `A las ${clock} el sol está muy bajo; no mostramos sombras fiables.`;
+  $('#direction-symbol').textContent = currentDirection ? '↑' : sun && sun.altitude < -1 ? '☾' : '☼';
+  if (!currentDirection) $('#direction-symbol').style.transform = '';
+  updateCompass();
+  if (pendingFrame) cancelAnimationFrame(pendingFrame);
+  pendingFrame = requestAnimationFrame(() => {
+    pendingFrame = null;
+    if (activeMap) {
+      activeMap.setSun?.(sun);
+      activeMap.setShadows(buildings && currentDirection ? buildingShadows(buildings, sun) : empty);
+    }
+  });
 }
 
-let playback;
 function stopPlayback() {
-  clearInterval(playback);
-  playback = undefined;
+  clearInterval(playback); playback = null;
   $('#play-day').setAttribute('aria-pressed', 'false');
   $('#play-day').textContent = '▶ Ver pasar el día';
 }
 
-$('#play-day').addEventListener('click', () => {
-  if (playback) return stopPlayback();
-  if (state.minutes >= 1200) state.minutes = 540;
-  render();
-  $('#play-day').setAttribute('aria-pressed', 'true');
-  $('#play-day').textContent = '❚❚ Pausar';
-  playback = setInterval(() => {
-    state.minutes = Math.min(1200, state.minutes + 10);
-    render();
-    if (state.minutes >= 1200) stopPlayback();
-  }, 250);
-});
-
-time.addEventListener('input', () => {
-  stopPlayback();
-  state.minutes = Number(time.value);
-  render();
-});
-
-date.addEventListener('change', () => {
-  stopPlayback();
-  if (!date.validity.valid || !date.value) {
-    date.value = state.date;
-    return;
-  }
-  state.date = date.value;
-  render();
-});
-
-document.querySelectorAll('input[name="filter"]').forEach((input) => {
-  input.addEventListener('change', () => {
-    state.filter = input.value;
-    sharePanel.hidden = true;
-    render();
-  });
-});
-
-$('#share').addEventListener('click', () => {
-  sharePanel.hidden = !sharePanel.hidden;
-  if (!sharePanel.hidden) {
-    shareLink.value = shareUrl(window.location.href, state);
-    $('#share-message').textContent = 'El enlace solo incluye esta selección de ejemplo.';
-    shareLink.focus();
-    shareLink.select();
-  }
-});
-
-$('#copy').addEventListener('click', async () => {
+async function loadBuildings() {
+  if (buildingsLoading) return;
+  buildingsLoading = true; buildingsError = false; updateShadowStatus();
   try {
-    await navigator.clipboard.writeText(shareLink.value);
-    $('#share-message').textContent = 'Enlace copiado.';
+    buildings = await getMadridBuildings();
+    activeMap?.setBuildings(buildings);
+    updateSolar();
   } catch {
-    shareLink.focus();
-    shareLink.select();
-    $('#share-message').textContent = 'Copia el enlace seleccionado para compartirlo.';
-  }
-});
-
-let madridPlaces = [];
-let selectedMadrid = '';
-let activeMap;
-let cityMap;
-let googleMap;
-let openMap;
-let activeProvider;
-let mapLoading = false;
-let mapStarted = false;
-let googleAttempt = 0;
-let googleUnavailable = false;
-let is3D = true;
-let madridConsulted = '';
+    buildings = null; buildingsError = true;
+    activeMap?.setShadows(empty);
+  } finally { buildingsLoading = false; updateShadowStatus(); }
+}
 
 function selectMadrid(id, focus = true) {
   selectedMadrid = id;
@@ -311,8 +115,7 @@ async function loadMadrid() {
     madridPlaces = await getMadridTerraces();
     results.replaceChildren();
     if (!madridPlaces.length) {
-      selectedMadrid = '';
-      madridConsulted = '';
+      selectedMadrid = ''; madridConsulted = '';
       status.textContent = 'El censo no devuelve terrazas para esta selección. Prueba de nuevo más tarde.';
     } else {
       madridPlaces.forEach((terrace, index) => {
@@ -328,11 +131,10 @@ async function loadMadrid() {
         identity.append(name, address); entry.append(number, identity, arrow); item.append(entry); results.append(item);
         entry.addEventListener('click', () => selectMadrid(terrace.id));
       });
-      const consulted = new Intl.DateTimeFormat('es-ES', {
+      madridConsulted = new Intl.DateTimeFormat('es-ES', {
         timeZone: 'Europe/Madrid', dateStyle: 'short', timeStyle: 'short',
       }).format(new Date());
-      madridConsulted = consulted;
-      status.textContent = `${madridPlaces.length} ${madridPlaces.length === 1 ? 'registro' : 'registros'} · Consulta: ${consulted}`;
+      status.textContent = `${madridPlaces.length} ${madridPlaces.length === 1 ? 'registro' : 'registros'} · Consulta: ${madridConsulted}`;
       if (!madridPlaces.some((place) => place.id === selectedMadrid)) selectedMadrid = madridPlaces[0].id;
       selectMadrid(selectedMadrid, false);
     }
@@ -343,144 +145,88 @@ async function loadMadrid() {
       ? `No hemos podido actualizar. Se mantiene la consulta anterior: ${madridConsulted}.`
       : 'No podemos consultar el censo de Madrid. Comprueba tu conexión y vuelve a intentarlo.';
     button.textContent = 'Reintentar ↻';
-  } finally {
-    button.disabled = false;
-  }
+  } finally { button.disabled = false; }
 }
 
-function activateMap(provider) {
-  activeProvider = provider;
-  activeMap = { city: cityMap, google: googleMap, open: openMap }[provider];
-  for (const name of ['city', 'google', 'open']) $(`#${name}-map`).hidden = name !== provider;
-  const has3DControls = provider === 'city' || (provider === 'google' && googleMap?.is3D() === true);
-  $('#city-controls').hidden = !has3DControls;
-  $('#map-dimension').hidden = !has3DControls || !is3D;
-  $('#map-provider').textContent = provider === 'google' ? 'Volver al mapa ilustrado ↗' : 'Usar Google Maps ↗';
-  $('#map-provider').disabled = googleUnavailable;
+function onViewChange(next) {
+  view = next;
+  updateCompass();
+  updateShadowStatus();
+}
+
+function activateMap(map, isCity) {
+  activeMap = map;
+  $('#city-map').hidden = !isCity;
+  $('#open-map').hidden = isCity;
+  $('#city-controls').hidden = !isCity;
+  $('#map-dimension').hidden = !isCity || !is3D;
   $('#map-message').hidden = true;
   updateMadridMarkers();
-  if (has3DControls) activeMap?.set3D(is3D);
-  if (!$('#madrid').hidden) activeMap?.invalidate?.();
+  if (buildings) activeMap.setBuildings(buildings);
+  updateSolar();
+  activeMap.invalidate();
 }
 
 async function loadOpenMap() {
-  $('#city-map').hidden = true;
-  $('#open-map').hidden = false;
+  $('#city-map').hidden = true; $('#open-map').hidden = false;
   try {
     let tilesAvailable = false;
-    openMap = await createOpenMap($('#open-map'), (available) => {
+    const map = await createOpenMap($('#open-map'), (available) => {
       tilesAvailable = available;
       $('#map-message').hidden = available;
       $('#map-retry').hidden = available;
-      if (!available) $('#map-message-text').textContent = 'No hemos podido cargar el mapa. Puedes consultar la lista de terrazas o volver a intentarlo.';
-    });
-    activateMap('open');
+      if (!available) $('#map-message-text').textContent = 'No hemos podido cargar el mapa. Puedes consultar la lista o volver a intentarlo.';
+    }, onViewChange);
+    activateMap(map, false);
     $('#map-message').hidden = tilesAvailable;
     $('#map-provider-status').hidden = false;
-    $('#map-provider-status').textContent = 'La vista 3D no está disponible en este momento. Te mostramos el mapa en 2D.';
+    $('#map-provider-status').textContent = 'La vista 3D no está disponible en este navegador; mostramos el mapa en 2D.';
   } catch {
-    $('#map-message-text').textContent = 'No hemos podido cargar el mapa. Puedes consultar la lista de terrazas o volver a intentarlo.';
+    $('#map-message').hidden = false;
+    $('#map-message-text').textContent = 'No hemos podido cargar el mapa. Puedes consultar la lista o volver a intentarlo.';
     $('#map-retry').hidden = false;
   }
 }
 
 async function loadMap() {
   if (mapStarted || mapLoading) return;
-  mapStarted = true;
-  mapLoading = true;
-  try {
-    cityMap = await createCityMap($('#city-map'));
-    activateMap('city');
-  } catch { await loadOpenMap(); }
+  mapStarted = true; mapLoading = true;
+  try { activateMap(await createCityMap($('#city-map'), onViewChange), true); }
+  catch { await loadOpenMap(); }
   finally { mapLoading = false; }
 }
 
-async function useGoogleMap() {
-  if (activeProvider === 'google') {
-    activateMap(cityMap ? 'city' : 'open');
-    $('#map-provider-status').hidden = true;
-    return;
-  }
-  if (googleMap) {
-    activateMap('google');
-    if (googleMap.is3D() === false) {
-      $('#map-provider-status').hidden = false;
-      $('#map-provider-status').textContent = 'Google Maps se ha abierto en 2D en este navegador.';
-    }
-    return;
-  }
-  const attempt = ++googleAttempt;
-  const fail = () => {
-    if (attempt !== googleAttempt) return;
-    ++googleAttempt;
-    googleUnavailable = true;
-    googleMap = undefined;
-    activateMap(cityMap ? 'city' : 'open');
-    $('#map-provider-status').hidden = false;
-    $('#map-provider-status').textContent = 'No hemos podido abrir Google Maps. Puedes seguir explorando el mapa.';
-  };
-  $('#city-map').hidden = true;
-  $('#open-map').hidden = true;
-  $('#google-map').hidden = false;
-  $('#city-controls').hidden = true;
-  $('#map-dimension').hidden = true;
-  $('#map-provider').disabled = true;
-  $('#map-message').hidden = false;
-  $('#map-message-text').textContent = 'Preparando Google Maps…';
-  const showGoogleCapability = (vector) => {
-    if (attempt !== googleAttempt || activeProvider !== 'google') return;
-    $('#city-controls').hidden = !vector;
-    $('#map-dimension').hidden = !vector || !is3D;
-    if (vector) googleMap?.set3D(is3D);
-    $('#map-provider-status').hidden = vector;
-    if (!vector) $('#map-provider-status').textContent = 'Google Maps se ha abierto en 2D en este navegador.';
-  };
-  try {
-    const map = await createMadridMap($('#google-map'), fail, showGoogleCapability);
-    if (attempt !== googleAttempt) return;
-    googleMap = map;
-    activateMap('google');
-    const vector = map.is3D();
-    if (vector !== undefined) showGoogleCapability(vector);
-  } catch { fail(); }
-}
-
-function switchView(view) {
-  const demo = view === 'demo';
-  if (!demo) stopPlayback();
-  $('#madrid').hidden = demo;
-  $('#demo').hidden = !demo;
-  if (!demo) {
-    if (!mapStarted) loadMap();
-    activeMap?.invalidate?.();
-  }
-  for (const [id, active] of [['#real-tab', !demo], ['#demo-tab', demo]]) {
-    $(id).classList.toggle('is-active', active);
-    $(id).setAttribute('aria-pressed', String(active));
-  }
-}
-
-$('#real-tab').addEventListener('click', () => switchView('real'));
-$('#demo-tab').addEventListener('click', () => switchView('demo'));
-$('#open-demo').addEventListener('click', () => {
-  switchView('demo');
-  $('#demo-tab').focus();
-  $('#demo-tab').scrollIntoView({ block: 'nearest', behavior: 'auto' });
+$('#time').addEventListener('input', (event) => { stopPlayback(); state.minutes = Number(event.target.value); updateSolar(); });
+$('#date').addEventListener('change', (event) => {
+  stopPlayback();
+  if (!event.target.validity.valid || !civilTimeToUtc(event.target.value, state.minutes)) { event.target.value = state.date; return; }
+  state.date = event.target.value; updateSolar();
+});
+$('#play-day').addEventListener('click', () => {
+  if (playback) return stopPlayback();
+  if (state.minutes >= 1200) state.minutes = 540;
+  updateSolar();
+  $('#play-day').setAttribute('aria-pressed', 'true');
+  $('#play-day').textContent = '❚❚ Pausar';
+  playback = setInterval(() => {
+    state.minutes = Math.min(1200, state.minutes + 10); updateSolar();
+    if (state.minutes >= 1200) stopPlayback();
+  }, 450);
 });
 $('#madrid-load').addEventListener('click', loadMadrid);
+$('#shadows-retry').addEventListener('click', loadBuildings);
 $('#map-retry').addEventListener('click', () => window.location.reload());
-$('#map-provider').addEventListener('click', useGoogleMap);
 $('#map-rotate').addEventListener('click', () => activeMap?.rotate?.());
 $('#map-pitch').addEventListener('click', () => {
   is3D = !is3D;
   $('#map-pitch').setAttribute('aria-pressed', String(is3D));
+  $('#map-pitch').textContent = is3D ? 'Vista 3D' : 'Vista 2D';
   $('#map-dimension').hidden = !is3D;
   activeMap?.set3D?.(is3D);
 });
-
-render();
-// Shared links describe the fictional example; opening one should show it directly.
-const sharedParams = new URLSearchParams(window.location.search);
-if (['fecha', 'hora', 'filtro', 'terraza'].some((key) => sharedParams.has(key))) switchView('demo');
+const oldParams = new URLSearchParams(window.location.search);
+if (['fecha', 'hora', 'filtro', 'terraza'].some((key) => oldParams.has(key))) $('#old-link-note').hidden = false;
+updateSolar();
+loadBuildings();
 loadMadrid();
-if (!$('#madrid').hidden) loadMap();
+loadMap();

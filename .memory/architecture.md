@@ -1,10 +1,10 @@
 # Arquitectura — Rato al Sol
 
-Estado: frontend local en HTML, CSS y JavaScript, sin instalación ni build. `frontend/solar.mjs` usa SunCalc 2.0.2 incluido localmente y calcula sombra sobre polígonos sintéticos; `frontend/demo-data.mjs` aporta un barrio imaginario que comparten mapa y lista. `frontend/madrid.mjs` consulta al abrir o actualizar una selección del censo público municipal y convierte las coordenadas de las entradas; los locales reales se muestran sin estimación solar. `frontend/city-map.mjs` presenta un mapa 3D orientativo con MapLibre/OpenFreeMap; `frontend/google-map.mjs` integra el mapa opcional de Google y `frontend/open-map.mjs` proporciona el respaldo 2D con Leaflet/OpenStreetMap. Ninguno de esos mapas reales aporta geometría al motor solar. No hay backend propio.
+Estado: frontend local estático sin build. `frontend/solar.mjs` y SunCalc 2.0.2 calculan el mismo sol para dirección, fachadas y sombras. `frontend/madrid.mjs` consulta el censo y transforma la posición aproximada de las entradas. `frontend/madrid-buildings.mjs` consulta y valida una zona fija de edificios con alturas estimadas del Ayuntamiento. `frontend/map-shadows.mjs` proyecta sus cubiertas y bordes, incluidos patios, sobre una aproximación métrica local; no clasifica la luz en terrazas.
 
-El escenario trabaja con metros, eje X hacia el este e Y hacia el sur, cubiertas planas y `Europe/Madrid`. Con el sol cerca del horizonte devuelve desconocido y no modela árboles, toldos ni nubes. Los polígonos del ejemplo son simples y conocidos: antes de admitir fuentes reales hay que validar topología, cobertura, alturas, coordenadas y ubicación de mesas; los tests actuales no acreditan precisión sobre el terreno.
+`frontend/city-map.mjs` dibuja sombras y edificios municipales sobre MapLibre/OpenFreeMap, sustituyendo los edificios esquemáticos dentro del área de estudio; `frontend/open-map.mjs` dibuja las mismas sombras en el respaldo Leaflet. El mapa exterior no constituye una zona con cobertura de cálculo. Google se conserva en código pero no está en esta interfaz mientras su acceso y superposición no se hayan comprobado. No hay backend propio.
 
-La escena ilustra las mismas huellas y alturas en una perspectiva fija: proyecta sus sombras sobre el suelo con la posición del mismo sol que clasifica las terrazas. Los tramos del día agrupan muestras cada 10 minutos entre las 09:00 y las 20:00 y son aproximados, no límites exactos. No se dibuja una sombra cuando el sol está por debajo del umbral de confianza del ejemplo.
+El modelo usa cubiertas planas, alturas estimadas, unidades métricas y `Europe/Madrid`. Oculta las sombras con el sol por debajo de 5° y no modela árboles, toldos, nubosidad ni reflejos. Las pruebas de geometría no acreditan precisión sobre el terreno, cobertura completa ni posición de mesas. Las geometrías ficticias históricas se conservan para pruebas aisladas; no se presentan como lugares reales.
 
 ## Flujo propuesto
 
@@ -19,7 +19,7 @@ Salida: intervalos geométricos de sol/sombra, cobertura y limitaciones; nubosid
 - Presentación, cálculo y acceso a proveedores tienen responsabilidades separadas; no exige microservicios ni una jerarquía de abstracciones.
 - El cálculo recibe tiempo y datos explícitos para poder reproducirlo. La UI consume su salida, no implementa otro motor.
 - Proveedor privado detrás de un servidor mínimo cuando lo exijan las claves. Preferencias locales al dispositivo por defecto.
-- Modo ejemplo separado de datos reales; caché con antigüedad y fuente. Su disponibilidad no implica validez actual.
+- Separar siempre el ejemplo sintético de los datos reales; la consulta y su fecha no garantizan vigencia ni cobertura.
 - Frontend autónomo y portable; sin imports ni enlaces simbólicos a BuildApp, Trading u otra app hermana. Las tres apps pueden consumir por HTTP un backend NUEVO común de Cool Projects, con contratos versionados y recursos dedicados.
 - Ubicación propuesta de API común: `/home/tonirod/code/Cool_Projects/cool-projects-api/`, no creada. Ningún dato, credencial, servicio o base de BuildApp forma parte de este sistema.
 - El ejemplo usa `frontend/` y los tests `tests/`; mantener lo mínimo que permita el recorrido completo.

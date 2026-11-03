@@ -6,10 +6,13 @@
 node tests/demo.test.mjs
 node tests/solar.test.mjs
 node tests/madrid.test.mjs
+node tests/map-shadows.test.mjs
 node --check frontend/app.mjs
 node --check frontend/demo-data.mjs
 node --check frontend/solar.mjs
 node --check frontend/madrid.mjs
+node --check frontend/madrid-buildings.mjs
+node --check frontend/map-shadows.mjs
 node --check frontend/google-map.mjs
 node --check frontend/open-map.mjs
 node --check frontend/city-map.mjs
@@ -18,6 +21,8 @@ bash scripts/check-ai-instructions.sh
 ```
 
 Los tests de Node comprueban una posición solar de referencia con tolerancia de 0,1°, cambios de horario de Madrid, geometría analítica simple y dirección de sombra dibujada, agrupación de intervalos de 10 minutos, noche, datos ausentes, filtros, enlace compartido y contrato de la API municipal. La prueba de la biblioteca solar cubre solo ese caso, no su precisión global ni la sombra real en terrazas. Los dos últimos comandos comprueban solo documentación/configuración. El frontend es estático, sin build, compilador de tipos ni linter configurado.
+
+En la unificación del 2026-11-03 se consultaron 1.324 polígonos municipales y se inspeccionaron en Chromium capturas reales del mapa 3D por la mañana y la tarde y de móvil; se midieron 320, 390, 768 y 1440 px sin desbordamiento horizontal y zoom CSS del 200 %. La flecha, la iluminación y las sombras cambian con la hora, y la flecha responde al giro. Se comprobaron selección, reproducción/pausa, teclado, movimiento reducido, noche, enlace antiguo, aviso al salir de la zona y fallo/recuperación de alturas. Al bloquear MapLibre, Leaflet mostró la misma capa de sombras en 2D. No hubo errores JavaScript; no se probó en dispositivos reales ni se ha contrastado la precisión con observaciones sobre el terreno. Los tests geométricos comprueban un edificio de 10 m con sol a 45°, direcciones norte y oeste, patios y el umbral del horizonte; validan también alturas inválidas y respuestas incompletas o excesivas.
 
 En la revisión del mapa 3D del 2026-11-03 se inspeccionaron capturas en Chromium a 320, 390, 768 y 1440 px y ampliación CSS al 200 %, con WebGL por software: se cargaron edificios de OpenFreeMap y tres entradas del censo real, se verificaron giro, cambio 2D/3D, selección sincronizada, teclado y movimiento reducido. La prueba solar ficticia movió la sombra al cambiar la hora. Se bloqueó la biblioteca 3D para comprobar el respaldo 2D y sus puntos, y ambas bibliotecas para comprobar que la lista y el ejemplo seguían disponibles. Google rechazó de nuevo el origen y devolvió la interfaz al mapa 3D; el cambio de proveedor y sus controles se probaron también con Google simulado. No se probó una cuenta de Google autorizada ni dispositivos reales; la geometría visual no valida alturas ni sombras reales.
 

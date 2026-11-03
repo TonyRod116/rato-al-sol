@@ -48,3 +48,9 @@ Documentar el motivo y la evidencia al resolverlas. No convertir una propuesta e
 
 - Tony prefiere la estética de la simulación. La vista inicial usa MapLibre y OpenFreeMap para mostrar edificios en perspectiva con una paleta próxima al ejemplo; permite girar la vista y alternar entre 2D y 3D. Google queda como opción y Leaflet como respaldo 2D si el 3D falla.
 - Los volúmenes se emplean solo para visualización: pueden incluir alturas estimadas o valores por defecto y no identifican dónde están las mesas. No se usan para inferir sombra, intervalos de sol ni precisión de una terraza real.
+
+## 2026-11-03 — unificar mapa y sombras de Ayala
+
+- Tony pidió reunir el mapa de Madrid con el selector y las sombras. Se consultan las alturas estimadas municipales en un rectángulo fijo de Ayala; en la prueba inicial devolvió 1.324 polígonos. El mapa usa esa misma geometría para volúmenes y sombras, con respaldo en 2D.
+- Las sombras son una orientación, no una validación ni una clasificación de luz en las mesas. No se conocen sus posiciones ni se incluyen nubes, árboles o toldos. Fuera del área de consulta no hay cobertura; el sol bajo se muestra sin sombra calculada.
+- Google se mantiene fuera del selector visual hasta que el origen autorizado se pueda habilitar y se haya comprobado la integración de sombras. La clave y la cuenta siguen sin cambios.

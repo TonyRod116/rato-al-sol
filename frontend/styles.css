@@ -318,3 +318,22 @@ footer { display: flex; align-items: center; justify-content: space-between; gap
   .city-controls button { min-width: 44px; padding: 0 8px; font-size: .68rem; }
   .city-controls button span { display: none; }
 }
+
+/* One scene: the same neighbourhood, sun and time controls. */
+.old-link-note { padding: 12px; background: #f9edc9; color: #594d2a; font-size: .8rem; }
+.shadow-compass { position: absolute; z-index: 2; bottom: 22px; left: 18px; display: flex; align-items: center; gap: 10px; padding: 10px 13px; background: #fffcf3ed; box-shadow: 0 2px 8px #5b514018; color: #31453e; pointer-events: none; }
+.compass-arrow { display: grid; place-items: center; width: 32px; height: 32px; color: #b45f40; font-size: 2rem; font-weight: 700; line-height: 1; }
+.shadow-compass small, .shadow-compass strong { display: block; }
+.shadow-compass small { font-size: .54rem; font-weight: 800; letter-spacing: .1em; }
+.shadow-compass strong { margin-top: 2px; font: 700 1.05rem Georgia, serif; text-transform: capitalize; }
+.direction-line { display: flex; align-items: center; gap: 10px; margin-top: 20px; padding: 12px 14px; background: #e7ece2; color: #334b3d; }
+.direction-line > span { display: grid; flex: 0 0 27px; place-items: center; font-size: 1.4rem; line-height: 1; color: #a75c3e; }
+.direction-line p { margin: 0; font-size: .8rem; font-weight: 700; line-height: 1.4; }
+.shadow-status { display: flex; justify-content: space-between; align-items: center; gap: 12px; margin-top: 12px; color: #5c6859; font-size: .72rem; line-height: 1.4; }
+.shadow-status p { margin: 0; }
+.shadow-status button { flex: none; min-height: 44px; padding: 0 6px; border: 0; background: transparent; color: #855740; font-weight: 750; }
+@media (max-width: 650px) {
+  .shadow-compass { left: 10px; bottom: 58px; gap: 7px; padding: 8px 10px; }
+  .shadow-compass small { font-size: .5rem; }
+  .shadow-compass strong { font-size: .95rem; }
+}

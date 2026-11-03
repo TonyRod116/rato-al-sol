@@ -2,7 +2,7 @@
 
 ## Base documental inicial
 
-Se prepararon instrucciones, contratos iniciales, memoria y comprobaciones. El recorrido local usa geometría ficticia; una consulta separada ya muestra registros reales de una calle de Madrid, todavía sin predicción solar ni validación sobre el terreno.
+Se prepararon instrucciones, contratos iniciales, memoria y comprobaciones. El recorrido local reúne en Ayala registros reales y sombras orientativas calculadas a partir de alturas municipales estimadas, todavía sin predicción por terraza ni validación sobre el terreno.
 
 ## Primer recorrido útil
 

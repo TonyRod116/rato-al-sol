@@ -1,5 +1,6 @@
-// The footprints and heights are an illustration, not input to solar calculations.
-export async function createCityMap(element) {
+import { AYALA_BOUNDS } from './madrid-buildings.mjs';
+
+export async function createCityMap(element, onViewChange = () => {}) {
   const base = 'https://cdn.jsdelivr.net/npm/maplibre-gl@5.24.0/dist/maplibre-gl';
   const css = document.createElement('link');
   css.rel = 'stylesheet'; css.href = `${base}.css`;
@@ -74,10 +75,48 @@ export async function createCityMap(element) {
     throw error;
   }
 
+  const [west, south, east, north] = AYALA_BOUNDS;
+  const coverage = { type: 'Polygon', coordinates: [[[west, south], [east, south], [east, north], [west, north], [west, south]]] };
+  const empty = { type: 'FeatureCollection', features: [] };
+  map.addSource('ayala-buildings', { type: 'geojson', data: empty });
+  map.addSource('ayala-shadows', { type: 'geojson', data: empty });
+  const belowBuildings = map.getLayer('building') ? 'building' : undefined;
+  map.addLayer({ id: 'ayala-shadows', type: 'fill', source: 'ayala-shadows',
+    paint: { 'fill-color': '#536a70', 'fill-opacity': .44, 'fill-antialias': false } }, belowBuildings);
+  const below3d = map.getLayer('building-3d') ? 'building-3d' : undefined;
+  map.addLayer({ id: 'ayala-buildings-3d', type: 'fill-extrusion', source: 'ayala-buildings', minzoom: 14,
+    paint: { 'fill-extrusion-color': '#d8a993', 'fill-extrusion-height': ['get', 'height'],
+      'fill-extrusion-base': 0, 'fill-extrusion-opacity': 1 } }, below3d);
+  // Replace the schematic tile buildings only within the municipal coverage area.
+  function useMunicipalBuildings() {
+    for (const id of ['building', 'building-3d']) {
+      if (!map.getLayer(id)) continue;
+      const original = map.getFilter(id);
+      const outside = ['!', ['within', coverage]];
+      map.setFilter(id, original ? ['all', original, outside] : outside);
+    }
+  }
+  let usingMunicipal = false;
+  const notifyView = () => onViewChange({ bearing: map.getBearing(), pitch: map.getPitch(), center: map.getCenter() });
+  map.on('rotate', notifyView);
+  map.on('pitch', notifyView);
+  map.on('moveend', notifyView);
+  notifyView();
   let markers = [];
   let fittedPlaces = false;
   const duration = () => window.matchMedia('(prefers-reduced-motion: reduce)').matches ? 0 : 350;
   return {
+    setBuildings(buildings) {
+      map.getSource('ayala-buildings').setData(buildings);
+      if (!usingMunicipal) { useMunicipalBuildings(); usingMunicipal = true; }
+    },
+    setShadows(shadows) { map.getSource('ayala-shadows').setData(shadows); },
+    setSun(sun) {
+      const daylight = sun && sun.altitude >= 5;
+      map.setLight({ anchor: 'map', color: '#fff9ef', intensity: daylight ? .3 : .12,
+        position: daylight ? [1.5, sun.azimuth, 90 - sun.altitude] : [1.5, 180, 30],
+        'position-transition': { duration: 0 }, 'intensity-transition': { duration: 0 } });
+    },
     showPlaces(places, onSelect) {
       for (const entry of markers) entry.marker.remove();
       markers = places.flatMap((place, index) => {

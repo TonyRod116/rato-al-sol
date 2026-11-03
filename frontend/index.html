@@ -4,8 +4,8 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="theme-color" content="#faf6ec">
-  <meta name="description" content="Explora terrazas de Madrid y descubre cómo cambia el sol a lo largo del día.">
-  <title>Rato al Sol — Encuentra tu terraza</title>
+  <meta name="description" content="Explora las sombras estimadas a lo largo del día en la calle de Ayala, Madrid.">
+  <title>Rato al Sol — Explora la luz en Madrid</title>
   <link rel="icon" href="./favicon.svg" type="image/svg+xml">
   <link rel="stylesheet" href="./styles.css">
   <script type="module" src="./app.mjs"></script>
@@ -13,135 +13,59 @@
 <body>
   <a class="skip-link" href="#contenido">Saltar al contenido</a>
   <header class="site-header">
-    <a class="wordmark" href="./" aria-label="Rato al Sol, inicio">
-      <span class="brand-sun" aria-hidden="true">✳</span> Rato al Sol<span class="wordmark-dot">.</span>
-    </a>
-    <a class="header-link" href="#sobre-ejemplo">Cómo funciona <span aria-hidden="true">↗</span></a>
+    <a class="wordmark" href="./" aria-label="Rato al Sol, inicio"><span class="brand-sun" aria-hidden="true">✳</span> Rato al Sol<span class="wordmark-dot">.</span></a>
+    <a class="header-link" href="#como-funciona">Cómo funciona <span aria-hidden="true">↗</span></a>
   </header>
-
   <main id="contenido">
     <section class="intro" aria-labelledby="titulo">
-      <div>
-        <p class="section-kicker">EXPLORADOR DE SOL Y SOMBRA <span aria-hidden="true">✳</span></p>
-        <h1 id="titulo">Encuentra tu <em>rato de sol.</em></h1>
-        <p class="lead">Terrazas para disfrutar el día, con la luz como protagonista.</p>
-      </div>
+      <div><p class="section-kicker">EXPLORADOR DE SOL Y SOMBRA <span aria-hidden="true">✳</span></p><h1 id="titulo">Encuentra tu <em>rato de sol.</em></h1><p class="lead">Mueve la hora y descubre cómo cambia la luz en Madrid.</p></div>
     </section>
-    <noscript><p class="noscript">Activa JavaScript para poder utilizar el ejemplo interactivo.</p></noscript>
-
-    <nav class="view-switch" aria-label="Elige qué explorar">
-      <button id="real-tab" class="view-tab is-active" type="button" aria-pressed="true" aria-controls="madrid"><span aria-hidden="true">⌖</span> Madrid real</button>
-      <button id="demo-tab" class="view-tab" type="button" aria-pressed="false" aria-controls="demo"><span aria-hidden="true">☀</span> Prueba de sol <small>EJEMPLO</small></button>
-    </nav>
-
+    <noscript><p class="noscript">Activa JavaScript para utilizar el mapa y el selector de hora.</p></noscript>
+    <p id="old-link-note" class="old-link-note" hidden>Este enlace era de un barrio de ejemplo; ahora estás viendo Madrid.</p>
     <section class="explore real-explore" id="madrid" aria-labelledby="madrid-title">
       <div class="explore-grid">
         <div class="scene-column">
           <figure class="map-figure">
             <div class="real-map-shell">
               <div id="city-map" class="google-map" aria-label="Mapa tridimensional de los alrededores de la calle de Ayala"></div>
-              <div id="google-map" class="google-map" aria-label="Mapa de Google de los alrededores de la calle de Ayala" hidden></div>
-              <div id="open-map" class="google-map" aria-label="Mapa de terrazas registradas en la calle de Ayala" hidden></div>
-              <div class="real-map-tag"><span aria-hidden="true">⌖</span> <span class="tag-city">MADRID · </span>RECOLETOS <b id="map-dimension" hidden>3D</b></div>
+              <div id="open-map" class="google-map" aria-label="Mapa de los alrededores de la calle de Ayala" hidden></div>
+              <div class="real-map-tag"><span aria-hidden="true">⌖</span> <span class="tag-city">MADRID · </span>AYALA <b id="map-dimension" hidden>3D</b></div>
               <div id="city-controls" class="city-controls" aria-label="Controles del mapa tridimensional" hidden>
                 <button id="map-rotate" type="button" aria-label="Girar el mapa 45 grados">↻ <span>Girar</span></button>
                 <button id="map-pitch" type="button" aria-pressed="true">Vista 3D</button>
               </div>
+              <div class="shadow-compass" id="shadow-compass" aria-hidden="true"><span class="compass-arrow" id="compass-arrow">↑</span><span><small>LA SOMBRA VA HACIA</small><strong id="compass-label">—</strong></span></div>
               <div id="map-message" class="map-message" role="status"><span aria-hidden="true">✳</span><p id="map-message-text">Preparando el mapa…</p><button id="map-retry" type="button" hidden>Reintentar mapa ↗</button></div>
             </div>
-            <figcaption><span>✳</span> Los puntos son entradas aproximadas, no las mesas. Los volúmenes y alturas son orientativos.</figcaption>
-            <div class="map-options"><p>Arrastra para explorar.</p><button id="map-provider" type="button" disabled>Usar Google Maps ↗</button></div>
-            <p id="map-provider-status" class="map-provider-status" role="status" aria-live="polite" hidden></p>
+            <figcaption><span>✳</span> Sombras estimadas de edificios en el entorno de Ayala. Los puntos son entradas aproximadas, no mesas.</figcaption>
+            <p id="map-provider-status" class="map-provider-status" role="status" hidden></p>
           </figure>
-          <div class="demo-invitation"><div><span class="invitation-icon" aria-hidden="true">☀</span><div><strong>¿Y el sol?</strong><p>Descubre cómo podría cambiar la sombra a lo largo del día.</p></div></div><button id="open-demo" type="button">Ver la simulación <span aria-hidden="true">↗</span></button></div>
+          <section class="planner" aria-label="Elige el día y la hora">
+            <div class="planner-heading"><div><p class="section-kicker">DESCUBRE CÓMO CAMBIA LA LUZ</p><h2>Mueve la hora <span aria-hidden="true">↗</span></h2></div><output id="time-value" for="time">12:30</output></div>
+            <div class="planner-controls">
+              <div class="date-control"><label for="date">Día</label><input type="date" id="date" name="fecha" min="2000-01-01" max="2099-12-31" required></div>
+              <div class="time-control"><label for="time">Hora en Madrid</label><input type="range" id="time" name="hora" min="540" max="1200" step="10" value="750"><div class="time-scale" aria-hidden="true"><span>09:00</span><span>12:00</span><span>16:00</span><span>20:00</span></div></div>
+            </div>
+            <div class="direction-line" role="status" aria-live="polite"><span id="direction-symbol" aria-hidden="true">↗</span><p id="direction-text">Calculando la dirección de la sombra…</p></div>
+            <div class="planner-footer"><p class="date-note">Hora local de Madrid. Sombras orientativas, sin nubes, árboles ni toldos.</p><button id="play-day" class="play-day" type="button" aria-pressed="false">▶ Ver pasar el día</button></div>
+            <div class="shadow-status"><p id="shadow-status" role="status">Cargando alturas de edificios…</p><button id="shadows-retry" type="button" hidden>Reintentar ↻</button></div>
+          </section>
         </div>
         <aside class="real-inspector" aria-label="Terrazas registradas en Ayala">
           <div class="real-inspector-head"><div><p class="section-kicker">UN PASEO POR MADRID</p><h2 id="madrid-title">Calle de Ayala<span class="heading-dot">.</span></h2><p>Recoletos · Madrid</p></div><span class="neighborhood-icon" aria-hidden="true">✳</span></div>
-          <div class="real-explanation"><span aria-hidden="true">✳</span><p>Estamos empezando por aquí. Elige un local para verlo en el mapa.</p></div>
+          <div class="real-explanation"><span aria-hidden="true">✳</span><p>Elige un local para verlo en el mapa y mueve la hora para explorar las sombras del barrio.</p></div>
           <div class="real-results"><div class="real-list-heading"><h3>Terrazas registradas</h3><button id="madrid-load" type="button">Actualizar ↻</button></div>
             <p id="madrid-status" class="madrid-status" role="status" aria-live="polite">Consultando el censo municipal…</p>
             <ul id="madrid-list" class="madrid-list" aria-label="Terrazas registradas en la calle de Ayala"></ul>
-            <div class="real-light-note"><strong>☼ &nbsp; Las horas de sol aún no están disponibles</strong><p>El registro no indica dónde están las mesas. Tampoco confirma que las terrazas abran hoy.</p></div>
-            <p class="madrid-source">Fuente: <a href="https://datos.madrid.es/dataset/200085-0-censo-locales/information">Ayuntamiento de Madrid, censo de terrazas</a> · <a href="https://creativecommons.org/licenses/by/4.0/">CC BY 4.0</a>. La fecha de consulta no garantiza la actualidad de cada dato.</p>
+            <div class="real-light-note"><strong>☼ &nbsp; Aún no sabemos dónde están las mesas</strong><p>Por eso no podemos decirte las horas de sol de cada terraza. El registro tampoco confirma que estén abiertas hoy.</p></div>
+            <p class="madrid-source">Fuentes: Ayuntamiento de Madrid, <a href="https://datos.madrid.es/dataset/200085-0-censo-locales/information">censo de terrazas</a> y <a href="https://datos.madrid.es/dataset/300750-0-servicio-mapas">alturas estimadas de edificios</a> · <a href="https://creativecommons.org/licenses/by/4.0/">CC BY 4.0</a>. La consulta no garantiza la actualidad de cada dato.</p>
           </div>
         </aside>
       </div>
     </section>
-
-    <section class="explore" id="demo" aria-label="Explora el barrio de ejemplo" hidden>
-      <div class="demo-notice" role="note"><span aria-hidden="true">✳</span><p><strong>Estás explorando un barrio inventado.</strong> Edificios, terrazas y sombras son de ejemplo; no sirven para elegir una terraza real.</p></div>
-      <div class="explore-grid">
-        <div class="scene-column">
-          <figure class="map-figure">
-            <div class="map" role="group" aria-label="Barrio imaginario en perspectiva. Selecciona una terraza por su número o usa la lista.">
-              <svg class="map-art" viewBox="0 0 850 490" preserveAspectRatio="none" aria-hidden="true">
-                <defs>
-                  <clipPath id="ground-clip"><polygon points="35,78 605,78 781.8,410.8 211.8,410.8"/></clipPath>
-                  <mask id="shadow-mask" maskUnits="userSpaceOnUse" x="0" y="0" width="850" height="490"><g id="shadow-shapes" fill="white"></g></mask>
-                </defs>
-                <rect width="850" height="490" fill="#e8d8bb"/>
-                <polygon points="35,88 605,88 781.8,420.8 211.8,420.8" fill="#c9b394"/>
-                <polygon points="35,78 605,78 781.8,410.8 211.8,410.8" fill="#f4e7cb"/>
-                <g clip-path="url(#ground-clip)">
-                  <g transform="matrix(.95 0 .34 .64 35 78)">
-                    <path d="M-30 110L640 355M95 -30L385 550M450 -30L210 550M-20 405L650 88" fill="none" stroke="#fdf4df" stroke-width="42"/>
-                    <path d="M-30 110L640 355M95 -30L385 550M450 -30L210 550M-20 405L650 88" fill="none" stroke="#e6d7bb" stroke-width="2" stroke-dasharray="8 9"/>
-                    <path d="M159 256L247 214 303 245 279 310 199 347 136 319Z" fill="#c8d2ac"/>
-                    <path d="M379 305L442 276 490 294 462 350 402 342Z" fill="#c8d2ac"/>
-                    <g fill="#9ead83"><circle cx="191" cy="270" r="10"/><circle cx="226" cy="250" r="8"/><circle cx="265" cy="278" r="12"/><circle cx="223" cy="309" r="9"/><circle cx="410" cy="315" r="9"/><circle cx="444" cy="310" r="12"/></g>
-                  </g>
-                  <rect width="850" height="490" fill="#586e78" opacity=".34" mask="url(#shadow-mask)"/>
-                </g>
-                <g id="map-buildings"></g>
-              </svg>
-              <div class="map-tag"><span aria-hidden="true">✳</span> BARRIO DE EJEMPLO</div>
-              <div id="map-pins"></div>
-              <div class="sun-compass" aria-hidden="true"><svg viewBox="0 0 72 72"><circle cx="36" cy="36" r="27"/><path d="M36 8V64M8 36H64"/><line id="sun-direction" x1="36" y1="36" x2="36" y2="13"/><circle id="sun-dot" cx="36" cy="13" r="5"/></svg><span id="scene-caption">SOL EN EL EJEMPLO</span></div>
-            </div>
-            <figcaption><span>✳</span> Perspectiva ilustrada · edificios y terrazas inventados</figcaption>
-          </figure>
-
-          <section class="planner" aria-label="Elige el día y la hora">
-            <div class="planner-heading"><div><p class="section-kicker">VIAJA A LO LARGO DEL DÍA</p><h2>Mueve la hora <span aria-hidden="true">↗</span></h2></div><output id="time-value" for="time">12:30</output></div>
-            <div class="planner-controls">
-              <div class="date-control"><label for="date">Día</label><input type="date" id="date" name="fecha" min="2000-01-01" max="2099-12-31" required></div>
-              <div class="time-control"><label for="time">Hora del ejemplo</label><input type="range" id="time" name="hora" min="540" max="1200" step="10" value="750"><div class="time-scale" aria-hidden="true"><span>09:00</span><span>12:00</span><span>16:00</span><span>20:00</span></div></div>
-            </div>
-            <div class="planner-footer"><p class="date-note">La posición del sol sigue la fecha y la hora de Madrid; la escena es ficticia.</p><button id="play-day" class="play-day" type="button" aria-pressed="false">▶ Ver pasar el día</button></div>
-          </section>
-        </div>
-
-        <aside class="inspector" aria-label="Terrazas y horas de sol de ejemplo">
-          <div id="details" class="details" aria-labelledby="detail-title" hidden>
-            <div class="detail-top"><p class="section-kicker">TU TERRAZA DE EJEMPLO</p><span aria-hidden="true">✳</span></div>
-            <div class="detail-title-row"><h2 id="detail-title"></h2><span id="detail-status" class="status"></span></div>
-            <p id="detail-copy"></p>
-            <div class="sun-hours">
-              <div class="hours-heading"><h3>Su día de sol</h3><span>09:00 — 20:00</span></div>
-              <div id="day-timeline" class="day-timeline" role="img"></div>
-              <div class="timeline-scale" aria-hidden="true"><span>09:00</span><span>12:00</span><span>16:00</span><span>20:00</span></div>
-              <div class="timeline-legend"><span><i class="legend-sun"></i> Sol</span><span><i class="legend-shade"></i> Sombra</span><span><i class="legend-night"></i> Noche</span><span><i class="legend-unknown"></i> Sin datos</span></div>
-              <p class="interval-label">TRAMOS DE SOL APROXIMADOS</p>
-              <p id="sun-intervals" class="sun-intervals"></p>
-              <p class="interval-note">Cálculo cada 10 minutos; no incluye nubes, toldos ni árboles.</p>
-            </div>
-            <button id="share" class="share-button" type="button">Compartir este ejemplo <span aria-hidden="true">↗</span></button>
-            <div id="share-panel" class="share-panel" hidden><label for="share-link">Enlace para compartir</label><div class="share-row"><input id="share-link" type="text" readonly><button id="copy" type="button">Copiar</button></div><p id="share-message" aria-live="polite">El enlace solo incluye esta selección de ejemplo.</p></div>
-          </div>
-          <div class="place-explorer">
-            <div class="list-heading"><div><p class="section-kicker">ELIGE TU RINCÓN</p><h3>Terrazas de ejemplo</h3></div><p id="result-count" aria-live="polite"></p></div>
-            <fieldset class="filters"><legend>¿Qué prefieres?</legend><label><input type="radio" name="filter" value="all" checked><span>Todos</span></label><label><input type="radio" name="filter" value="sun"><span><b aria-hidden="true">☀</b> Sol</span></label><label><input type="radio" name="filter" value="shade"><span><b aria-hidden="true">◒</b> Sombra</span></label></fieldset>
-            <div id="place-list" class="place-list"></div>
-            <p id="empty" class="empty-state" hidden>No hay ejemplos con este filtro a esta hora. Prueba otra hora o selecciona «Todos».</p>
-            <p id="unknown-note" class="unknown-note" hidden>Al filtrar por sol o sombra se ocultan los casos sin datos y de noche.</p>
-          </div>
-        </aside>
-      </div>
-    </section>
-
-    <section class="about" id="sobre-ejemplo" aria-labelledby="about-title">
-      <div><p class="section-kicker">LO QUE QUEREMOS CONSTRUIR</p><h2 id="about-title">Para perseguir el sol.<br><em>O escapar de él.</em></h2></div>
-      <div><p>Rato al Sol quiere ayudarte a elegir una terraza según la hora. Antes necesitamos comprobar dónde están las mesas y qué edificios les dan sombra.</p><p>El mapa de Madrid muestra registros reales sin cálculo de sol; la prueba de sombras usa un barrio imaginario. Todavía no consultamos nubosidad ni horarios. Los toldos, árboles y sombrillas también pueden cambiar el resultado.</p></div>
+    <section class="about" id="como-funciona" aria-labelledby="about-title">
+      <div><p class="section-kicker">CÓMO FUNCIONA</p><h2 id="about-title">Para perseguir el sol.<br><em>O escapar de él.</em></h2></div>
+      <div><p>Calculamos la posición del sol para la fecha y la hora elegidas y dibujamos una sombra aproximada a partir de las alturas municipales de los edificios de Ayala.</p><p>El mapa es una orientación, no una predicción de sol en una mesa. Las alturas pueden tener omisiones y no tenemos en cuenta nubes, árboles, toldos ni sombrillas.</p></div>
     </section>
   </main>
   <footer><span class="footer-brand">Rato al Sol<span class="wordmark-dot">.</span></span><span>Hecho para los buenos ratos <span aria-hidden="true">☀</span></span></footer>
