@@ -1,5 +1,6 @@
 import { civilTimeToUtc, sunPosition } from './solar.mjs';
 import { DEFAULT_LOCATION } from './shared/default-location.mjs';
+import { initialSelectedTime, TIME_END, TIME_START } from './shared/time-selection.mjs';
 import { buildingShadows, shadowDirection } from './map-shadows.mjs';
 import { getViewportBuildings, viewportBounds } from './viewport-buildings.mjs';
 import { createOpenMap } from './open-map.mjs?v=20261103-14';
@@ -11,7 +12,7 @@ const today = Object.fromEntries(new Intl.DateTimeFormat('en-GB', {
   timeZone: 'Europe/Madrid', year: 'numeric', month: '2-digit', day: '2-digit',
   hour: '2-digit', minute: '2-digit', hourCycle: 'h23',
 }).formatToParts(new Date()).map(({ type, value }) => [type, value]));
-const state = { date: `${today.year}-${today.month}-${today.day}`, minutes: Math.floor((Number(today.hour) * 60 + Number(today.minute)) / 10) * 10 };
+const state = { date: `${today.year}-${today.month}-${today.day}`, minutes: initialSelectedTime(Number(today.hour) * 60 + Number(today.minute), 10) };
 const empty = { type: 'FeatureCollection', features: [] };
 let buildings, activeMap;
 let mapStarted = false, mapLoading = false, is3D = true, playback, pendingFrame;
@@ -72,7 +73,7 @@ function updateSolar() {
   $('#time').value = state.minutes;
   $('#time-value').value = clock;
   $('#time').setAttribute('aria-valuetext', `${clock}, hora de Madrid`);
-  $('#time').style.setProperty('--progress', `${state.minutes / 1430 * 100}%`);
+  $('#time').style.setProperty('--progress', `${(state.minutes - TIME_START) / (TIME_END - TIME_START) * 100}%`);
   $('#direction-text').textContent = !instant
     ? 'Esta hora no existe en Madrid por el cambio al horario de verano. Elige otra hora.'
     : currentDirection
@@ -211,13 +212,13 @@ $('#date').addEventListener('change', (event) => {
 });
 $('#play-day').addEventListener('click', () => {
   if (playback) return stopPlayback();
-  if (state.minutes >= 1430) state.minutes = 0;
+  if (state.minutes >= TIME_END) state.minutes = TIME_START;
   updateSolar();
   $('#play-day').setAttribute('aria-pressed', 'true');
   $('#play-day').textContent = '❚❚ Pausar';
   playback = setInterval(() => {
-    state.minutes = Math.min(1430, state.minutes + 10); updateSolar();
-    if (state.minutes >= 1430) stopPlayback();
+    state.minutes = Math.min(TIME_END, state.minutes + 10); updateSolar();
+    if (state.minutes >= TIME_END) stopPlayback();
   }, 450);
 });
 $('#shadows-retry').addEventListener('click', () => loadBuildings(true));

@@ -1,6 +1,14 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { civilTimeToUtc, sunPosition, classifyLight, shadowOffset, shadowPolygons } from '../frontend/solar.mjs';
+import { initialSelectedTime } from '../frontend/shared/time-selection.mjs';
+
+test('la hora inicial usa un extremo si se abre fuera del rango seleccionable', () => {
+  assert.equal(initialSelectedTime(3 * 60 + 25, 10), 6 * 60);
+  assert.equal(initialSelectedTime(12 * 60 + 37, 10), 12 * 60 + 30);
+  assert.equal(initialSelectedTime(12 * 60 + 37, 15), 12 * 60 + 30);
+  assert.equal(initialSelectedTime(23 * 60 + 45, 15), 23 * 60);
+});
 
 test('posición solar: caso de referencia independiente del laboratorio NLR', () => {
   // SPA tester del NLR y valores esperados publicados por pvlib para ese caso:

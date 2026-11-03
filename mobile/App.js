@@ -13,6 +13,7 @@ import { atMinutes, formatTime, lightAt, lightForInterval, nearbyOutdoorScenes, 
 import { sunPosition } from '../frontend/solar.mjs';
 import { shadowDirection } from '../frontend/map-shadows.mjs';
 import { DEFAULT_LOCATION } from '../frontend/shared/default-location.mjs';
+import { initialSelectedTime, TIME_END, TIME_START } from '../frontend/shared/time-selection.mjs';
 
 const statusText = { sun: 'Sol estimado', shade: 'Sombra estimada', night: 'Es de noche', unknown: 'Sin datos suficientes' };
 const statusColor = { sun: '#a45b24', shade: '#536b74', night: '#536b74', unknown: '#777a70' };
@@ -50,6 +51,14 @@ function Range({ label, value, min, max, step, onChange, valueText }) {
   return Platform.OS === 'web' ? <input type="range" aria-label={label} aria-valuetext={valueText} min={min} max={max} step={step} value={value} onChange={(event) => onChange(Number(event.target.value))} style={{ width: '100%', height: 42, marginTop: 4, accentColor: '#30463a', cursor: 'pointer' }} /> :
     <Slider style={styles.slider} accessibilityLabel={label} accessibilityValue={{ min, max, now: value, text: valueText }} minimumValue={min} maximumValue={max} step={step} value={value} onValueChange={onChange} minimumTrackTintColor="#eeb342" maximumTrackTintColor="#d9d7cb" thumbTintColor="#30463a" />;
 }
+function TimeScale() {
+  return <View style={styles.timeScale} accessibilityElementsHidden importantForAccessibility="no-hide-descendants">
+    <Text style={[styles.scale, styles.timeScaleFirst]}>06:00</Text>
+    <Text style={[styles.scale, styles.timeScaleTick, { left: '35.294%' }]}>12:00</Text>
+    <Text style={[styles.scale, styles.timeScaleTick, { left: '70.588%' }]}>18:00</Text>
+    <Text style={[styles.scale, styles.timeScaleLast]}>23:00</Text>
+  </View>;
+}
 
 function Main() {
   const { width } = useWindowDimensions();
@@ -58,7 +67,7 @@ function Main() {
   const [originLabel, setOriginLabel] = useState('Zona del mapa');
   const [query, setQuery] = useState(''), [radius, setRadius] = useState(500);
   const [dayOffset, setDayOffset] = useState(0);
-  const [minutes, setMinutes] = useState(() => { const now = new Date(); return Math.floor((now.getHours() * 60 + now.getMinutes()) / 15) * 15; });
+  const [minutes, setMinutes] = useState(() => { const now = new Date(); return initialSelectedTime(now.getHours() * 60 + now.getMinutes(), 15); });
   const [endEnabled, setEndEnabled] = useState(false), [endMinutes, setEndMinutes] = useState(900);
   const [places, setPlaces] = useState([]), [resultsType, setResultsType] = useState(null);
   const [selected, setSelected] = useState(null), [buildings, setBuildings] = useState([]), [coverage, setCoverage] = useState([]);
@@ -268,8 +277,8 @@ function Main() {
           <Range label="Distancia máxima" value={radius} min={500} max={5000} step={500} valueText={shortDistance(radius)} onChange={setRadius} />
           <View style={styles.rowBetween}><Text style={styles.scale}>500 m</Text><Text style={styles.scale}>5 km</Text></View>
           <View style={[styles.rowBetween, styles.nearbyRange]}><Text style={styles.distanceLabel}>Hora de inicio</Text><Text style={styles.rangeValue}>{formatTime(minutes)}</Text></View>
-          <Range label="Hora inicial de búsqueda" value={minutes} min={0} max={1425} step={15} valueText={formatTime(minutes)} onChange={(value) => { setMinutes(value); setEndMinutes((previous) => Math.max(previous, value + 15)); }} />
-          <View style={styles.rowBetween}><Text style={styles.scale}>00:00</Text><Text style={styles.scale}>12:00</Text><Text style={styles.scale}>23:45</Text></View>
+          <Range label="Hora inicial de búsqueda" value={minutes} min={TIME_START} max={TIME_END} step={15} valueText={formatTime(minutes)} onChange={(value) => { setMinutes(value); setEndMinutes((previous) => Math.max(previous, value + 15)); }} />
+          <TimeScale />
           <Pressable accessibilityRole="checkbox" accessibilityState={{ checked: endEnabled }} onPress={() => { setEndEnabled(!endEnabled); setEndMinutes((previous) => Math.max(previous, minutes + 15)); }} style={styles.rangeToggle}><Text style={styles.rangeToggleText}>{endEnabled ? '☑' : '☐'}  Buscar durante una franja</Text></Pressable>
           {endEnabled && <><View style={styles.rowBetween}><Text style={styles.distanceLabel}>Hasta</Text><Text style={styles.rangeValue}>{clockTime(endMinutes)}</Text></View>
             <Range label="Hora final de búsqueda" value={endMinutes} min={minutes + 15} max={1440} step={15} valueText={clockTime(endMinutes)} onChange={setEndMinutes} /></>}
@@ -309,8 +318,8 @@ function Main() {
       <View style={styles.timePanel}>
         <View style={styles.rowBetween}><View><Text style={styles.eyebrow}>DESCUBRE CÓMO CAMBIA LA LUZ</Text><Text style={styles.sectionTitle}>Mueve la hora <Text style={styles.accent}>↗</Text></Text></View><Text style={styles.clock}>{formatTime(minutes)}</Text></View>
         <View style={styles.dayRow}><View style={styles.chips}><Chip selected={dayOffset === 0} onPress={() => setDayOffset(0)}>Hoy</Chip><Chip selected={dayOffset === 1} onPress={() => setDayOffset(1)}>Mañana</Chip></View><Text style={styles.dayText}>{day.toLocaleDateString('es-ES', { day: 'numeric', month: 'short' })}</Text></View>
-        <Range label="Hora para consultar el sol" value={minutes} min={0} max={1425} step={15} valueText={formatTime(minutes)} onChange={(value) => { setMinutes(value); setEndMinutes((previous) => Math.max(previous, value + 15)); }} />
-        <View style={styles.rowBetween}><Text style={styles.scale}>00:00</Text><Text style={styles.scale}>06:00</Text><Text style={styles.scale}>12:00</Text><Text style={styles.scale}>18:00</Text><Text style={styles.scale}>23:45</Text></View>
+        <Range label="Hora para consultar el sol" value={minutes} min={TIME_START} max={TIME_END} step={15} valueText={formatTime(minutes)} onChange={(value) => { setMinutes(value); setEndMinutes((previous) => Math.max(previous, value + 15)); }} />
+        <TimeScale />
         <Text style={styles.timezone}>Hora de tu teléfono · {timezone}</Text>
         {!instant && <Text style={styles.distanceError}>Esta hora no existe por el cambio al horario de verano. Elige otra hora.</Text>}
         {direction && <View style={styles.direction}><Text accessible={false} style={[styles.directionArrow, { transform: [{ rotate: `${direction.bearing}deg` }] }]}>↑</Text><Text style={styles.directionText}>A las {formatTime(minutes)}, las sombras apuntan hacia el {direction.label}.</Text></View>}
@@ -345,7 +354,7 @@ const styles = StyleSheet.create({
   rangeValue: { color: '#ad654b', fontFamily: Platform.OS === 'ios' ? 'Georgia' : 'serif', fontSize: 19, fontWeight: '700' }, nearbyRange: { marginTop: 18 }, rangeToggle: { minHeight: 48, justifyContent: 'center' }, rangeToggleText: { color: '#435b4a', fontSize: 13, fontWeight: '700' }, nearbyAction: { marginTop: 15 },
   mapSection: { marginBottom: 16 }, mapCaption: { color: '#617266', fontSize: 12, lineHeight: 18, paddingTop: 7 },
   daylight: { padding: 16, borderWidth: 1, borderColor: '#e4dece', backgroundColor: '#fffdf8', marginBottom: 8 }, daylightLabel: { marginTop: 10, marginBottom: 12, color: '#617164', fontSize: 12, lineHeight: 18 }, daylightTrack: { height: 20, borderRadius: 3, overflow: 'hidden', backgroundColor: '#e2e1d8', flexDirection: 'row', marginBottom: 6 }, daylightLegend: { flexDirection: 'row', flexWrap: 'wrap', gap: 12, marginTop: 12 }, legendItem: { flexDirection: 'row', alignItems: 'center', gap: 5 }, legendSwatch: { width: 9, height: 9, borderRadius: 2 }, daylightHighlights: { flexDirection: 'row', flexWrap: 'wrap', gap: 10, marginTop: 12 }, daylightHighlight: { fontSize: 12, fontWeight: '700', lineHeight: 18 }, outdoorChoices: { padding: 16, marginBottom: 8, borderWidth: 1, borderColor: '#e4dece', backgroundColor: '#fffdf8' }, outdoorChoice: { minHeight: 54, paddingVertical: 10, borderBottomWidth: 1, borderColor: '#e8e1d4' },
-  timePanel: { padding: 16, borderWidth: 1, borderColor: '#e4dece', backgroundColor: '#fffdf8' }, sectionTitle: { color: '#293f34', fontFamily: Platform.OS === 'ios' ? 'Georgia' : 'serif', fontSize: 22, fontWeight: '700', letterSpacing: -0.5 }, clock: { color: '#c9704f', fontFamily: Platform.OS === 'ios' ? 'Georgia' : 'serif', fontWeight: '700', fontSize: 30 }, dayRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginTop: 18 }, dayText: { color: '#617266', fontSize: 12 }, slider: { width: '100%', height: 42, marginTop: 4 }, scale: { color: '#617266', fontSize: 11 }, timezone: { marginTop: 12, color: '#617266', fontSize: 12 }, direction: { marginTop: 14, padding: 11, backgroundColor: '#edf0e7', flexDirection: 'row', alignItems: 'center', gap: 10 }, directionArrow: { color: '#bd6849', fontSize: 22, fontWeight: '700', width: 24, textAlign: 'center' }, directionText: { flex: 1, color: '#536c5d', fontSize: 12, fontWeight: '700', lineHeight: 17 },
+  timePanel: { padding: 16, borderWidth: 1, borderColor: '#e4dece', backgroundColor: '#fffdf8' }, sectionTitle: { color: '#293f34', fontFamily: Platform.OS === 'ios' ? 'Georgia' : 'serif', fontSize: 22, fontWeight: '700', letterSpacing: -0.5 }, clock: { color: '#c9704f', fontFamily: Platform.OS === 'ios' ? 'Georgia' : 'serif', fontWeight: '700', fontSize: 30 }, dayRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginTop: 18 }, dayText: { color: '#617266', fontSize: 12 }, slider: { width: '100%', height: 42, marginTop: 4 }, scale: { color: '#617266', fontSize: 11 }, timeScale: { height: 17, marginTop: 2, position: 'relative' }, timeScaleFirst: { position: 'absolute', left: 0 }, timeScaleLast: { position: 'absolute', right: 0 }, timeScaleTick: { position: 'absolute', width: 44, marginLeft: -22, textAlign: 'center' }, timezone: { marginTop: 12, color: '#617266', fontSize: 12 }, direction: { marginTop: 14, padding: 11, backgroundColor: '#edf0e7', flexDirection: 'row', alignItems: 'center', gap: 10 }, directionArrow: { color: '#bd6849', fontSize: 22, fontWeight: '700', width: 24, textAlign: 'center' }, directionText: { flex: 1, color: '#536c5d', fontSize: 12, fontWeight: '700', lineHeight: 17 },
   loading: { flexDirection: 'row', gap: 10, alignItems: 'center', paddingVertical: 18 }, muted: { color: '#788579', fontSize: 13 }, alert: { backgroundColor: '#f7e4da', padding: 13 }, alertText: { color: '#9e543f', lineHeight: 19, fontSize: 13 }, note: { backgroundColor: '#e7ebe0', padding: 13 }, feedback: { marginBottom: 14 }, noteText: { color: '#596f61', lineHeight: 19, fontSize: 12 },
   detail: { backgroundColor: '#f0ecdf', marginTop: 15, padding: 17 }, detailTitle: { color: '#273c32', fontFamily: Platform.OS === 'ios' ? 'Georgia' : 'serif', fontWeight: '700', fontSize: 24, marginBottom: 13 }, status: { borderLeftWidth: 3, paddingLeft: 10, paddingVertical: 5, marginBottom: 17 }, statusText: { fontSize: 14, fontWeight: '800' }, windows: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 }, window: { backgroundColor: '#f7dfad', paddingVertical: 8, paddingHorizontal: 10, color: '#8b572e', fontWeight: '800', fontSize: 13 }, body: { fontSize: 13, lineHeight: 20, color: '#617164' }, small: { fontSize: 11, lineHeight: 17, color: '#7c887c', marginTop: 12 },
   results: { marginBottom: 18, borderWidth: 1, borderColor: '#e4dece', backgroundColor: '#fffdf8', padding: 16 }, resultCount: { color: '#738173', fontFamily: Platform.OS === 'ios' ? 'Georgia' : 'serif', fontSize: 24 }, filterRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 7, marginTop: 15, marginBottom: 6 }, result: { flexDirection: 'row', alignItems: 'center', borderBottomWidth: 1, borderColor: '#e5e0d4', paddingVertical: 13, gap: 11 }, selectedResult: { minHeight: 48, justifyContent: 'center', gap: 5, marginTop: 10 }, resultIcon: { width: 34, height: 34, borderRadius: 17, backgroundColor: '#efdfc8', alignItems: 'center', justifyContent: 'center' }, resultIconText: { color: '#bb704f', fontSize: 17 }, resultBody: { flex: 1 }, resultName: { color: '#2b4035', fontFamily: Platform.OS === 'ios' ? 'Georgia' : 'serif', fontSize: 16, fontWeight: '700' }, resultMeta: { color: '#617266', fontSize: 12, marginTop: 3 }, resultStatus: { fontSize: 11, fontWeight: '800', marginTop: 4 }, arrow: { color: '#5d7566', fontSize: 16 },

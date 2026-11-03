@@ -121,6 +121,23 @@ Al cambiar de etapa: resultado, evidencia, bloqueo y siguiente acción concreta.
 - Evidencia: la vista inicial sin marcadores y las alturas municipales de la Puerta del Sol se comprobaron en 3D, en el respaldo 2D y en la vista web del prototipo móvil. Se probaron selección y cálculo de un punto con edificios reales, búsqueda de tres lugares simulados, giro y cambio 2D/3D. Se inspeccionaron capturas a 320, 390 y 1440 px; los controles de giro y vista quedan debajo del mapa y el inicio 3D carga sombras. El JavaScript se empaquetó para iOS y Android.
 - Límites y siguiente acción: la app nativa todavía no se ha probado en un teléfono o emulador; seguir con la verificación de APP-002. Los horarios son estimaciones sin contraste sobre el terreno.
 
+## APP-011 — Selector de hora más útil
+
+- Estado: `done` para la implementación local — petición de Tony del 2026-11-03.
+- Objetivo: limitar el selector de hora del mapa y el inicio de búsqueda a las 06:00–23:00 en la web y el prototipo móvil.
+- Aceptación: extremos, marcas, hora inicial, reproducción y control por teclado coherentes; la barra diaria conserva los resultados de las 24 horas sin asumir que fuera de este rango siempre es de noche.
+- Alcance: implementación y pruebas locales y actualización de la rama privada ya autorizada; no publicar.
+- Evidencia: pruebas de los extremos, apertura de madrugada y a las 23:50, sincronización con la búsqueda, franja opcional, teclado, reproducción y capturas de 320, 390 y 1440 px en web y vista web móvil. La hora final opcional de una franja conserva la posibilidad de llegar a medianoche. Las pruebas de Node y el empaquetado JavaScript iOS/Android pasan.
+- Límite: falta verificar los controles en teléfonos o emuladores; continúa en APP-002.
+
+## APP-012 — Idiomas castellano e inglés
+
+- Estado: `in_progress` — petición de Tony del 2026-11-03.
+- Objetivo: traducir la web y el prototipo móvil al inglés, conservando el castellano y un selector de idioma discreto.
+- Aceptación: textos de navegación, controles, estados, resultados y accesibilidad coherentes en ambos idiomas; cambio funcional sin perder la selección de sitio u hora; comprobación en navegador y empaquetado móvil.
+- Alcance: cambios y verificaciones locales y actualización de la rama privada ya autorizada; sin publicación.
+- Siguiente acción: inventariar los textos visibles y los mensajes generados, implementar el idioma compartido y verificar los recorridos en los dos idiomas.
+
 ## REPO-001 — Guardar el proyecto en GitHub
 
 - Estado: `done` — completado y comprobado el 2026-11-02.
