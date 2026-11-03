@@ -6,7 +6,7 @@ Un mapa sencillo de terrazas con intervalos estimados de sol y sombra, un select
 
 ## Estado real
 
-La web reúne un mapa 3D con sombras orientativas que se actualizan al desplazarlo, plano o fotografía aérea, búsqueda por nombre, categoría o cercanía y una barra con los intervalos de luz para un punto elegido. Puede buscar espacios exteriores para una hora o una franja, con distancia y ubicación opcional. En `mobile/` hay un prototipo React Native para iOS y Android con el mismo motor solar, selección de punto y filtro por hora o franja.
+La web reúne un mapa 3D con sombras orientativas que se actualizan al desplazarlo, búsqueda por nombre, categoría o cercanía y una barra con los intervalos de luz para un punto elegido. Puede buscar espacios exteriores para una hora o una franja, con distancia y ubicación opcional. En `mobile/` hay un prototipo React Native para iOS y Android con el mismo motor solar, selección de punto y filtro por hora o franja.
 
 Madrid aporta alturas estimadas municipales; en otras zonas la geometría y las alturas dependen de OpenStreetMap y pueden ser insuficientes. La fuente pública de búsqueda general no respondió en las pruebas de este entorno; se ha probado una alternativa con parques municipales y el censo de terrazas de Madrid, además de la selección manual de un punto. Las opciones exteriores propuestas alrededor de un local son orientativas, no ubicaciones verificadas de mesas. Las entradas de locales **no identifican las mesas** y la sombra de los árboles no está modelada. Ni las estimaciones ni las sombras se han contrastado sobre el terreno; faltan pruebas en dispositivos nativos y no hay despliegue.
 

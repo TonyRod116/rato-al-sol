@@ -2,7 +2,7 @@ import { searchNearby, searchPlaces, validCoordinate } from './shared/places.mjs
 import { searchMadridFallback, searchMadridParks } from './shared/ayala-fallback.mjs';
 import { inMadridArea } from './shared/madrid-scene.mjs';
 import { getScenes } from './shared/scene-provider.mjs';
-import { lightAt, lightForInterval, nearbyOutdoorScenes, prepareScene, sceneInsideBuilding, solarWindows } from './shared/estimate.mjs';
+import { lightAt, lightForInterval, nearbyOutdoorScenes, prepareScene, sceneInsideBuilding, solarWindows } from './shared/estimate.mjs?v=20261103-10';
 import { civilTimeToUtc } from './solar.mjs';
 
 const $ = (id) => document.getElementById(id);
@@ -118,7 +118,7 @@ export function createExplorer({ getCenter, getDate, getTime, onPlaces, onPoint 
       selected.scene = geometry.scene || prepareScene(selected, geometry.buildings, geometry.radius);
       selected.source = geometry.source;
       if (!selected.scene) throw new Error('Sin geometría');
-      selected.choices = geometry.buildings && selected.kind === 'business' ? nearbyOutdoorScenes(selected.scene, geometry.buildings) : [];
+      selected.choices = geometry.buildings ? nearbyOutdoorScenes(selected.scene, geometry.buildings) : [];
       renderPoint();
     } catch {
       if (request !== pointRequest) return;

@@ -97,6 +97,25 @@ test('a building of unknown height can obstruct the sun without making every dir
   assert.equal(lightAt(scene, instant), 'sun');
 });
 
+test('a known nearby shadow remains usable even when distant buildings are outside coverage', () => {
+  const instant = new Date('2026-11-03T15:00:00Z');
+  const sun = sunPosition(instant, madrid.latitude, madrid.longitude);
+  const azimuth = sun.azimuth * Math.PI / 180;
+  const x = Math.sin(azimuth) * 30, y = -Math.cos(azimuth) * 30;
+  const square = (cx, cy) => [[cx - 5, cy - 5], [cx + 5, cy - 5], [cx + 5, cy + 5], [cx - 5, cy + 5]];
+  const scene = { point: madrid, radius: 250, buildings: [{ footprint: square(x, y), height: 30 }] };
+  assert.ok(sun.altitude > 5 && 100 / Math.tan(sun.altitude * Math.PI / 180) > scene.radius - 50);
+  assert.equal(lightAt(scene, instant), 'shade', 'a nearby building already blocks the sun');
+  scene.buildings[0].footprint = square(-x, -y);
+  assert.equal(lightAt(scene, instant), 'unknown', 'an unobstructed ray is not proof of sun with incomplete coverage');
+  scene.buildings = [{ footprint: square(x, y), height: 30 }, { footprint: square(x * 2, y * 2), height: null }];
+  assert.equal(lightAt(scene, instant), 'shade', 'an additional unknown obstacle cannot undo a known shadow');
+  assert.equal(lightAt(scene, new Date('2026-11-03T16:55:00Z')), 'unknown', 'near-horizon geometry remains unknown');
+  scene.buildings = [{ footprint: square(x, y), height: 30 }, { footprint: square(0, 0), height: null }];
+  assert.equal(lightAt(scene, instant), 'unknown', 'a point inside an unknown building has no outdoor light estimate');
+  assert.equal(lightAt(scene, new Date('2026-11-03T00:00:00Z')), 'night');
+});
+
 test('Madrid name fallback searches the public register via POST and keeps entrances distinct', async () => {
   let request;
   const fetch = async (url, options) => {

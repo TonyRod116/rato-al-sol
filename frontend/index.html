@@ -7,8 +7,8 @@
   <meta name="description" content="Explora las horas estimadas de sol y sombra para un lugar o un punto del mapa.">
   <title>Rato al Sol — Explora la luz en Madrid</title>
   <link rel="icon" href="./favicon.svg" type="image/svg+xml">
-  <link rel="stylesheet" href="./styles.css?v=20261103-9">
-  <script type="module" src="./app.mjs?v=20261103-9"></script>
+  <link rel="stylesheet" href="./styles.css?v=20261103-11">
+  <script type="module" src="./app.mjs?v=20261103-10"></script>
 </head>
 <body>
   <a class="skip-link" href="#contenido">Saltar al contenido</a>
@@ -39,7 +39,10 @@
               <a class="map-selection-link" id="map-selection" href="#point-info" hidden>⌖ Punto marcado · Ver sus horas ↓</a>
               <div id="map-message" class="map-message" role="status"><span aria-hidden="true">✳</span><p id="map-message-text">Preparando el mapa…</p><button id="map-retry" type="button" hidden>Reintentar mapa ↗</button></div>
             </div>
-            <section class="daylight-summary" aria-labelledby="daylight-title">
+            <figcaption><span>✳</span> Toca el lugar exacto donde quieres estar para consultar sus horas de luz.</figcaption>
+          </figure>
+          <div id="outdoor-options" class="outdoor-options" hidden><p class="outdoor-title">Elige un punto exterior cercano</p><p>La referencia está dentro de un edificio. Son puntos aproximados: elige dónde quieres estar.</p><ul id="outdoor-list"></ul></div>
+          <section class="daylight-summary" aria-labelledby="daylight-title">
               <div class="daylight-heading"><div><p class="section-kicker">DE UN VISTAZO</p><h2 id="daylight-title">Sol y sombra durante el día</h2></div><span aria-hidden="true">☼</span></div>
               <p id="daylight-place" class="daylight-place" role="status">Toca un punto del mapa para ver sus horas de luz.</p>
               <div class="daylight-track" aria-hidden="true"><div id="daylight-segments" class="daylight-segments"></div><span id="daylight-now" class="daylight-now" hidden></span></div>
@@ -48,17 +51,7 @@
               <ul id="daylight-highlights" class="daylight-highlights" aria-label="Horas aproximadas de sol y sombra" hidden></ul>
               <p class="daylight-note">Horas aproximadas en Madrid, calculadas cada 30 minutos. Sin nubes, árboles ni toldos.</p>
               <ul id="daylight-readable" class="visually-hidden" aria-label="Horas estimadas de luz y sombra"></ul>
-              <div id="outdoor-options" class="outdoor-options" hidden><p class="outdoor-title">Elige un punto exterior cercano</p><p>La referencia está dentro del edificio. Son opciones aproximadas, no la posición confirmada de las mesas.</p><ul id="outdoor-list"></ul></div>
-            </section>
-            <figcaption><span>✳</span> Toca el lugar exacto donde quieres estar para consultar sus horas de luz.</figcaption>
-            <div id="map-basemaps" class="map-basemaps" role="group" aria-label="Fondo del mapa" hidden>
-              <span>Fondo del mapa</span><div><button id="basemap-street" type="button" aria-pressed="true">Plano</button><button id="basemap-aerial" type="button" aria-pressed="false">Foto aérea</button></div>
-            </div>
-            <p id="basemap-status" class="map-provider-status" role="status" hidden></p>
-            <button id="select-map-center" class="select-map-center" type="button" disabled>⌖ Marcar el centro del mapa</button>
-            <div id="map-options" class="map-options" hidden><p>Para alejarte más o mejorar el rendimiento</p><button id="map-detail" type="button" aria-pressed="false">Pasar a vista 2D ↗</button></div>
-            <p id="map-provider-status" class="map-provider-status" role="status" hidden></p>
-          </figure>
+          </section>
           <section class="planner" aria-label="Elige el día y la hora">
             <div class="planner-heading"><div><p class="section-kicker">DESCUBRE CÓMO CAMBIA LA LUZ</p><h2>Mueve la hora <span aria-hidden="true">↗</span></h2></div><output id="time-value" for="time">12:30</output></div>
             <div class="planner-controls">
@@ -69,6 +62,11 @@
             <div class="planner-footer"><p class="date-note">Hora local de Madrid. Sombras orientativas, sin nubes, árboles ni toldos.</p><button id="play-day" class="play-day" type="button" aria-pressed="false">▶ Ver pasar el día</button></div>
             <div class="shadow-status"><p id="shadow-status" role="status">Cargando alturas de edificios…</p><button id="shadows-retry" type="button" hidden>Reintentar ↻</button></div>
           </section>
+          <div class="map-tools">
+            <button id="select-map-center" class="select-map-center" type="button" disabled>⌖ Marcar el centro del mapa</button>
+            <div id="map-options" class="map-options" hidden><p>Para alejarte más o mejorar el rendimiento</p><button id="map-detail" type="button" aria-pressed="false">Pasar a vista 2D ↗</button></div>
+            <p id="map-provider-status" class="map-provider-status" role="status" hidden></p>
+          </div>
         </div>
         <aside class="real-inspector" aria-label="Buscar lugares y consultar su luz">
           <div class="real-inspector-head"><div><p class="section-kicker">TU PRÓXIMO RATO AL SOL</p><h2 id="madrid-title">Busca tu sitio<span class="heading-dot">.</span></h2><p>Explora desde el centro del mapa</p></div><span class="neighborhood-icon" aria-hidden="true">✳</span></div>

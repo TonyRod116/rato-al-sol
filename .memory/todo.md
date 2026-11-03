@@ -82,6 +82,15 @@ Al cambiar de etapa: resultado, evidencia, bloqueo y siguiente acción concreta.
 - Límites: no se conocen las mesas ni se ha contrastado la sombra sobre el terreno; no se modelan árboles, toldos ni nubes y los tramos se muestrean cada 30 minutos. Si una vista es demasiado amplia hay que acercar el mapa; fuera de Madrid las alturas dependen de un servicio público de OpenStreetMap que falló en las pruebas de este entorno. El prototipo móvil limita el dibujo a 45 edificios/300 polígonos y la búsqueda municipal a dos puntos exteriores analizados; la web analiza cuatro.
 - Siguiente acción: probar iPhone y Android reales, contrastar ubicaciones y sombras sobre el terreno y validar cobertura y zona horaria fuera de Madrid. Mantener abierta la tarea hasta obtener esa evidencia.
 
+## APP-007 — Acercar controles y reducir horas desconocidas
+
+- Estado: `done` — petición de Tony del 2026-11-03.
+- Objetivo: retirar el selector de fondo, juntar la barra diaria y el selector de hora, y recuperar tramos de luz cuando la geometría disponible permita estimarlos sin inventar datos.
+- Aceptación: controles adyacentes en web y móvil, sombra conocida reconocida incluso con cobertura incompleta sin afirmar sol ni luz dentro de un edificio, opciones exteriores para puntos afectados, y comprobación de interfaz, cálculo compartido y caso real de Madrid.
+- Evidencia inicial: en un punto exterior aproximado junto a Soho New York, la regla de cobertura marca 14 de 48 muestras como desconocidas; reconocer primero sombras ya detectadas reduce esa cifra a 3 en esta muestra. Ampliar la consulta hasta 500 m solo recupera otra muestra y aumenta la consulta de 1.603 a 5.494 edificios, así que se conserva el radio actual.
+- Evidencia: se corrigió el cálculo compartido conservando como desconocidos el sol sin cobertura suficiente, los puntos dentro de edificios y la cercanía al horizonte. Soho ofrece puntos exteriores también al marcar el centro del mapa; se comprobó el punto este y sus horas en la web y la vista web del prototipo móvil, controles táctiles/teclado, 2D, y capturas de 320, 390 y 1440 px. Las pruebas de dominio y el empaquetado JavaScript de iOS y Android pasan. Se corrigió además la caché de módulos que mantenía el cálculo anterior tras recargar.
+- Límites y continuación: los intervalos son aproximados, no se han contrastado en la calle ni se conocen las mesas. Pueden seguir apareciendo tramos sin datos; Overpass respondió 502 y el resultado de Soho llegó del censo municipal. Falta probar en teléfonos reales y continuar APP-002 y APP-006.
+
 ## REPO-001 — Guardar el proyecto en GitHub
 
 - Estado: `done` — completado y comprobado el 2026-11-02.

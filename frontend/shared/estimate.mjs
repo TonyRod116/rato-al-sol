@@ -24,10 +24,7 @@ export function lightAt(scene, instant) {
   const sun = sunPosition(instant, scene.point.latitude, scene.point.longitude);
   if (!sun) return 'unknown';
   if (sun.altitude < -1) return 'night';
-  // Leave room for a 100 m building and a margin. Low sun can
-  // cast longer shadows from outside the retrieved area, so it stays unknown.
-  const assumedMaximum = Math.max(100, ...scene.buildings.map((building) => building.height || 0));
-  if (sun.altitude < 5 || assumedMaximum / Math.tan(sun.altitude * Math.PI / 180) > (scene.radius ?? 400) - 50) return 'unknown';
+  if (sun.altitude < 5) return 'unknown';
   const known = [], uncertain = [];
   for (const building of scene.buildings) {
     if (Number.isFinite(building.height) && building.height > 0) known.push(building);
@@ -37,7 +34,13 @@ export function lightAt(scene, instant) {
   const actual = classifyLight({ ...args, buildings: known });
   const missing = classifyLight({ ...args, buildings: uncertain });
   if (actual === 'unknown' || missing === 'unknown') return 'unknown';
+  // A known obstruction establishes shade even if the sun is low and there
+  // might be additional buildings beyond the area that was retrieved.
   if (actual === 'shade') return 'shade';
+  // Sunshine still needs enough surrounding coverage for a 100 m building,
+  // plus a margin; a farther obstruction could otherwise be missed.
+  const assumedMaximum = Math.max(100, ...scene.buildings.map((building) => building.height || 0));
+  if (assumedMaximum / Math.tan(sun.altitude * Math.PI / 180) > (scene.radius ?? 400) - 50) return 'unknown';
   return missing === 'shade' ? 'unknown' : 'sun';
 }
 
@@ -45,7 +48,7 @@ export function sceneInsideBuilding(scene) {
   return !!scene?.buildings?.some((building) => pointInOrOnPolygon([0, 0], building.footprint));
 }
 
-// The business point can lie inside its building. Offer several explicitly
+// A selected point can lie inside a building. Offer several explicitly
 // approximate exterior references rather than silently choosing a sidewalk.
 export function nearbyOutdoorScenes(scene, buildings) {
   if (!sceneInsideBuilding(scene) || !Array.isArray(buildings)) return [];

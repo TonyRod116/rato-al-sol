@@ -5,7 +5,7 @@ import { buildingShadows, shadowDirection } from './map-shadows.mjs';
 import { getViewportBuildings, viewportBounds } from './viewport-buildings.mjs';
 import { createOpenMap } from './open-map.mjs?v=20261103-8';
 import { createCityMap } from './city-map.mjs?v=20261103-8';
-import { createExplorer } from './explore-search.mjs?v=20261103-8';
+import { createExplorer } from './explore-search.mjs?v=20261103-10';
 
 const $ = (selector) => document.querySelector(selector);
 const today = Object.fromEntries(new Intl.DateTimeFormat('en-GB', {
@@ -214,7 +214,6 @@ function activateMap(map, isCity) {
   $('#open-map').hidden = isCity;
   $('#city-controls').hidden = !isCity;
   $('#map-options').hidden = !isCity;
-  $('#map-basemaps').hidden = false;
   $('#map-dimension').hidden = !isCity || !is3D;
   $('#map-message').hidden = true;
   $('#select-map-center').disabled = false;
@@ -228,18 +227,6 @@ function activateMap(map, isCity) {
   loadBuildings();
 }
 
-function updateBasemapButtons(aerial) {
-  $('#basemap-street').setAttribute('aria-pressed', String(!aerial));
-  $('#basemap-aerial').setAttribute('aria-pressed', String(aerial));
-  $('.real-map-shell').classList.toggle('has-aerial', aerial);
-}
-
-function basemapError() {
-  updateBasemapButtons(false);
-  $('#basemap-status').hidden = false;
-  $('#basemap-status').textContent = 'No hemos podido cargar la foto aérea. Mostramos el plano; puedes volver a intentarlo.';
-}
-
 async function loadOpenMap() {
   $('#city-map').hidden = true; $('#open-map').hidden = false;
   try {
@@ -249,7 +236,7 @@ async function loadOpenMap() {
       $('#map-message').hidden = available;
       $('#map-retry').hidden = available;
       if (!available) $('#map-message-text').textContent = 'No hemos podido cargar el mapa. Puedes consultar la lista o volver a intentarlo.';
-    }, onViewChange, basemapError, (point) => explorer.selectPoint(point));
+    }, onViewChange, () => {}, (point) => explorer.selectPoint(point));
     activateMap(map, false);
     $('#map-message').hidden = tilesAvailable;
     $('#map-provider-status').hidden = false;
@@ -264,7 +251,7 @@ async function loadOpenMap() {
 async function loadMap() {
   if (mapStarted || mapLoading) return;
   mapStarted = true; mapLoading = true;
-  try { activateMap(await createCityMap($('#city-map'), onViewChange, basemapError, (point) => explorer.selectPoint(point)), true); }
+  try { activateMap(await createCityMap($('#city-map'), onViewChange, () => {}, (point) => explorer.selectPoint(point)), true); }
   catch { await loadOpenMap(); }
   finally { mapLoading = false; }
 }
@@ -325,16 +312,6 @@ function setView3D(enabled) {
 }
 $('#map-detail').addEventListener('click', () => setView3D(!is3D));
 $('#map-pitch').addEventListener('click', () => setView3D(!is3D));
-for (const [id, kind] of [['basemap-street', 'street'], ['basemap-aerial', 'aerial']]) {
-  $(`#${id}`).addEventListener('click', () => {
-    updateBasemapButtons(kind === 'aerial');
-    $('#basemap-status').hidden = false;
-    $('#basemap-status').textContent = kind === 'aerial'
-      ? 'Foto aérea PNOA/IGN: puede ser antigua y conserva las sombras del momento en que se tomó.' : '';
-    if (kind === 'street') $('#basemap-status').hidden = true;
-    activeMap?.setBasemap(kind);
-  });
-}
 const oldParams = new URLSearchParams(window.location.search);
 if (['fecha', 'hora', 'filtro', 'terraza'].some((key) => oldParams.has(key))) $('#old-link-note').hidden = false;
 updateSolar();
