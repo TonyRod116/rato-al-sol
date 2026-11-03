@@ -1,6 +1,7 @@
 import { searchNearby, searchPlaces, validCoordinate } from './shared/places.mjs';
 import { searchMadridFallback, searchMadridParks } from './shared/ayala-fallback.mjs';
 import { inMadridArea } from './shared/madrid-scene.mjs';
+import { inBarcelonaArea, searchBarcelonaTerraces } from './shared/barcelona-terraces.mjs';
 import { getScenes } from './shared/scene-provider.mjs';
 import { lightAt, lightForInterval, nearbyOutdoorScenes, prepareScene, sceneInsideBuilding, solarWindows } from './shared/estimate.mjs?v=20261103-10';
 import { civilTimeToUtc } from './solar.mjs';
@@ -17,7 +18,7 @@ const distance = (metres) => metres < 1000 ? `${Math.round(metres / 10) * 10} m`
 
 export function createExplorer({ getCenter, getDate, getTime, onPlaces, onPoint }) {
   let selected = null, pointRequest = 0, placeRequest = 0, nearbyRequest = 0;
-  let places = [], nearby = [], criteria = null, sceneByPlace = new Map(), pending = new Set();
+  let places = [], nearby = [], criteria = null, sceneByPlace = new Map(), pending = new Set(), nearbyFailures = 0;
 
   function mapPlaces(items) {
     onPlaces(items.map((place) => ({ ...place, position: { lat: place.latitude, lng: place.longitude },
@@ -191,7 +192,9 @@ export function createExplorer({ getCenter, getDate, getTime, onPlaces, onPoint 
         place.kind === 'business' ? t('Local · mesas sin localizar', 'Business · table location unknown') : pending.has(place.id) ? t('Calculando este punto…', 'Calculating this point…') : t('Sin datos suficientes', 'Not enough data')));
     }
     const analysed = [...sceneByPlace.values()].filter(Boolean).length;
-    write('nearby-status', nearby.length ? `${sunny.length} con sol estimado · ${analysed} puntos de espacios exteriores analizados. Distancias desde donde buscaste. Hora de Madrid; muestras cada 30 min.` : 'Todavía no hay resultados. Mueve el mapa, cambia la distancia o vuelve a intentarlo.', nearby.length ? `${sunny.length} with estimated sun · ${analysed} outdoor points analysed. Distances from your search area. Madrid time; samples every 30 min.` : 'No results yet. Move the map, change the distance or try again.');
+    const warningEs = nearbyFailures ? ' Algunas fuentes no están disponibles; los resultados pueden estar incompletos.' : '';
+    const warningEn = nearbyFailures ? ' Some sources are unavailable; results may be incomplete.' : '';
+    write('nearby-status', nearby.length ? `${sunny.length} con sol estimado · ${analysed} puntos de espacios exteriores analizados. Distancias desde donde buscaste. Hora de Madrid; muestras cada 30 min.${warningEs}` : 'Todavía no hay resultados. Mueve el mapa, cambia la distancia o vuelve a intentarlo.', nearby.length ? `${sunny.length} with estimated sun · ${analysed} outdoor points analysed. Distances from your search area. Madrid time; samples every 30 min.${warningEn}` : 'No results yet. Move the map, change the distance or try again.');
     if (nearby.length) mapPlaces([...sunny, ...uncertain].slice(0, 20));
   }
 
@@ -228,14 +231,17 @@ export function createExplorer({ getCenter, getDate, getTime, onPlaces, onPoint 
     write('place-status', 'Buscando lugares cerca del mapa…', 'Searching for places near the map…');
     const sources = [searchPlaces(query, center)];
     if (inMadridArea(center)) sources.push(searchMadridFallback(center, 5000, query), searchMadridParks(center, 5000, query));
-    let waiting = sources.length, successes = 0;
+    if (inBarcelonaArea(center)) sources.push(searchBarcelonaTerraces(center, 5000, query));
+    let waiting = sources.length, successes = 0, failures = 0;
     for (const source of sources) source.then((found) => {
       if (request !== placeRequest) return;
       successes++; places = addPlaces(places, found); renderPlaces();
-    }).catch(() => {}).finally(() => {
+    }).catch(() => { if (request === placeRequest) failures++; }).finally(() => {
       if (request !== placeRequest) return;
       waiting--;
-      write('place-status', places.length ? `${places.length > 20 ? `Mostramos 20 de ${places.length}` : `${places.length}`} ${places.length === 1 ? 'lugar' : 'lugares'} cerca del mapa${waiting ? ' · buscando más…' : ''}. Selecciona uno.` : waiting ? 'Buscando lugares cerca del mapa…' : successes ? 'No hemos encontrado coincidencias cerca. Prueba otro nombre o mueve el mapa.' : 'No hemos podido consultar los lugares. Vuelve a intentarlo.', places.length ? `${places.length > 20 ? `Showing 20 of ${places.length}` : `${places.length}`} ${places.length === 1 ? 'place' : 'places'} near the map${waiting ? ' · searching for more…' : ''}. Select one.` : waiting ? 'Searching for places near the map…' : successes ? 'No matches nearby. Try another name or move the map.' : 'Could not retrieve places. Please try again.');
+      const warningEs = failures ? ' Algunas fuentes no están disponibles; la búsqueda puede estar incompleta.' : '';
+      const warningEn = failures ? ' Some sources are unavailable; the search may be incomplete.' : '';
+      write('place-status', places.length ? `${places.length > 20 ? `Mostramos 20 de ${places.length}` : `${places.length}`} ${places.length === 1 ? 'lugar' : 'lugares'} cerca del mapa${waiting ? ' · buscando más…' : ''}. Selecciona uno.${warningEs}` : waiting ? 'Buscando lugares cerca del mapa…' : successes ? (failures ? 'No hemos encontrado coincidencias en las fuentes disponibles; la búsqueda está incompleta. Vuelve a intentarlo.' : 'No hemos encontrado coincidencias cerca. Prueba otro nombre o mueve el mapa.') : 'No hemos podido consultar los lugares. Vuelve a intentarlo.', places.length ? `${places.length > 20 ? `Showing 20 of ${places.length}` : `${places.length}`} ${places.length === 1 ? 'place' : 'places'} near the map${waiting ? ' · searching for more…' : ''}. Select one.${warningEn}` : waiting ? 'Searching for places near the map…' : successes ? (failures ? 'No matches in available sources; the search is incomplete. Please try again.' : 'No matches nearby. Try another name or move the map.') : 'Could not retrieve places. Please try again.');
     });
   });
 
@@ -247,21 +253,23 @@ export function createExplorer({ getCenter, getDate, getTime, onPlaces, onPoint 
       write('nearby-status', 'Elige una distancia de 500 m a 5 km y una hora final posterior al inicio.', 'Choose a distance from 500 m to 5 km and an end time after the start.'); return;
     }
     const request = ++nearbyRequest; ++placeRequest;
-    places = []; nearby = []; criteria = { from, to }; sceneByPlace = new Map(); pending = new Set();
+    places = []; nearby = []; nearbyFailures = 0; criteria = { from, to }; sceneByPlace = new Map(); pending = new Set();
     $('place-results').replaceChildren();
     write('place-status', 'Buscamos cerca del centro del mapa, hasta 5 km.', 'We search within 5 km of the centre of the map.');
     onPlaces([], () => {});
     $('nearby-results').replaceChildren(); write('nearby-status', 'Buscando lugares y consultando edificios…', 'Searching for places and checking buildings…');
     const sources = [searchNearby(center, radius)];
     if (inMadridArea(center)) sources.push(searchMadridParks(center, radius), searchMadridFallback(center, radius, ''));
+    if (inBarcelonaArea(center)) sources.push(searchBarcelonaTerraces(center, radius));
     let waiting = sources.length, successes = 0;
     for (const source of sources) source.then((found) => {
       if (request !== nearbyRequest) return;
       successes++; nearby = addPlaces(nearby, found); analyseNearby(request);
-    }).catch(() => {}).finally(() => {
+    }).catch(() => { if (request === nearbyRequest) nearbyFailures++; }).finally(() => {
       if (request !== nearbyRequest) return;
       waiting--;
-      if (!waiting && !nearby.length) write('nearby-status', successes ? 'No hemos encontrado lugares en esta zona. Prueba otra distancia.' : 'No hemos podido consultar los lugares. Vuelve a intentarlo.', successes ? 'No places found in this area. Try a different distance.' : 'Could not retrieve places. Please try again.');
+      if (nearby.length) renderNearby();
+      else if (!waiting) write('nearby-status', successes ? (nearbyFailures ? 'No hay resultados en las fuentes disponibles; la búsqueda está incompleta. Vuelve a intentarlo.' : 'No hemos encontrado lugares en esta zona. Prueba otra distancia.') : 'No hemos podido consultar los lugares. Vuelve a intentarlo.', successes ? (nearbyFailures ? 'No results in available sources; the search is incomplete. Please try again.' : 'No places found in this area. Try a different distance.') : 'Could not retrieve places. Please try again.');
     });
   });
 

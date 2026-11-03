@@ -70,6 +70,8 @@ El 2026-11-02 se probaron con Chromium y datos inventados las anchuras 320, 390,
 
 En la mejora de búsqueda y barra solar del 2026-11-03 se buscó el Soho New York de Jorge Juan con el censo real y se consultaron alturas municipales: su referencia cae dentro de un edificio y se comprobaron tres puntos exteriores aproximados. La errata «reiaurante» mostró terrazas municipales con tipo sin confirmar. En Chromium se inspeccionaron la barra con horas y los controles a 320, 390 y 1440 px, el mapa 3D, el respaldo 2D, selección directa, arrastre y teclado. Se simularon una respuesta tardía y un fallo de alturas para comprobar que prevalece la última zona y aparece el reintento. En la vista web del prototipo móvil se simularon 12 segundos de espera de Overpass y se comprobaron los resultados municipales reales, las opciones exteriores y los controles. iOS y Android se empaquetaron; esto no prueba un dispositivo ni la precisión de las sombras sobre el terreno. Fuera de Madrid la cobertura de alturas y búsqueda sigue sin validarse.
 
+Las pruebas `node tests/web-search.test.mjs` y `node tests/first-results.test.mjs` comprueban el respaldo municipal de Barcelona y los avisos de fuentes fallidas con respuestas simuladas, incluida una caída que llega después del primer resultado móvil. No comprueban disponibilidad real ni ejecución nativa.
+
 ## Casos del producto
 
 - Noche, horizonte bajo, amanecer y atardecer; no emitir minutos de sol cuando el sol está bajo el horizonte.

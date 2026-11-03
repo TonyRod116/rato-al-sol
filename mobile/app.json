@@ -55,6 +55,12 @@
           "backgroundColor": "#faf7ee"
         }
       ]
-    ]
+    ],
+    "owner": "tonyrods-team",
+    "extra": {
+      "eas": {
+        "projectId": "218a788d-6681-4f43-b261-ea14818dce5d"
+      }
+    }
   }
 }

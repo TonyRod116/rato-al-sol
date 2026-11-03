@@ -173,3 +173,18 @@ Al cambiar de etapa: resultado, evidencia, bloqueo y siguiente acción concreta.
 - Alcance: guía raíz, canon y copias IA, README e índices de memoria. Solo Markdown; no código de producto, configuración operativa, creación de servicios ni despliegues.
 - Aceptación: guía obligatoria visible al entrar desde CLI, rutas propuestas diferenciadas de destinos reales y prohibición explícita de usar BuildApp.
 - Evidencia: sincronización IA, `python3 scripts/repo_check.py`, enlaces de la guía y revisión del alcance Markdown superados. Sin operaciones de infraestructura.
+
+
+## PUBLICACION — Búsqueda y fuentes antes de publicar
+
+- Estado: `in_progress`. Web incorpora el catálogo municipal de Barcelona, identifica la atribución y avisa cuando faltan fuentes; móvil avisa de fallos parciales por nombre y proximidad. Los registros municipales son direcciones aproximadas, sin nombres de negocios ni ubicación de mesas.
+- Evidencia: pruebas sintéticas de fallo de proveedor, resultados y consulta vacía; 50 pruebas Node pasan en nueve suites. No se ha verificado visualmente ni en teléfonos la modificación.
+- Pendiente: validar proveedores en red y su capacidad/condiciones para tráfico real, probar las búsquedas y avisos en dispositivos, contrastar las sombras y decidir fuente fiable si continúa el fallo. Los cambios de esta sesión están en copia de trabajo, no aplicados al repositorio original.
+
+## APP-015 — Publicación y preparación de pruebas
+
+- Estado: `in_progress` — petición de Tony del 2026-11-03.
+- iOS: Tony autorizó usar la cuenta de Apple de BuildApp para esta app, con identificador y firma propios. Registrado `com.ratoalsol.app`; ficha Rato al Sol creada en App Store Connect (Apple ID 6830366652), versión 1.0 en preparación, sin binario ni envío. Nombre de vendedor de la cuenta: BUILDAPP CONNECTING SOLUTIONS S.L. El acuerdo del programa y el anexo de apps de pago figuran activos. La ficha se configuró para revisión sin inicio de sesión y publicación manual.
+- Android: cuenta personal Tony Rodriguez; `com.ratoalsol.app` disponible y formulario preparado como app gratuita en español. No se creó: faltan declaraciones de política y exportación que requieren revisión antes de certificarlas.
+- Web: tony-r.com registrado en Hostinger; DNS y destino del portfolio en IONOS, espacio `/www/tony-r`. La carpeta vecina `BuildApp_landing` comparte el alojamiento; no se publicó ni modificó el servidor por la separación solicitada. Alternativa independiente requiere enrutado/DNS revisados para no afectar web y correo.
+- Pendiente: cuenta Expo propia y proyecto EAS, firma propia, clave y facturación de Google Maps para Android con autorización expresa, inspección del archivo a subir, compilaciones instalables, pruebas en teléfonos, privacidad y fichas, pruebas reales de fuentes y contraste de sombras. No se ha publicado ni enviado a tiendas.

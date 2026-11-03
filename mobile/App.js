@@ -17,6 +17,7 @@ import { buildingShadows, shadowDirection } from '../frontend/map-shadows.mjs';
 import { getViewportBuildings, viewportBounds } from '../frontend/viewport-buildings.mjs';
 import { DEFAULT_LOCATION } from '../frontend/shared/default-location.mjs';
 import { shadowsFitNativeBudget } from './src/viewport.mjs';
+import { firstWithResults } from './src/first-results.mjs';
 import { initialSelectedTime, TIME_END, TIME_START } from '../frontend/shared/time-selection.mjs';
 import { isLanguage, languageKey, translate, translateDirection } from '../frontend/shared/i18n.mjs';
 
@@ -34,19 +35,6 @@ const barColor = { sun: '#eeb54f', shade: '#718991', night: '#3f5062', unknown: 
 const shortDistance = (metres, language) => metres < 1000 ? `${Math.round(metres / 10) * 10} m` : `${(metres / 1000).toFixed(1).replace('.', language === 'en' ? '.' : ',')} km`;
 const clockTime = (minutes) => minutes === 1440 ? '24:00' : formatTime(minutes);
 const emptyShadows = { type: 'FeatureCollection', features: [] };
-
-// Show the first useful catalogue while a slow provider continues independently.
-function firstWithResults(tasks) {
-  return new Promise((resolve, reject) => {
-    let waiting = tasks.length, successes = 0, lastError;
-    for (const task of tasks) task.then((result) => {
-      successes++;
-      if (result.places.length) resolve(result);
-    }, (error) => { lastError = error; }).finally(() => {
-      if (--waiting === 0) successes ? resolve({ places: [], source: 'empty' }) : reject(lastError);
-    });
-  });
-}
 
 function Action({ children, onPress, disabled = false, style }) {
   return <Pressable accessibilityRole="button" disabled={disabled} onPress={onPress} style={({ pressed }) => [styles.button, disabled && styles.disabled, pressed && styles.pressed, style]}>
@@ -115,6 +103,7 @@ function Main() {
   const [places, setPlaces] = useState([]), [resultsType, setResultsType] = useState(null);
   const [selected, setSelected] = useState(null), [buildings, setBuildings] = useState([]), [coverage, setCoverage] = useState([]);
   const [busy, setBusy] = useState(''), [notice, setNotice] = useState(''), [error, setError] = useState('');
+  const [nearbySourceFailure, setNearbySourceFailure] = useState(false);
   const [sunOnly, setSunOnly] = useState(false);
   const [showAllResults, setShowAllResults] = useState(false);
   const [mapBounds, setMapBounds] = useState(null), [mapBuildings, setMapBuildings] = useState(null);
@@ -190,7 +179,7 @@ function Main() {
   const resultsAreForMode = (mode === 'place' && resultsType === 'search') || (mode === 'nearby' && resultsType === 'nearby');
 
   async function search() {
-    const seq = ++request.current; setBusy(msg('Buscando lugares…', 'Searching for places…')); setError(''); setNotice('');
+    const seq = ++request.current; setBusy(msg('Buscando lugares…', 'Searching for places…')); setError(''); setNotice(''); setNearbySourceFailure(false);
     setSunOnly(false); setResultsType(null); setPlaces([]);
     setShowAllResults(false);
     const name = query.trim();
@@ -206,23 +195,23 @@ function Main() {
       if (!category || (category.kind === 'public' && !category.filter.includes('square'))) sources.push(searchMadridParks(center, 5000, name));
     }
     if (inBarcelonaArea(center)) sources.push(searchBarcelonaTerraces(center, 5000, name));
-    let waiting = sources.length, successes = 0, merged = [];
+    let waiting = sources.length, successes = 0, failures = 0, merged = [];
     await Promise.all(sources.map(async (source) => {
       try {
         const found = await source; successes++;
         for (const place of found) if (!merged.some((other) => other.id === place.id ||
           (other.name.toLocaleLowerCase('es') === place.name.toLocaleLowerCase('es') && distanceMetres(other, place) < 20))) merged.push(place);
         merged = merged.sort((a, b) => a.distance - b.distance).slice(0, 80);
-      } catch { /* Other providers can still return results. */ }
+      } catch { failures++; /* Other providers can still return results. */ }
       finally {
         waiting--;
         if (request.current !== seq) return;
         if (merged.length) {
           setPlaces([...merged]); setResultsType('search'); setBusy('');
-          setNotice(msg(`Lugares encontrados hasta 5 km del mapa${waiting ? ' · buscando más…' : '.'}`, `Places found within 5 km of the map${waiting ? ' · searching for more…' : '.'}`));
+          setNotice(msg(`Lugares encontrados hasta 5 km del mapa${waiting ? ' · buscando más…' : '.'}${failures ? ' Algunas fuentes no están disponibles; la búsqueda puede estar incompleta.' : ''}`, `Places found within 5 km of the map${waiting ? ' · searching for more…' : '.'}${failures ? ' Some sources are unavailable; the search may be incomplete.' : ''}`));
         } else if (!waiting) {
           setPlaces([]); setBusy('');
-          if (successes) setNotice(msg('No hay coincidencias cerca del mapa. Prueba una ciudad o mueve el mapa.', 'No matches near the map. Try a city or move the map.'));
+          if (successes) setNotice(failures ? msg('No hay coincidencias en las fuentes disponibles; la búsqueda está incompleta. Vuelve a intentarlo.', 'No matches in available sources; the search is incomplete. Please try again.') : msg('No hay coincidencias cerca del mapa. Prueba una ciudad o mueve el mapa.', 'No matches near the map. Try a city or move the map.'));
           else setError(msg('No se han podido consultar los lugares. Vuelve a intentarlo.', 'Could not retrieve places. Please try again.'));
         }
       }
@@ -230,20 +219,22 @@ function Main() {
   }
 
   async function findNearby() {
-    const seq = ++request.current; setBusy(msg('Buscando lugares cercanos…', 'Searching for nearby places…')); setError(''); setNotice('');
+    const seq = ++request.current; setBusy(msg('Buscando lugares cercanos…', 'Searching for nearby places…')); setError(''); setNotice(''); setNearbySourceFailure(false);
     setSelected(null); setBuildings([]); setCoverage([]); setSunOnly(true); setResultsType(null);
     jumpToResults.current = true;
     setShowAllResults(false);
     try {
+      const warnSourceFailure = () => { if (request.current === seq) setNearbySourceFailure(true); };
       const sources = [searchNearby(center, searchRadius).then((places) => ({ places, source: 'osm' }))];
       if (inMadridArea(center)) sources.push(Promise.allSettled([
         searchMadridFallback(center, searchRadius, ''), searchMadridParks(center, searchRadius),
       ]).then((results) => {
         if (results.every((result) => result.status === 'rejected')) throw new Error('Catálogos municipales no disponibles.');
+        if (results.some((result) => result.status === 'rejected')) warnSourceFailure();
         return { places: results.flatMap((result) => result.status === 'fulfilled' ? result.value : []).sort((a, b) => a.distance - b.distance), source: 'madrid' };
       }));
       if (inBarcelonaArea(center)) sources.push(searchBarcelonaTerraces(center, searchRadius).then((places) => ({ places, source: 'barcelona' })));
-      const { places: found, source } = await firstWithResults(sources);
+      const { places: found, source } = await firstWithResults(sources, warnSourceFailure);
       if (request.current !== seq) return;
       setPlaces(found); setResultsType('nearby');
       const points = found.filter((place) => place.kind === 'public').slice(0, source === 'madrid' ? 2 : 6);
@@ -271,7 +262,7 @@ function Main() {
     if (!validCoordinate(point)) return;
     const seq = ++request.current;
     const selectedPoint = { ...point, id: point.id || 'selected-point', name: point.name || point.i18nName?.es || 'Punto elegido en el mapa', i18nName: point.i18nName || (!point.name ? msg('Punto elegido en el mapa', 'Point selected on the map') : null), kind: point.kind || 'point' };
-    setSelected(selectedPoint); setError(''); setNotice('');
+    setSelected(selectedPoint); setError(''); setNotice(''); setNearbySourceFailure(false);
     focusCamera(point, seq);
     if (coverage.some((area) => distanceMetres(area, point) < 5)) {
       setBusy(''); setNotice(msg('Cálculo aproximado para el punto elegido, no para todo el recinto.', 'Approximate calculation for the selected point, not the whole area.')); return;
@@ -297,7 +288,7 @@ function Main() {
   }
 
   async function useLocation() {
-    const seq = ++request.current; setBusy(msg('Buscando tu ubicación…', 'Finding your location…')); setError(''); setNotice('');
+    const seq = ++request.current; setBusy(msg('Buscando tu ubicación…', 'Finding your location…')); setError(''); setNotice(''); setNearbySourceFailure(false);
     try {
       const permission = await Location.requestForegroundPermissionsAsync();
       if (!permission.granted) throw new Error('No se ha dado permiso. Puedes mover el mapa y buscar desde ahí.');
@@ -318,7 +309,7 @@ function Main() {
     const point = city === 'barcelona' ? { latitude: 41.39172, longitude: 2.16495 } : DEFAULT_LOCATION;
     focusCamera(point, seq); setOriginLabel('Zona del mapa');
     setPlaces([]); setSelected(null); setBuildings([]); setCoverage([]); setResultsType(null);
-    setBusy(''); setError(''); setNotice('');
+    setBusy(''); setError(''); setNotice(''); setNearbySourceFailure(false);
     setSearchOpen(false); setMode('place'); setSheetExpanded(false);
   }
 
@@ -357,7 +348,7 @@ function Main() {
   const setView = (value) => {
     jumpToResults.current = false;
     if (value !== mode) { request.current++; setBusy(''); }
-    setMode(value); setSheetExpanded(value === 'nearby'); setError(''); setNotice('');
+    setMode(value); setSheetExpanded(value === 'nearby'); setError(''); setNotice(''); setNearbySourceFailure(false);
     requestAnimationFrame(() => sheetScroll.current?.scrollTo({ y: 0, animated: false }));
   };
   const resultRows = (items) => items.slice(0, showAllResults ? 30 : 5).map((place) => {
@@ -372,6 +363,7 @@ function Main() {
     {!!busy && <Loading text={localized(busy)} />}
     {!!error && <View accessibilityRole="alert" style={styles.alert}><Text style={styles.alertText}>{localized(error)}</Text></View>}
     {!!notice && <Text style={styles.notice}>{localized(notice)}</Text>}
+    {nearbySourceFailure && !error && <Text accessibilityRole="alert" style={styles.notice}>{t('Algunas fuentes no están disponibles; los resultados pueden estar incompletos.', 'Some sources are unavailable; results may be incomplete.')}</Text>}
   </>;
   const daylight = <>
     <View style={styles.rowBetween}><Text style={styles.miniHeading}>{t('SOL Y SOMBRA · 24 H', 'SUN AND SHADE · 24 H')}</Text>{!sheetExpanded && <Pressable accessibilityRole="button" hitSlop={8} onPress={() => setSheetExpanded(true)} style={styles.inlineDetails}><Text style={styles.textActionLabel}>{choices.length ? t('Punto exterior ↑', 'Outdoor point ↑') : t('Ver detalle ↑', 'See details ↑')}</Text></Pressable>}</View>
