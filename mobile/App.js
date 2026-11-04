@@ -121,7 +121,7 @@ function Main() {
   const pendingCamera = useRef(null);
   const myLocation = useRef(null);
   const forceSearch = useRef(false);
-  const refreshMap = useRef(false), saveMapTimers = useRef(new Set());
+  const refreshMap = useRef(false), skipMapLoad = useRef(false), saveMapTimers = useRef(new Set());
   const viewportLoader = useRef(null);
   if (!viewportLoader.current) viewportLoader.current = createViewportLoader(getViewportBuildings, Date.now,
     Platform.OS === 'web' ? undefined : expandedMadridViewport);
@@ -141,6 +141,7 @@ function Main() {
     saveMapTimers.current.clear();
     const clearing = clearOfflineData();
     request.current++; setBusy('');
+    refreshMap.current = false; skipMapLoad.current = true; setMapRetry((value) => value + 1);
     clearViewportBuildingMemoryCache(); clearPlacesMemoryCache(); clearMadridSearchMemoryCache(); clearBarcelonaSearchMemoryCache();
     viewportLoader.current = createViewportLoader(getViewportBuildings, Date.now,
       Platform.OS === 'web' ? undefined : expandedMadridViewport);
@@ -168,6 +169,7 @@ function Main() {
 
   useEffect(() => () => { for (const timer of saveMapTimers.current) clearTimeout(timer); saveMapTimers.current.clear(); }, []);
   useEffect(() => {
+    if (skipMapLoad.current) { skipMapLoad.current = false; return; }
     if (!mapBounds) return;
     let cancelled = false, timer;
     const generation = cacheGeneration();
