@@ -17,15 +17,18 @@ import { buildingShadows, shadowDirection } from '../frontend/map-shadows.mjs';
 import { clearViewportBuildingMemoryCache, getViewportBuildings, viewportBounds } from '../frontend/viewport-buildings.mjs';
 import { DEFAULT_LOCATION } from '../frontend/shared/default-location.mjs';
 import { createViewportLoader, expandedMadridViewport } from './src/viewport.mjs';
-import { ShadowRasterizer } from './src/ShadowOverlay';
+import { ShadowRasterizer, retainShadowFile, releaseShadowFile, retireShadowFile } from './src/ShadowOverlay';
 import { shadowSunStatus } from './src/shadow-status.mjs';
-import { buildingCache, sceneCache, searchCache, clearOfflineData, cacheGeneration } from './src/offline-data';
+import { buildingCache, sceneCache, searchCache, shadowCache, clearOfflineData, cacheGeneration } from './src/offline-data';
 import { createCachedServices } from './src/cached-services.mjs';
 import { firstWithResults } from './src/first-results.mjs';
 import { initialSelectedTime, TIME_END, TIME_START } from '../frontend/shared/time-selection.mjs';
 import { isLanguage, languageKey, translate, translateDirection } from '../frontend/shared/i18n.mjs';
 import { PLAYBACK_START, nextPlaybackTime } from './src/day-playback.mjs';
 import { retainedShadow } from './src/retained-shadow.mjs';
+import { playbackFrameReady, shadowFrameMatches } from './src/shadow-frame.mjs';
+import { createZoomPrefetch } from './src/zoom-prefetch.mjs';
+import { geometrySignature, localFrameDay, millisecondsUntilNextDay, renderedShadowKey } from './src/shadow-cache-key.mjs';
 
 const msg = (es, en) => ({ es, en });
 const cachedServices = createCachedServices({ scenes: getScenes, sceneCache, searchCache, generation: cacheGeneration });
@@ -107,6 +110,12 @@ function Main() {
   const [dayOffset, setDayOffset] = useState(0);
   const [minutes, setMinutes] = useState(() => { const now = new Date(); return initialSelectedTime(now.getHours() * 60 + now.getMinutes(), 15); });
   const [playingDay, setPlayingDay] = useState(false);
+  const [cacheEnabled, setCacheEnabled] = useState(true);
+  const cacheEnabledRef = useRef(true);
+  cacheEnabledRef.current = cacheEnabled;
+  const cachePauseViewport = useRef(null);
+  const [appActive, setAppActive] = useState(AppState.currentState == null || AppState.currentState === 'active');
+  const [calendarDay, setCalendarDay] = useState(() => localFrameDay(new Date()));
   const playbackStarted = useRef(false);
   const [endEnabled, setEndEnabled] = useState(false), [endMinutes, setEndMinutes] = useState(900);
   const [places, setPlaces] = useState([]), [resultsType, setResultsType] = useState(null);
@@ -129,10 +138,14 @@ function Main() {
   const viewportLoader = useRef(null);
   if (!viewportLoader.current) viewportLoader.current = createViewportLoader(getViewportBuildings, Date.now,
     Platform.OS === 'web' ? undefined : expandedMadridViewport);
+  const zoomPrefetch = useRef(null);
+  if (!zoomPrefetch.current) zoomPrefetch.current = createZoomPrefetch({ loader: () => viewportLoader.current, buildingCache, generation: cacheGeneration });
 
   const searchRadius = radius;
 
   function updateSavedMap() {
+    setCacheEnabled(true);
+    zoomPrefetch.current.cancel();
     refreshMap.current = true;
     clearViewportBuildingMemoryCache(); clearPlacesMemoryCache();
     viewportLoader.current = createViewportLoader(getViewportBuildings, Date.now,
@@ -141,6 +154,10 @@ function Main() {
   }
 
   async function clearSavedData() {
+    cacheEnabledRef.current = false;
+    setCacheEnabled(false);
+    cachePauseViewport.current = { center, visibleBounds };
+    zoomPrefetch.current.cancel();
     for (const timer of saveMapTimers.current) clearTimeout(timer);
     saveMapTimers.current.clear();
     const clearing = clearOfflineData();
@@ -210,7 +227,7 @@ function Main() {
             if (Platform.OS !== 'web') {
               const saveTimer = setTimeout(() => {
                 saveMapTimers.current.delete(saveTimer);
-                if (cacheGeneration() === generation) void buildingCache.save(geometry, { fetchedAt: geometry.fetchedAt ?? Date.now() });
+                if (cacheEnabledRef.current && cacheGeneration() === generation) void buildingCache.save(geometry, { fetchedAt: geometry.fetchedAt ?? Date.now() });
               }, 1200);
               saveMapTimers.current.add(saveTimer);
             }
@@ -233,7 +250,18 @@ function Main() {
     return () => { cancelled = true; clearTimeout(timer); };
   }, [mapBounds, mapRetry]);
 
-  const day = useMemo(() => { const value = new Date(); value.setHours(12, 0, 0, 0); value.setDate(value.getDate() + dayOffset); return value; }, [dayOffset]);
+  useEffect(() => {
+    if (!appActive) return;
+    let timer;
+    function refreshDate() {
+      const now = new Date();
+      setCalendarDay(localFrameDay(now));
+      timer = setTimeout(refreshDate, millisecondsUntilNextDay(now) + 1000);
+    }
+    refreshDate();
+    return () => clearTimeout(timer);
+  }, [appActive]);
+  const day = useMemo(() => { const value = new Date(); value.setHours(12, 0, 0, 0); value.setDate(value.getDate() + dayOffset); return value; }, [calendarDay, dayOffset]);
   const instant = useMemo(() => atMinutes(day, minutes), [day, minutes]);
   const scene = useMemo(() => {
     const area = selected && coverage.find((point) => distanceMetres(point, selected) < 5);
@@ -246,27 +274,115 @@ function Main() {
     return sunPosition(instant, center.latitude, center.longitude);
   }, [center, instant]);
   const sunStatus = shadowSunStatus(mapSun);
-  const shadows = useMemo(() => mapBuildings && visibleBounds ? buildingShadows(mapBuildings, mapSun, visibleBounds,
-    Platform.OS === 'web' ? undefined : { maxVertices: 120000, excludeRoofs: true }) : emptyShadows, [mapBuildings, mapSun, visibleBounds]);
   const [nativeShadowResult, setNativeShadowResult] = useState(null);
   const [lastShadowImage, setLastShadowImage] = useState(null);
+  const [futureShadow, setFutureShadow] = useState(null);
+  const [futureJob, setFutureJob] = useState(null);
+  const [playbackDwellFrame, setPlaybackDwellFrame] = useState(null);
+  const [shadowGeometrySignature, setShadowGeometrySignature] = useState(null);
+  const activeGeometrySignature = shadowGeometrySignature?.buildings === mapBuildings ? shadowGeometrySignature.value : null;
   const shadowTimeKey = instant?.getTime() ?? null;
+  const frameContext = { timeKey: shadowTimeKey, area: visibleBounds, buildings: mapBuildings, retryToken: mapRetry,
+    latitude: center.latitude, longitude: center.longitude, generation: cacheGeneration() };
+  const adopted = shadowFrameMatches(nativeShadowResult, frameContext) ? nativeShadowResult : null;
+  const shadows = useMemo(() => adopted?.source || (mapBuildings && visibleBounds ? buildingShadows(mapBuildings, mapSun, visibleBounds,
+    Platform.OS === 'web' ? undefined : { maxVertices: 120000, excludeRoofs: true }) : emptyShadows), [adopted?.source, mapBuildings, mapSun, visibleBounds]);
   const shadowContext = useRef(null);
-  shadowContext.current = { source: shadows, area: visibleBounds, retryToken: mapRetry, timeKey: shadowTimeKey, geometrySource: mapBuildings?.source };
+  shadowContext.current = { ...frameContext, source: shadows, geometrySource: mapBuildings?.source };
   function acceptShadowResult(result) {
     const current = shadowContext.current;
-    if (result.source === current.source && result.area === current.area && result.retryToken === current.retryToken) {
-      const tagged = { ...result, timeKey: current.timeKey, geometrySource: current.geometrySource };
+    if (result.source === current.source && result.area === current.area && result.retryToken === current.retryToken && current.generation === cacheGeneration()) {
+      const tagged = { ...result, ...current };
       setNativeShadowResult(tagged);
       if (tagged.uri) setLastShadowImage(tagged);
     }
   }
   const currentShadowResult = nativeShadowResult?.source === shadows && nativeShadowResult?.area === visibleBounds && nativeShadowResult?.retryToken === mapRetry ? nativeShadowResult : null;
+  shadowContext.current.hasReady = Boolean(currentShadowResult);
   const shadowPending = Platform.OS !== 'web' && shadows.features.length > 0 && !currentShadowResult;
   const shadowFailed = Platform.OS !== 'web' && currentShadowResult?.failed;
   const groundShadow = currentShadowResult?.uri ? currentShadowResult : retainedShadow(lastShadowImage,
     { timeKey: shadowTimeKey, visibleBounds, retryToken: mapRetry, sunStatus });
   const partialShadow = Boolean(groundShadow && groundShadow !== currentShadowResult);
+  const futureContext = useRef(null);
+  futureContext.current = futureJob;
+  function acceptFutureShadow(result) {
+    const current = futureContext.current;
+    if (current && result.source === current.source && result.area === current.area && result.retryToken === current.retryToken) {
+      setFutureShadow({ ...current, ...result });
+    }
+  }
+  function failFutureShadow(result) {
+    const current = futureContext.current;
+    if (current && result.source === current.source && result.area === current.area && result.retryToken === current.retryToken) {
+      // Fall back to the ordinary foreground renderer at this instant.
+      setFutureShadow({ ...current, failed: true });
+    }
+  }
+  useEffect(() => {
+    const uri = futureShadow?.uri;
+    if (!uri) return;
+    retainShadowFile(uri);
+    return () => releaseShadowFile(uri);
+  }, [futureShadow?.uri]);
+  useEffect(() => {
+    setFutureJob(null); setFutureShadow(null);
+    if (Platform.OS === 'web' || !playingDay || mode !== 'place' || searchOpen || mapFailed || shadowFailed ||
+        shadowPending || shadows.limitExceeded || !mapBuildings || !visibleBounds) return;
+    let cancelled = false;
+    const timer = setTimeout(() => {
+      if (cancelled) return;
+      const next = nextPlaybackTime(minutes), nextInstant = atMinutes(day, next);
+      if (!nextInstant) { setPlayingDay(false); return; }
+      const nextSun = sunPosition(nextInstant, center.latitude, center.longitude);
+      const nextShadows = buildingShadows(mapBuildings, nextSun, visibleBounds, { maxVertices: 120000, excludeRoofs: true });
+      if (cancelled) return;
+      const frame = { source: nextShadows, area: visibleBounds, buildings: mapBuildings, retryToken: mapRetry,
+        timeKey: nextInstant.getTime(), latitude: center.latitude, longitude: center.longitude,
+        geometrySource: mapBuildings?.source, generation: cacheGeneration() };
+      setFutureJob(frame);
+      if (!nextShadows.features.length) setFutureShadow({ ...frame, failed: Boolean(nextShadows.limitExceeded) });
+    }, 100);
+    return () => { cancelled = true; clearTimeout(timer); };
+  }, [playingDay, minutes, day, center, mapBuildings, visibleBounds, mapRetry, mode, searchOpen, mapFailed, shadowFailed, shadowPending, shadows.limitExceeded]);
+  useEffect(() => {
+    setShadowGeometrySignature(null);
+    if (Platform.OS === 'web' || playingDay || !appActive || !cacheEnabled || !mapBuildings) return;
+    let cancelled = false;
+    const timer = setTimeout(() => {
+      geometrySignature(mapBuildings, () => cancelled).then((signature) => {
+        if (!cancelled && signature) setShadowGeometrySignature({ buildings: mapBuildings, value: signature });
+      }).catch(() => {});
+    }, 100);
+    return () => { cancelled = true; clearTimeout(timer); };
+  }, [mapBuildings, playingDay, appActive, cacheEnabled]);
+  useEffect(() => {
+    if (Platform.OS === 'web' || playingDay || !appActive || !cacheEnabled || !activeGeometrySignature || !shadows.features.length || currentShadowResult) return;
+    const key = renderedShadowKey(activeGeometrySignature, frameContext);
+    if (!key) return;
+    let cancelled = false;
+    const generation = frameContext.generation, source = shadows, area = visibleBounds;
+    shadowCache.get(key, localFrameDay(day), { generation }).then((uri) => {
+      if (!uri) return;
+      // A cache hit is copied to a disposable file. Retire it even if the
+      // viewport changed; the map retains the file if it is actually used.
+      retireShadowFile(uri);
+      const current = shadowContext.current;
+      if (cancelled || generation !== cacheGeneration() || current.hasReady || current.source !== source || current.area !== area) return;
+      const [west, south, east, north] = area;
+      const tagged = { ...current, uri, bounds: [[north, east], [south, west]] };
+      setNativeShadowResult(tagged); setLastShadowImage(tagged);
+    }).catch(() => {});
+    return () => { cancelled = true; };
+  }, [activeGeometrySignature, playingDay, appActive, cacheEnabled, shadows, currentShadowResult, day, visibleBounds, mapRetry]);
+  useEffect(() => {
+    if (Platform.OS === 'web' || playingDay || !appActive || !cacheEnabled || !activeGeometrySignature || !currentShadowResult?.uri) return;
+    const generation = currentShadowResult.generation;
+    const key = renderedShadowKey(activeGeometrySignature, frameContext);
+    if (!key || generation !== cacheGeneration()) return;
+    const timer = setTimeout(() => { void shadowCache.put(key, localFrameDay(day), currentShadowResult.uri, { generation }); }, 1200);
+    return () => clearTimeout(timer);
+  }, [activeGeometrySignature, playingDay, appActive, cacheEnabled, currentShadowResult, day, visibleBounds, mapRetry]);
   useEffect(() => {
     // Once a mask leaves the map it can be released from the file cache. Do
     // not try to resurrect that URI after a later move back or time change.
@@ -275,10 +391,17 @@ function Main() {
   }, [shadowTimeKey, visibleBounds, mapRetry, sunStatus]);
   useEffect(() => {
     const subscription = AppState.addEventListener('change', (state) => {
-      if (state !== 'active') setPlayingDay(false);
+      setAppActive(state === 'active');
+      if (state !== 'active') { zoomPrefetch.current.cancel(); setPlayingDay(false); }
+      else void shadowCache.prune();
     });
     return () => subscription.remove();
   }, []);
+  useEffect(() => {
+    if (Platform.OS === 'web' || !appActive || !cacheEnabled || playingDay || !mapBuildings || !mapBounds || !visibleBounds ||
+        shadowPending || shadowFailed || mapFailed || shadows.limitExceeded || partialShadow) return;
+    return zoomPrefetch.current.start({ bounds: mapBounds, geometry: mapBuildings });
+  }, [appActive, cacheEnabled, playingDay, mapBuildings, mapBounds, visibleBounds, shadowPending, shadowFailed, mapFailed, shadows.limitExceeded, partialShadow]);
   useEffect(() => {
     if (!playingDay) return;
     if (mode !== 'place' || searchOpen || mapFailed || shadowFailed || shadows.limitExceeded) {
@@ -288,13 +411,25 @@ function Main() {
     // Wait for the area's data and the current image, then leave time for the
     // native map to attach it before advancing to another instant.
     if (!mapBuildings || !visibleBounds || shadowPending) return;
+    const dwellFrame = { ...frameContext };
     const timer = setTimeout(() => {
-      const next = nextPlaybackTime(minutes);
-      setMinutes(next);
-      setEndMinutes((previous) => Math.max(previous, next + 15));
+      setPlaybackDwellFrame(dwellFrame);
     }, 700);
     return () => clearTimeout(timer);
-  }, [playingDay, minutes, mode, searchOpen, mapFailed, shadowFailed, shadows.limitExceeded, mapBuildings, visibleBounds, shadowPending]);
+  }, [playingDay, minutes, day, mode, searchOpen, mapFailed, shadowFailed, shadows.limitExceeded, mapBuildings, visibleBounds, shadowPending, center, mapRetry]);
+  useEffect(() => {
+    if (!playingDay || mode !== 'place' || searchOpen || mapFailed || shadowFailed || shadows.limitExceeded ||
+        !mapBuildings || !visibleBounds || shadowPending) return;
+    const next = nextPlaybackTime(minutes), nextInstant = atMinutes(day, next);
+    const nextTimeKey = nextInstant?.getTime() ?? null;
+    if (!playbackFrameReady(frameContext, playbackDwellFrame, futureShadow, nextTimeKey, Platform.OS !== 'web')) return;
+    if (Platform.OS !== 'web' && futureShadow && !futureShadow.failed) {
+      setNativeShadowResult(futureShadow);
+      if (futureShadow.uri) setLastShadowImage(futureShadow);
+    }
+    setMinutes(next);
+    setEndMinutes((previous) => Math.max(previous, next + 15));
+  }, [playingDay, minutes, day, mode, searchOpen, mapFailed, shadowFailed, shadows.limitExceeded, mapBuildings, visibleBounds, shadowPending, playbackDwellFrame, futureShadow, center, mapRetry]);
   const direction = useMemo(() => shadowDirection(mapSun), [mapSun]);
   const choices = useMemo(() => selected && scene ? nearbyOutdoorScenes(scene, buildings).map((choice) => ({ ...choice, windows: solarWindows(choice.scene, day) })) : [], [selected, scene, buildings, day]);
   const nearbyScenes = useMemo(() => {
@@ -316,6 +451,7 @@ function Main() {
   const resultsAreForMode = (mode === 'place' && resultsType === 'search') || (mode === 'nearby' && resultsType === 'nearby');
 
   async function search() {
+    setCacheEnabled(true);
     const seq = ++request.current; setBusy(msg('Buscando lugares…', 'Searching for places…')); setError(''); setNotice(''); setNearbySourceFailure(false);
     const force = forceSearch.current; forceSearch.current = false; setSearchNeedsRefresh(false);
     if (force) { clearPlacesMemoryCache(); clearMadridSearchMemoryCache(); clearBarcelonaSearchMemoryCache(); }
@@ -364,6 +500,7 @@ function Main() {
   }
 
   async function findNearby() {
+    setCacheEnabled(true);
     const seq = ++request.current; setBusy(msg('Buscando lugares cercanos…', 'Searching for nearby places…')); setError(''); setNotice(''); setNearbySourceFailure(false);
     const force = forceSearch.current; forceSearch.current = false; setSearchNeedsRefresh(false);
     if (force) { clearPlacesMemoryCache(); clearMadridSearchMemoryCache(); clearBarcelonaSearchMemoryCache(); }
@@ -500,11 +637,14 @@ function Main() {
     setSearchOpen(false); setMode('place'); setSheetExpanded(false); selectPoint(point);
     requestAnimationFrame(() => sheetScroll.current?.scrollTo({ y: 0, animated: false }));
   };
+  const chooseDay = (value) => { setCacheEnabled(true); setDayOffset(value); };
   const changeTime = (value) => {
+    setCacheEnabled(true);
     playbackStarted.current = false; setPlayingDay(false);
     setMinutes(value); setEndMinutes((previous) => Math.max(previous, value + 15));
   };
   const toggleDayPlayback = () => {
+    setCacheEnabled(true);
     if (playingDay) { setPlayingDay(false); return; }
     if (!playbackStarted.current) {
       setMinutes(PLAYBACK_START);
@@ -569,6 +709,12 @@ function Main() {
           if (pending && Date.now() < pending.until && distanceMetres(pending, point) > 40) return;
           pendingCamera.current = null;
           const bounds = viewportBounds(point.bounds);
+          if (bounds?.join(',') !== mapBounds?.join(',') || point.visibleBounds?.join(',') !== visibleBounds?.join(',')) zoomPrefetch.current.cancel();
+          const pausedView = cachePauseViewport.current, oldArea = pausedView?.visibleBounds, newArea = point.visibleBounds;
+          const zoomChanged = oldArea && newArea && Math.abs((newArea[2] - newArea[0]) / (oldArea[2] - oldArea[0]) - 1) > .1;
+          if (!cacheEnabled && pausedView && (distanceMetres(pausedView.center, point) > 15 || zoomChanged)) {
+            cachePauseViewport.current = null; setCacheEnabled(true);
+          }
           if (!bounds) {
             setMapBuildings(null);
             setMapIssue(true);
@@ -584,7 +730,8 @@ function Main() {
         {!map3DAvailable && <Text style={styles.mapFallback}>{t('3D no disponible · mapa en 2D', '3D unavailable · showing 2D map')}</Text>}
         {(mapIssue || shadows.limitExceeded || shadowPending || shadowFailed || sunStatus || partialShadow) && <Text accessibilityRole={mapAction ? 'button' : undefined} onPress={mapAction} style={[styles.mapFallback, { top: map3DAvailable ? 115 : 150 }]}>{shadows.limitExceeded ? t('Acerca el mapa para ver las sombras.', 'Zoom in to see the shadows.') : shadowFailed ? t('No se han podido dibujar las sombras. Toca para reintentar.', 'Could not draw shadows. Tap to retry.') : mapFailed ? localized(mapStatus) : partialShadow ? t('Actualizando sombras; solo se muestra la zona anterior.', 'Updating shadows; only the previous area is shown.') : shadowPending ? t('Calculando sombras de la zona…', 'Calculating shadows in this area…') : mapStale || (mapIssue && !mapBuildings) ? localized(mapStatus) : sunStatus === 'night' ? t('Es de noche a esta hora. Cambia la hora para ver sombras.', 'It is night at this time. Change the time to see shadows.') : sunStatus === 'low' ? t('El sol está muy bajo. Cambia la hora para ver sombras.', 'The sun is too low. Change the time to see shadows.') : localized(mapStatus)}</Text>}
       </View>
-      {Platform.OS !== 'web' && <ShadowRasterizer shadows={shadows} bounds={visibleBounds} retryToken={mapRetry} onReady={acceptShadowResult} onError={(failure) => acceptShadowResult({ ...failure, failed: true })} />}
+      {Platform.OS !== 'web' && <ShadowRasterizer shadows={currentShadowResult?.uri ? emptyShadows : shadows} bounds={visibleBounds} retryToken={mapRetry} onReady={acceptShadowResult} onError={(failure) => acceptShadowResult({ ...failure, failed: true })} />}
+      {Platform.OS !== 'web' && playingDay && futureJob?.source?.features?.length > 0 && !futureShadow && <ShadowRasterizer shadows={futureJob.source} bounds={futureJob.area} retryToken={futureJob.retryToken} onReady={acceptFutureShadow} onError={failFutureShadow} />}
       <View pointerEvents="box-none" style={styles.topControls}>
         <View style={styles.brandRow}>
           <View style={styles.brandBadge}><Text style={styles.brand}><Text style={styles.brandSun}>☼ </Text>Rato al Sol<Text style={styles.accent}>.</Text></Text></View>
@@ -612,7 +759,7 @@ function Main() {
             {!sheetExpanded && !selected && !!busy && <Text style={styles.notice}>{localized(busy)}</Text>}
             {!sheetExpanded && !selected && !busy && !!notice && <Text style={styles.notice}>{localized(notice)}</Text>}
             <View style={styles.timelineBlock}>{daylight}</View>
-            <View style={styles.timeTitleRow}><View style={styles.daySwitch}><Pressable accessibilityRole="button" accessibilityState={{ selected: dayOffset === 0 }} onPress={() => setDayOffset(0)} style={[styles.dayButton, dayOffset === 0 && styles.dayButtonSelected]}><Text style={[styles.dayButtonText, dayOffset === 0 && styles.dayButtonTextSelected]}>{t('Hoy', 'Today')}</Text></Pressable><Pressable accessibilityRole="button" accessibilityState={{ selected: dayOffset === 1 }} onPress={() => setDayOffset(1)} style={[styles.dayButton, dayOffset === 1 && styles.dayButtonSelected]}><Text style={[styles.dayButtonText, dayOffset === 1 && styles.dayButtonTextSelected]}>{t('Mañana', 'Tomorrow')}</Text></Pressable></View><Text style={styles.clock}>{formatTime(minutes)}</Text></View>
+            <View style={styles.timeTitleRow}><View style={styles.daySwitch}><Pressable accessibilityRole="button" accessibilityState={{ selected: dayOffset === 0 }} onPress={() => chooseDay(0)} style={[styles.dayButton, dayOffset === 0 && styles.dayButtonSelected]}><Text style={[styles.dayButtonText, dayOffset === 0 && styles.dayButtonTextSelected]}>{t('Hoy', 'Today')}</Text></Pressable><Pressable accessibilityRole="button" accessibilityState={{ selected: dayOffset === 1 }} onPress={() => chooseDay(1)} style={[styles.dayButton, dayOffset === 1 && styles.dayButtonSelected]}><Text style={[styles.dayButtonText, dayOffset === 1 && styles.dayButtonTextSelected]}>{t('Mañana', 'Tomorrow')}</Text></Pressable></View><Text style={styles.clock}>{formatTime(minutes)}</Text></View>
             <View style={styles.playbackRow}>
               <View style={styles.playbackSlider}>
                 <Range label={t('Hora para consultar el sol', 'Time to check sunlight')} value={minutes} min={TIME_START} max={TIME_END} step={15} valueText={formatTime(minutes)} onChange={changeTime} />
@@ -641,7 +788,7 @@ function Main() {
             <View style={styles.nearbySection}><View style={styles.rowBetween}><View style={styles.titleWrap}><Text style={styles.fieldLabel}>{t('Desde', 'From')}</Text><Text style={styles.fieldValue}>{t(originLabel, originLabel === 'Tu ubicación' ? 'Your location' : 'Map area')}</Text></View><Pressable accessibilityRole="button" onPress={useLocation} disabled={!!busy} style={styles.outlineButton}><Text style={styles.outlineText}>⌖  {t('Mi ubicación', 'My location')}</Text></Pressable></View></View>
             <View style={styles.nearbySection}><View style={styles.rowBetween}><Text style={styles.fieldLabel}>{t('Distancia máxima', 'Maximum distance')}</Text><Text style={styles.rangeValue}>{shortDistance(radius, language)}</Text></View><Range label={t('Distancia máxima', 'Maximum distance')} value={radius} min={500} max={5000} step={500} valueText={shortDistance(radius, language)} onChange={setRadius} /><View style={styles.rowBetween}><Text style={styles.scale}>500 m</Text><Text style={styles.scale}>5 km</Text></View></View>
             <View style={styles.nearbySection}><View style={styles.rowBetween}><Text style={styles.fieldLabel}>{t('Hora de inicio', 'Start time')}</Text><Text style={styles.rangeValue}>{formatTime(minutes)}</Text></View><Range label={t('Hora inicial de búsqueda', 'Search start time')} value={minutes} min={TIME_START} max={TIME_END} step={15} valueText={formatTime(minutes)} onChange={changeTime} /><TimeScale />
-              <View style={styles.nearbyDays}><Text style={styles.fieldLabel}>{t('Día', 'Day')}</Text><View style={styles.daySwitch}><Pressable accessibilityRole="button" accessibilityState={{ selected: dayOffset === 0 }} onPress={() => setDayOffset(0)} style={[styles.dayButton, dayOffset === 0 && styles.dayButtonSelected]}><Text style={[styles.dayButtonText, dayOffset === 0 && styles.dayButtonTextSelected]}>{t('Hoy', 'Today')}</Text></Pressable><Pressable accessibilityRole="button" accessibilityState={{ selected: dayOffset === 1 }} onPress={() => setDayOffset(1)} style={[styles.dayButton, dayOffset === 1 && styles.dayButtonSelected]}><Text style={[styles.dayButtonText, dayOffset === 1 && styles.dayButtonTextSelected]}>{t('Mañana', 'Tomorrow')}</Text></Pressable></View></View>
+              <View style={styles.nearbyDays}><Text style={styles.fieldLabel}>{t('Día', 'Day')}</Text><View style={styles.daySwitch}><Pressable accessibilityRole="button" accessibilityState={{ selected: dayOffset === 0 }} onPress={() => chooseDay(0)} style={[styles.dayButton, dayOffset === 0 && styles.dayButtonSelected]}><Text style={[styles.dayButtonText, dayOffset === 0 && styles.dayButtonTextSelected]}>{t('Hoy', 'Today')}</Text></Pressable><Pressable accessibilityRole="button" accessibilityState={{ selected: dayOffset === 1 }} onPress={() => chooseDay(1)} style={[styles.dayButton, dayOffset === 1 && styles.dayButtonSelected]}><Text style={[styles.dayButtonText, dayOffset === 1 && styles.dayButtonTextSelected]}>{t('Mañana', 'Tomorrow')}</Text></Pressable></View></View>
               <Pressable accessibilityRole="checkbox" accessibilityState={{ checked: endEnabled }} onPress={() => { setEndEnabled(!endEnabled); setEndMinutes((previous) => Math.max(previous, minutes + 15)); }} style={styles.rangeToggle}><Text style={styles.rangeToggleText}>{endEnabled ? '☑' : '☐'}  {t('Buscar durante una franja', 'Search over a time range')}</Text></Pressable>
               {endEnabled && <><View style={styles.rowBetween}><Text style={styles.fieldLabel}>{t('Hasta', 'Until')}</Text><Text style={styles.rangeValue}>{clockTime(endMinutes)}</Text></View><Range label={t('Hora final de búsqueda', 'Search end time')} value={endMinutes} min={minutes + 15} max={1440} step={15} valueText={clockTime(endMinutes)} onChange={setEndMinutes} /></>}
             </View>

@@ -9,6 +9,9 @@ import { createShadowFileLifetime } from './shadow-file-lifetime.mjs';
 let nextFile = 0, nextJob = 0;
 const files = createShadowFileLifetime((uri) => { FileSystem.deleteAsync(uri, { idempotent: true }).catch(() => {}); });
 const removeLater = files.retire;
+export const retainShadowFile = files.retain;
+export const releaseShadowFile = files.release;
+export const retireShadowFile = files.retire;
 
 // Render outside the MapView. Work is split into small JavaScript batches;
 // SVG rasterization and PNG encoding are native and may still pause the UI.
