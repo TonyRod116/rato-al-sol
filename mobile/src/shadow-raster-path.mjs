@@ -5,6 +5,18 @@ const MERCATOR_LIMIT = 85.05112878;
 const mercator = (latitude) => (1 - Math.asinh(Math.tan(latitude * Math.PI / 180)) / Math.PI) / 2;
 const quantize = (value) => Math.round(value * 10) / 10;
 
+// Group small batches within a short time budget. Yielding after every 100
+// polygons adds substantial timer overhead in dense city centres, but doing
+// the whole mask at once would block gestures on the JavaScript thread.
+export function advanceShadowRasterPath(builder, now = Date.now) {
+  const started = now();
+  for (let batch = 0; batch < 80; batch++) {
+    if (builder.step(25)) return true;
+    if (now() - started >= 6) break;
+  }
+  return false;
+}
+
 export function createShadowRasterPath(collection, bounds, { longestSide = 384, maxVertices = 120000 } = {}) {
   if (!Array.isArray(bounds) || bounds.length !== 4 || !bounds.every(Number.isFinite)) throw new Error('Invalid shadow bounds');
   const [west, south, east, north] = bounds;
@@ -34,6 +46,9 @@ export function createShadowRasterPath(collection, bounds, { longestSide = 384, 
       // A zero-area sweep or subpixel piece has no visible filled area.
       if (Math.abs(twiceArea) < 1e-7) continue;
       if ((ringIndex === 0) !== (twiceArea > 0)) points.reverse();
+      // Z already closes the ring; omitting a repeated closing coordinate
+      // makes the native SVG path smaller without changing its silhouette.
+      if (points[0][0] === points[points.length - 1][0] && points[0][1] === points[points.length - 1][1]) points.pop();
       paths.push(`M${points.map(([x, y]) => `${x},${y}`).join('L')}Z`);
     }
     pieces++;

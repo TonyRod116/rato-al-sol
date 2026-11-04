@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { ActivityIndicator, KeyboardAvoidingView, Linking, Modal, PanResponder, Platform, Pressable, ScrollView, StyleSheet, Text, TextInput, useWindowDimensions, View } from 'react-native';
+import { ActivityIndicator, AppState, KeyboardAvoidingView, Linking, Modal, PanResponder, Platform, Pressable, ScrollView, StyleSheet, Text, TextInput, useWindowDimensions, View } from 'react-native';
 import { SafeAreaProvider, SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import Slider from '@react-native-community/slider';
 import AsyncStorage from '@react-native-async-storage/async-storage';
@@ -24,6 +24,7 @@ import { createCachedServices } from './src/cached-services.mjs';
 import { firstWithResults } from './src/first-results.mjs';
 import { initialSelectedTime, TIME_END, TIME_START } from '../frontend/shared/time-selection.mjs';
 import { isLanguage, languageKey, translate, translateDirection } from '../frontend/shared/i18n.mjs';
+import { PLAYBACK_START, nextPlaybackTime } from './src/day-playback.mjs';
 
 const msg = (es, en) => ({ es, en });
 const cachedServices = createCachedServices({ scenes: getScenes, sceneCache, searchCache, generation: cacheGeneration });
@@ -104,6 +105,8 @@ function Main() {
   const [query, setQuery] = useState(''), [radius, setRadius] = useState(500);
   const [dayOffset, setDayOffset] = useState(0);
   const [minutes, setMinutes] = useState(() => { const now = new Date(); return initialSelectedTime(now.getHours() * 60 + now.getMinutes(), 15); });
+  const [playingDay, setPlayingDay] = useState(false);
+  const playbackStarted = useRef(false);
   const [endEnabled, setEndEnabled] = useState(false), [endMinutes, setEndMinutes] = useState(900);
   const [places, setPlaces] = useState([]), [resultsType, setResultsType] = useState(null);
   const [selected, setSelected] = useState(null), [buildings, setBuildings] = useState([]), [coverage, setCoverage] = useState([]);
@@ -254,6 +257,28 @@ function Main() {
   const currentShadowResult = nativeShadowResult?.source === shadows && nativeShadowResult?.area === visibleBounds && nativeShadowResult?.retryToken === mapRetry ? nativeShadowResult : null;
   const shadowPending = Platform.OS !== 'web' && shadows.features.length > 0 && !currentShadowResult;
   const shadowFailed = Platform.OS !== 'web' && currentShadowResult?.failed;
+  useEffect(() => {
+    const subscription = AppState.addEventListener('change', (state) => {
+      if (state !== 'active') setPlayingDay(false);
+    });
+    return () => subscription.remove();
+  }, []);
+  useEffect(() => {
+    if (!playingDay) return;
+    if (mode !== 'place' || searchOpen || mapFailed || shadowFailed || shadows.limitExceeded) {
+      setPlayingDay(false);
+      return;
+    }
+    // Wait for the area's data and the current image, then leave time for the
+    // native map to attach it before advancing to another instant.
+    if (!mapBuildings || !visibleBounds || shadowPending) return;
+    const timer = setTimeout(() => {
+      const next = nextPlaybackTime(minutes);
+      setMinutes(next);
+      setEndMinutes((previous) => Math.max(previous, next + 15));
+    }, 700);
+    return () => clearTimeout(timer);
+  }, [playingDay, minutes, mode, searchOpen, mapFailed, shadowFailed, shadows.limitExceeded, mapBuildings, visibleBounds, shadowPending]);
   const direction = useMemo(() => shadowDirection(mapSun), [mapSun]);
   const choices = useMemo(() => selected && scene ? nearbyOutdoorScenes(scene, buildings).map((choice) => ({ ...choice, windows: solarWindows(choice.scene, day) })) : [], [selected, scene, buildings, day]);
   const nearbyScenes = useMemo(() => {
@@ -460,7 +485,17 @@ function Main() {
     requestAnimationFrame(() => sheetScroll.current?.scrollTo({ y: 0, animated: false }));
   };
   const changeTime = (value) => {
+    playbackStarted.current = false; setPlayingDay(false);
     setMinutes(value); setEndMinutes((previous) => Math.max(previous, value + 15));
+  };
+  const toggleDayPlayback = () => {
+    if (playingDay) { setPlayingDay(false); return; }
+    if (!playbackStarted.current) {
+      setMinutes(PLAYBACK_START);
+      setEndMinutes((previous) => Math.max(previous, PLAYBACK_START + 15));
+      playbackStarted.current = true;
+    }
+    setPlayingDay(true);
   };
   const setView = (value) => {
     jumpToResults.current = false;
@@ -531,7 +566,7 @@ function Main() {
         }} onPick={choosePoint} onPlace={choosePoint} />
         {mapBuildings?.source === 'osm' && <Text accessibilityRole="link" onPress={() => Linking.openURL('https://www.openstreetmap.org/copyright')} style={styles.mapAttribution}>Datos © OpenStreetMap</Text>}
         {!map3DAvailable && <Text style={styles.mapFallback}>{t('3D no disponible · mapa en 2D', '3D unavailable · showing 2D map')}</Text>}
-        {(mapIssue || shadows.limitExceeded || shadowPending || shadowFailed || sunStatus) && <Text accessibilityRole={mapAction ? 'button' : undefined} onPress={mapAction} style={[styles.mapFallback, { top: map3DAvailable ? 115 : 150 }]}>{shadows.limitExceeded ? t('Acerca el mapa para ver las sombras.', 'Zoom in to see the shadows.') : shadowFailed ? t('No se han podido dibujar las sombras. Toca para reintentar.', 'Could not draw shadows. Tap to retry.') : mapFailed ? localized(mapStatus) : shadowPending ? t('Calculando sombras de la zona…', 'Calculating shadows in this area…') : mapStale ? localized(mapStatus) : sunStatus === 'night' ? t('Es de noche a esta hora. Cambia la hora para ver sombras.', 'It is night at this time. Change the time to see shadows.') : sunStatus === 'low' ? t('El sol está muy bajo. Cambia la hora para ver sombras.', 'The sun is too low. Change the time to see shadows.') : localized(mapStatus)}</Text>}
+        {(mapIssue || shadows.limitExceeded || shadowPending || shadowFailed || sunStatus) && <Text accessibilityRole={mapAction ? 'button' : undefined} onPress={mapAction} style={[styles.mapFallback, { top: map3DAvailable ? 115 : 150 }]}>{shadows.limitExceeded ? t('Acerca el mapa para ver las sombras.', 'Zoom in to see the shadows.') : shadowFailed ? t('No se han podido dibujar las sombras. Toca para reintentar.', 'Could not draw shadows. Tap to retry.') : mapFailed ? localized(mapStatus) : shadowPending ? t('Calculando sombras de la zona…', 'Calculating shadows in this area…') : mapStale || (mapIssue && !mapBuildings) ? localized(mapStatus) : sunStatus === 'night' ? t('Es de noche a esta hora. Cambia la hora para ver sombras.', 'It is night at this time. Change the time to see shadows.') : sunStatus === 'low' ? t('El sol está muy bajo. Cambia la hora para ver sombras.', 'The sun is too low. Change the time to see shadows.') : localized(mapStatus)}</Text>}
       </View>
       {Platform.OS !== 'web' && <ShadowRasterizer shadows={shadows} bounds={visibleBounds} retryToken={mapRetry} onReady={acceptShadowResult} onError={(failure) => acceptShadowResult({ ...failure, failed: true })} />}
       <View pointerEvents="box-none" style={styles.topControls}>
@@ -562,8 +597,15 @@ function Main() {
             {!sheetExpanded && !selected && !busy && !!notice && <Text style={styles.notice}>{localized(notice)}</Text>}
             <View style={styles.timelineBlock}>{daylight}</View>
             <View style={styles.timeTitleRow}><View style={styles.daySwitch}><Pressable accessibilityRole="button" accessibilityState={{ selected: dayOffset === 0 }} onPress={() => setDayOffset(0)} style={[styles.dayButton, dayOffset === 0 && styles.dayButtonSelected]}><Text style={[styles.dayButtonText, dayOffset === 0 && styles.dayButtonTextSelected]}>{t('Hoy', 'Today')}</Text></Pressable><Pressable accessibilityRole="button" accessibilityState={{ selected: dayOffset === 1 }} onPress={() => setDayOffset(1)} style={[styles.dayButton, dayOffset === 1 && styles.dayButtonSelected]}><Text style={[styles.dayButtonText, dayOffset === 1 && styles.dayButtonTextSelected]}>{t('Mañana', 'Tomorrow')}</Text></Pressable></View><Text style={styles.clock}>{formatTime(minutes)}</Text></View>
-            <Range label={t('Hora para consultar el sol', 'Time to check sunlight')} value={minutes} min={TIME_START} max={TIME_END} step={15} valueText={formatTime(minutes)} onChange={changeTime} />
-            <TimeScale />
+            <View style={styles.playbackRow}>
+              <View style={styles.playbackSlider}>
+                <Range label={t('Hora para consultar el sol', 'Time to check sunlight')} value={minutes} min={TIME_START} max={TIME_END} step={15} valueText={formatTime(minutes)} onChange={changeTime} />
+                <TimeScale />
+              </View>
+              <Pressable accessibilityRole="button" accessibilityLabel={playingDay ? t('Pausar reproducción del día', 'Pause day playback') : t('Reproducir el día', 'Play the day')} accessibilityHint={t('Recorre las horas entre las 6 y las 22 en bucle.', 'Loops through the hours between 6 am and 10 pm.')} accessibilityState={{ pressed: playingDay }} onPress={toggleDayPlayback} style={({ pressed }) => [styles.playbackButton, pressed && styles.pressed]}>
+                {playingDay ? <View style={styles.pauseIcon}><View style={styles.pauseBar} /><View style={styles.pauseBar} /></View> : <View style={styles.playIcon} />}
+              </Pressable>
+            </View>
             {!instant && <Text accessibilityRole="alert" style={styles.alertText}>{t('Esta hora no existe por el cambio horario. Elige otra.', 'This time does not exist due to the clock change. Choose another time.')}</Text>}
             {sheetExpanded && <>
               {feedback}
@@ -622,6 +664,7 @@ const styles = StyleSheet.create({
   sheet: { position: 'absolute', left: 0, right: 0, bottom: 0, backgroundColor: '#fffcf5', borderTopLeftRadius: 25, borderTopRightRadius: 25, overflow: 'hidden', elevation: 10, shadowColor: '#25372d', shadowOpacity: 0.16, shadowRadius: 14, shadowOffset: { width: 0, height: -4 } }, handleArea: { height: 25, alignItems: 'center' }, handleButton: { width: 90, height: 25, alignItems: 'center', justifyContent: 'center' }, handle: { width: 42, height: 4, borderRadius: 3, backgroundColor: '#d8c6a5' }, sheetScroll: { flex: 1 }, sheetContent: { paddingHorizontal: 20, paddingBottom: 14 },
   rowBetween: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', gap: 8 }, titleWrap: { flex: 1, minWidth: 0 }, miniHeading: { color: '#7b897b', fontSize: 10, fontWeight: '800', letterSpacing: 1, marginBottom: 4 }, placeTitle: { color: '#263e31', fontFamily: Platform.OS === 'ios' ? 'Georgia' : 'serif', fontWeight: '700', fontSize: 23, letterSpacing: -0.5 }, largeSun: { color: '#e3a52f', fontSize: 36, lineHeight: 42, marginLeft: 8 }, placeStatus: { color: '#657568', fontSize: 13, lineHeight: 19, marginTop: 3, fontWeight: '600' }, businessHint: { color: '#805d48', fontSize: 11, lineHeight: 16, marginTop: 4 },
   timelineBlock: { marginTop: 10 }, inlineDetails: { minHeight: 30, justifyContent: 'center', paddingHorizontal: 2 }, daylightTrack: { height: 11, borderRadius: 6, overflow: 'hidden', flexDirection: 'row', backgroundColor: '#dfdfd5', marginTop: 3, marginBottom: 5 }, scale: { color: '#7b897b', fontSize: 10 }, subtle: { color: '#79877b', fontSize: 11 },
+  playbackRow: { flexDirection: 'row', alignItems: 'flex-start', gap: 4 }, playbackSlider: { flex: 1, minWidth: 0 }, playbackButton: { width: 44, height: 44, alignItems: 'center', justifyContent: 'center' }, playIcon: { width: 0, height: 0, marginLeft: 3, borderTopWidth: 8, borderBottomWidth: 8, borderLeftWidth: 13, borderTopColor: 'transparent', borderBottomColor: 'transparent', borderLeftColor: '#30463a' }, pauseIcon: { flexDirection: 'row', gap: 4 }, pauseBar: { width: 4, height: 16, borderRadius: 1, backgroundColor: '#30463a' },
   timeTitleRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginTop: 6 }, daySwitch: { flexDirection: 'row', backgroundColor: '#f0eee4', borderRadius: 18, padding: 2 }, dayButton: { minHeight: 36, paddingHorizontal: 12, borderRadius: 16, justifyContent: 'center', alignItems: 'center' }, dayButtonSelected: { backgroundColor: '#304b3b' }, dayButtonText: { color: '#617266', fontWeight: '700', fontSize: 11 }, dayButtonTextSelected: { color: '#fffdf7' }, clock: { color: '#ba6849', fontFamily: Platform.OS === 'ios' ? 'Georgia' : 'serif', fontSize: 25, fontWeight: '700' }, slider: { width: '100%', height: 38 }, timeScale: { height: 15, position: 'relative' }, timeScaleFirst: { position: 'absolute', left: 0 }, timeScaleLast: { position: 'absolute', right: 0 }, timeScaleTick: { position: 'absolute', width: 44, marginLeft: -22, textAlign: 'center' },
   nav: { flexDirection: 'row', borderTopWidth: 1, borderTopColor: '#ece6da', paddingTop: 3, backgroundColor: '#fffcf5' }, navItem: { flex: 1, minHeight: 49, alignItems: 'center', justifyContent: 'center' }, navIcon: { color: '#8b958a', fontSize: 22, lineHeight: 24 }, navText: { color: '#8b958a', fontSize: 11, fontWeight: '700', marginTop: 1 }, navSelected: { color: '#304b3b' }, navIndicator: { height: 3, width: 38, borderRadius: 2, marginTop: 3 }, navIndicatorSelected: { backgroundColor: '#e6ab3a' },
   sectionTitle: { color: '#30483a', fontFamily: Platform.OS === 'ios' ? 'Georgia' : 'serif', fontWeight: '700', fontSize: 18 }, body: { color: '#687a6c', fontSize: 13, lineHeight: 19, marginTop: 5 }, small: { color: '#7b897c', fontSize: 11, lineHeight: 17, marginTop: 12 }, link: { textDecorationLine: 'underline' }, legend: { flexDirection: 'row', flexWrap: 'wrap', gap: 12, marginTop: 12 }, legendItem: { flexDirection: 'row', alignItems: 'center', gap: 5 }, legendSwatch: { width: 9, height: 9, borderRadius: 3 }, windows: { marginTop: 14, borderTopWidth: 1, borderColor: '#eee8dc' }, windowRow: { flexDirection: 'row', justifyContent: 'space-between', paddingVertical: 9, borderBottomWidth: 1, borderColor: '#eee8dc', gap: 8 }, windowStatus: { fontSize: 12, fontWeight: '700', flex: 1 }, windowTime: { color: '#566d5d', fontSize: 12, fontWeight: '700' }, choices: { marginTop: 18 }, outdoorChoice: { paddingVertical: 12, borderBottomWidth: 1, borderColor: '#eee8dc', minHeight: 50 }, direction: { color: '#536d5d', backgroundColor: '#edf0e8', fontSize: 12, lineHeight: 18, padding: 12, borderRadius: 10, marginTop: 14 },

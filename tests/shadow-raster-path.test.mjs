@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { createShadowRasterPath } from '../mobile/src/shadow-raster-path.mjs';
+import { advanceShadowRasterPath, createShadowRasterPath } from '../mobile/src/shadow-raster-path.mjs';
 
 const rectangle = (x1, y1, x2, y2) => [[x1, y1], [x2, y1], [x2, y2], [x1, y2], [x1, y1]];
 const feature = (coordinates) => ({ geometry: { type: 'Polygon', coordinates } });
@@ -38,6 +38,10 @@ test('one nonzero-fill path covers overlap once and preserves an uncovered court
   assert.notEqual(windingAt(result, .4, .6), 0, 'building shadow remains painted');
   assert.equal(windingAt(result, .9, 0), 0, 'outside stays clear');
   assert.deepEqual(result.bounds, [[1, 1], [-1, -1]]);
+  for (const subpath of result.d.match(/M[^M]+?Z/g)) {
+    const points = subpath.slice(1, -1).split('L');
+    assert.notEqual(points[0], points[points.length - 1], 'Z closes each ring without a duplicate point');
+  }
 });
 
 test('work is incremental and oversized or invalid geometry is rejected', () => {
@@ -46,4 +50,25 @@ test('work is incremental and oversized or invalid geometry is rejected', () => 
   assert.equal(builder.step(1), false);
   assert.throws(() => builder.step(1), /too large/);
   assert.throws(() => createShadowRasterPath({ features: [] }, [1, 1, -1, -1]), /bounds/);
+});
+
+test('time-budgeted batches keep identical geometry and yield to other work', () => {
+  const features = Array.from({ length: 2000 }, (_, i) => {
+    const x = -.9 + (i % 40) * .04, y = -.9 + Math.floor(i / 40) * .035;
+    return feature([rectangle(x, y, x + .03, y + .025)]);
+  });
+  const baseline = finish(features);
+  const builder = createShadowRasterPath({ features }, bounds);
+  let simulatedTime = 0, turns = 0;
+  // One millisecond elapses after each small batch; the calculation must
+  // regularly give the event loop an opportunity to handle gestures.
+  while (!advanceShadowRasterPath(builder, () => simulatedTime++)) turns++;
+  assert.ok(turns > 1);
+  assert.deepEqual(builder.result(), baseline);
+});
+
+test('a fast clock cannot produce an unbounded batch', () => {
+  let calls = 0;
+  assert.equal(advanceShadowRasterPath({ step() { calls++; return false; } }, () => 0), false);
+  assert.equal(calls, 80);
 });

@@ -2,7 +2,7 @@ import React, { useEffect, useRef, useState } from 'react';
 import { View } from 'react-native';
 import Svg, { Path } from 'react-native-svg';
 import * as FileSystem from 'expo-file-system/legacy';
-import { createShadowRasterPath } from './shadow-raster-path.mjs';
+import { advanceShadowRasterPath, createShadowRasterPath } from './shadow-raster-path.mjs';
 import { captureShadow } from './shadow-capture.mjs';
 
 let nextFile = 0, nextJob = 0;
@@ -30,12 +30,12 @@ export function ShadowRasterizer({ shadows, bounds, retryToken = 0, onReady, onE
       const advance = () => {
         if (cancelled) return;
         try {
-          if (builder.step(100)) setJob({ ...builder.result(), source: shadows, area: bounds, retryToken, id: ++nextJob });
+          if (advanceShadowRasterPath(builder)) setJob({ ...builder.result(), source: shadows, area: bounds, retryToken, id: ++nextJob });
           else timer = setTimeout(advance, 0);
         } catch { if (!cancelled) callbacks.current.onError?.({ reason: 'geometry', source: shadows, area: bounds, retryToken }); }
       };
       // Let the time slider and map finish moving before preparing the mask.
-      timer = setTimeout(advance, 180);
+      timer = setTimeout(advance, 80);
     } catch { if (!cancelled) callbacks.current.onError?.({ reason: 'geometry', source: shadows, area: bounds, retryToken }); }
     return () => { cancelled = true; clearTimeout(timer); };
   }, [shadows, bounds, retryToken]);
