@@ -102,11 +102,17 @@ export function createViewportLoader(load, now = Date.now, requestBounds = (boun
       }
     }
     const omitted = [base.entry.value, ...additions].reduce((sum, item) => sum + (item.omitted || 0), 0);
-    return { value: { type: 'FeatureCollection', source: 'madrid', features, bounds, omitted }, expires: base.entry.expires };
+    return { value: { type: 'FeatureCollection', source: 'madrid', features, bounds, omitted,
+      fetchedAt: Math.min(base.entry.value.fetchedAt ?? now(), ...additions.map((item) => item.fetchedAt ?? now())) }, expires: base.entry.expires };
   }
   function find(bounds) {
     const time = now();
     return recent.find((entry) => entry.expires > time && covers(entry.bounds, bounds))?.value || null;
+  }
+  function prime(value) {
+    if (!value || !Array.isArray(value.bounds) || !Array.isArray(value.features)) return;
+    recent.push({ bounds: value.bounds, value, expires: now() + 120000 });
+    if (recent.length > 6) recent.shift();
   }
   function get(bounds) {
     const cached = find(bounds);
@@ -131,5 +137,5 @@ export function createViewportLoader(load, now = Date.now, requestBounds = (boun
     pending.push(entry);
     return entry.promise;
   }
-  return { find, get };
+  return { find, get, prime };
 }

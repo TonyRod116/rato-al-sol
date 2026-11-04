@@ -3,6 +3,8 @@ import { getBuildings } from './shared/places.mjs';
 import { inMadridArea } from './shared/madrid-scene.mjs';
 
 const recent = new Map();
+let memoryGeneration = 0;
+export function clearViewportBuildingMemoryCache() { memoryGeneration++; recent.clear(); }
 
 export function viewportBounds(bounds) {
   if (!Array.isArray(bounds) || bounds.length !== 4 || !bounds.every(Number.isFinite) ||
@@ -11,6 +13,7 @@ export function viewportBounds(bounds) {
 }
 
 export async function getViewportBuildings(view, fetchFn = fetch, { allowEmpty = false } = {}) {
+  const generation = memoryGeneration;
   const rounded = viewportBounds(view);
   if (!rounded) throw new Error('No se reconoce la zona visible.');
   // Incremental strips have their own narrow safety margin and must not be
@@ -42,7 +45,8 @@ export async function getViewportBuildings(view, fetchFn = fetch, { allowEmpty =
     if (!features.length) throw new Error('No hay alturas suficientes en esta zona.');
     result = { type: 'FeatureCollection', features, bounds, source: 'osm', omitted: buildings.length - features.length };
   }
-  if (!allowEmpty && fetchFn === fetch) {
+  result.fetchedAt = Date.now();
+  if (!allowEmpty && fetchFn === fetch && generation === memoryGeneration) {
     if (recent.size >= 6) recent.delete(recent.keys().next().value);
     recent.set(key, { value: result, expires: Date.now() + 2 * 60 * 1000 });
   }

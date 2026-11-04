@@ -6,24 +6,27 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as Location from 'expo-location';
 import { StatusBar } from 'expo-status-bar';
 import MapCanvas from './src/MapCanvas';
-import { distanceMetres, searchCategory, searchNearby, searchPlaces, validCoordinate } from '../frontend/shared/places.mjs';
+import { clearPlacesMemoryCache, distanceMetres, searchCategory, searchNearby, searchPlaces, validCoordinate } from '../frontend/shared/places.mjs';
 import { getScenes } from '../frontend/shared/scene-provider.mjs';
-import { searchMadridFallback, searchMadridParks } from '../frontend/shared/ayala-fallback.mjs';
-import { inBarcelonaArea, searchBarcelonaTerraces } from '../frontend/shared/barcelona-terraces.mjs';
+import { clearMadridSearchMemoryCache, searchMadridFallback, searchMadridParks } from '../frontend/shared/ayala-fallback.mjs';
+import { clearBarcelonaSearchMemoryCache, inBarcelonaArea, searchBarcelonaTerraces } from '../frontend/shared/barcelona-terraces.mjs';
 import { inMadridArea } from '../frontend/shared/madrid-scene.mjs';
 import { atMinutes, formatTime, lightAt, lightForInterval, nearbyOutdoorScenes, prepareScene, sceneInsideBuilding, solarWindows } from '../frontend/shared/estimate.mjs';
 import { sunPosition } from '../frontend/solar.mjs';
 import { buildingShadows, shadowDirection } from '../frontend/map-shadows.mjs';
-import { getViewportBuildings, viewportBounds } from '../frontend/viewport-buildings.mjs';
+import { clearViewportBuildingMemoryCache, getViewportBuildings, viewportBounds } from '../frontend/viewport-buildings.mjs';
 import { DEFAULT_LOCATION } from '../frontend/shared/default-location.mjs';
 import { createViewportLoader, expandedMadridViewport } from './src/viewport.mjs';
 import { ShadowRasterizer } from './src/ShadowOverlay';
 import { shadowSunStatus } from './src/shadow-status.mjs';
+import { buildingCache, sceneCache, searchCache, clearOfflineData, cacheGeneration } from './src/offline-data';
+import { createCachedServices } from './src/cached-services.mjs';
 import { firstWithResults } from './src/first-results.mjs';
 import { initialSelectedTime, TIME_END, TIME_START } from '../frontend/shared/time-selection.mjs';
 import { isLanguage, languageKey, translate, translateDirection } from '../frontend/shared/i18n.mjs';
 
 const msg = (es, en) => ({ es, en });
+const cachedServices = createCachedServices({ scenes: getScenes, sceneCache, searchCache, generation: cacheGeneration });
 const knownErrors = {
   'No se ha dado permiso. Puedes mover el mapa y buscar desde ahí.': 'Location permission was not granted. You can move the map and search from there.',
   'No hemos podido localizarte.': 'Could not find your location.',
@@ -112,14 +115,49 @@ function Main() {
   const [visibleBounds, setVisibleBounds] = useState(null);
   const [mapStatus, setMapStatus] = useState(''), [mapIssue, setMapIssue] = useState(false);
   const [mapFailed, setMapFailed] = useState(false), [mapRetry, setMapRetry] = useState(0);
+  const [mapStale, setMapStale] = useState(false), [cacheNotice, setCacheNotice] = useState('');
+  const [searchNeedsRefresh, setSearchNeedsRefresh] = useState(false);
   const request = useRef(0);
   const pendingCamera = useRef(null);
   const myLocation = useRef(null);
+  const forceSearch = useRef(false);
+  const refreshMap = useRef(false), saveMapTimers = useRef(new Set());
   const viewportLoader = useRef(null);
   if (!viewportLoader.current) viewportLoader.current = createViewportLoader(getViewportBuildings, Date.now,
     Platform.OS === 'web' ? undefined : expandedMadridViewport);
 
   const searchRadius = radius;
+
+  function updateSavedMap() {
+    refreshMap.current = true;
+    clearViewportBuildingMemoryCache(); clearPlacesMemoryCache();
+    viewportLoader.current = createViewportLoader(getViewportBuildings, Date.now,
+      Platform.OS === 'web' ? undefined : expandedMadridViewport);
+    setMapRetry((value) => value + 1);
+  }
+
+  async function clearSavedData() {
+    for (const timer of saveMapTimers.current) clearTimeout(timer);
+    saveMapTimers.current.clear();
+    const clearing = clearOfflineData();
+    request.current++; setBusy('');
+    clearViewportBuildingMemoryCache(); clearPlacesMemoryCache(); clearMadridSearchMemoryCache(); clearBarcelonaSearchMemoryCache();
+    viewportLoader.current = createViewportLoader(getViewportBuildings, Date.now,
+      Platform.OS === 'web' ? undefined : expandedMadridViewport);
+    if (mapBuildings) {
+      const stale = Number.isFinite(mapBuildings.fetchedAt) && Date.now() - mapBuildings.fetchedAt >= 30 * 86400000;
+      setMapStale(stale); setMapIssue(Boolean(mapBuildings.omitted) || stale); setMapFailed(false);
+      setMapStatus(stale ? msg('Edificios guardados hace más de 30 días. Toca para actualizar.', 'Buildings were saved over 30 days ago. Tap to update.')
+        : mapBuildings.omitted ? msg('Sombras aproximadas; algunos edificios no tienen altura disponible.', 'Approximate shadows; some buildings have no available height.')
+          : msg('Sombras aproximadas de la zona visible.', 'Approximate shadows in the visible area.'));
+    } else {
+      setMapIssue(true); setMapFailed(true); setMapStale(false);
+      setMapStatus(msg('Toca para cargar los edificios de la zona.', 'Tap to load buildings in this area.'));
+    }
+    const ok = await clearing;
+    setCacheNotice(ok ? msg('Zonas y búsquedas guardadas borradas de este dispositivo.', 'Saved areas and searches were removed from this device.')
+      : msg('No se han podido borrar todos los datos guardados. Vuelve a intentarlo.', 'Could not remove all saved data. Please try again.'));
+  }
 
   function focusCamera(point, key) {
     const position = { latitude: point.latitude, longitude: point.longitude };
@@ -128,42 +166,64 @@ function Main() {
     setCamera({ ...position, key });
   }
 
+  useEffect(() => () => { for (const timer of saveMapTimers.current) clearTimeout(timer); saveMapTimers.current.clear(); }, []);
   useEffect(() => {
     if (!mapBounds) return;
-    let cancelled = false;
+    let cancelled = false, timer;
+    const generation = cacheGeneration();
+    const force = refreshMap.current;
+    refreshMap.current = false;
+    const applyGeometry = (geometry) => {
+      const stale = Number.isFinite(geometry.fetchedAt) && Date.now() - geometry.fetchedAt >= 30 * 86400000;
+      setMapBuildings(geometry); setMapFailed(false); setMapStale(stale);
+      setMapIssue(Boolean(geometry.omitted) || stale);
+      setMapStatus(stale
+        ? msg('Edificios guardados hace más de 30 días. Toca para actualizar.', 'Buildings were saved over 30 days ago. Tap to update.')
+        : geometry.omitted
+          ? msg('Sombras aproximadas; algunos edificios no tienen altura disponible.', 'Approximate shadows; some buildings have no available height.')
+          : msg('Sombras aproximadas de los edificios de la zona visible.', 'Approximate building shadows in the visible area.'));
+    };
     const cached = viewportLoader.current.find(mapBounds);
-    if (cached) {
-      setMapBuildings(cached);
-      setMapFailed(false);
-      setMapIssue(Boolean(cached.omitted));
-      setMapStatus(cached.omitted
-        ? msg('Sombras aproximadas; algunos edificios no tienen altura disponible.', 'Approximate shadows; some buildings have no available height.')
-        : msg('Sombras aproximadas de los edificios de la zona visible.', 'Approximate building shadows in the visible area.'));
-      return;
-    }
-    setMapBuildings(null); setMapIssue(true); setMapFailed(false);
-    setMapStatus(msg('Cargando edificios de la zona…', 'Loading buildings in this area…'));
-    const timer = setTimeout(() => {
-      viewportLoader.current.get(mapBounds).then((geometry) => {
-        if (!cancelled) {
-          setMapBuildings(geometry);
-          setMapFailed(false);
-          setMapIssue(Boolean(geometry.omitted));
-          setMapStatus(geometry.omitted
-            ? msg('Sombras aproximadas; algunos edificios no tienen altura disponible.', 'Approximate shadows; some buildings have no available height.')
-            : msg('Sombras aproximadas de los edificios de la zona visible.', 'Approximate building shadows in the visible area.'));
-        }
-      }).catch((error) => {
-        if (!cancelled) {
-          setMapIssue(true);
-          const zoomRequired = error?.message?.startsWith('Acerca el mapa');
-          setMapFailed(!zoomRequired);
-          setMapStatus(zoomRequired
-            ? msg('Acerca el mapa para cargar las sombras.', 'Zoom in to load shadows.')
-            : msg('No se han podido cargar los edificios. Toca para reintentar.', 'Could not load buildings. Tap to retry.'));
-        }
-      });
-    }, 600);
+    if (cached && !force) { applyGeometry(cached); return; }
+    const previous = force ? mapBuildings : null;
+    if (!previous) setMapBuildings(null);
+    setMapIssue(true); setMapFailed(false); setMapStale(false);
+    setMapStatus(msg('Cargando edificios de la zona.', 'Loading buildings in this area.'));
+    const load = async () => {
+      const saved = !force && Platform.OS !== 'web' ? await buildingCache.find(mapBounds) : null;
+      if (cancelled || cacheGeneration() !== generation) return;
+      if (saved) {
+        const geometry = { ...saved.value, fetchedAt: saved.fetchedAt };
+        viewportLoader.current.prime(geometry); applyGeometry(geometry); return;
+      }
+      timer = setTimeout(() => {
+        if (cancelled || cacheGeneration() !== generation) return;
+        viewportLoader.current.get(mapBounds).then((geometry) => {
+          if (!cancelled && cacheGeneration() === generation) {
+            applyGeometry(geometry);
+            if (Platform.OS !== 'web') {
+              const saveTimer = setTimeout(() => {
+                saveMapTimers.current.delete(saveTimer);
+                if (cacheGeneration() === generation) void buildingCache.save(geometry, { fetchedAt: geometry.fetchedAt ?? Date.now() });
+              }, 1200);
+              saveMapTimers.current.add(saveTimer);
+            }
+          }
+        }).catch((error) => {
+          if (!cancelled && cacheGeneration() === generation) {
+            if (previous) { setMapBuildings(previous); setMapStale(true); }
+            setMapIssue(true);
+            const zoomRequired = error?.message?.startsWith('Acerca el mapa');
+            setMapFailed(!zoomRequired);
+            setMapStatus(zoomRequired
+              ? msg('Acerca el mapa para cargar las sombras.', 'Zoom in to load shadows.')
+              : previous ? msg('No se ha podido actualizar; los edificios guardados tienen más de 30 días. Toca para reintentar.', 'Could not update; saved buildings are over 30 days old. Tap to retry.')
+                : msg('No se han podido cargar los edificios. Toca para reintentar.', 'Could not load buildings. Tap to retry.'));
+          }
+        });
+      }, 400);
+    };
+    void load();
     return () => { cancelled = true; clearTimeout(timer); };
   }, [mapBounds, mapRetry]);
 
@@ -171,7 +231,8 @@ function Main() {
   const instant = useMemo(() => atMinutes(day, minutes), [day, minutes]);
   const scene = useMemo(() => {
     const area = selected && coverage.find((point) => distanceMetres(point, selected) < 5);
-    return area ? prepareScene(selected, buildings, area.radius) : null;
+    const distance = area ? distanceMetres(area, selected) : 0;
+    return area ? prepareScene(selected, buildings, area.radius - (distance < .001 ? 0 : Math.ceil(distance + 2))) : null;
   }, [selected, buildings, coverage]);
   const state = useMemo(() => scene ? lightAt(scene, instant) : 'unknown', [scene, instant]);
   const windows = useMemo(() => scene ? solarWindows(scene, day) : [], [scene, day]);
@@ -198,7 +259,10 @@ function Main() {
     if (resultsType !== 'nearby') return scenes;
     for (const place of places) if (place.kind === 'public') {
       const area = coverage.find((point) => distanceMetres(point, place) < 5);
-      if (area) scenes[place.id] = prepareScene(place, buildings, area.radius);
+      if (area) {
+        const distance = distanceMetres(area, place);
+        scenes[place.id] = prepareScene(place, buildings, area.radius - (distance < .001 ? 0 : Math.ceil(distance + 2)));
+      }
     }
     return scenes;
   }, [places, buildings, coverage, resultsType]);
@@ -210,6 +274,8 @@ function Main() {
 
   async function search() {
     const seq = ++request.current; setBusy(msg('Buscando lugares…', 'Searching for places…')); setError(''); setNotice(''); setNearbySourceFailure(false);
+    const force = forceSearch.current; forceSearch.current = false; setSearchNeedsRefresh(false);
+    if (force) { clearPlacesMemoryCache(); clearMadridSearchMemoryCache(); clearBarcelonaSearchMemoryCache(); }
     setSunOnly(false); setResultsType(null); setPlaces([]);
     setShowAllResults(false);
     const name = query.trim();
@@ -218,13 +284,19 @@ function Main() {
     }
     const city = name.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
     if (city === 'barcelona' || city === 'madrid') { goToCity(city); return; }
-    const sources = [searchPlaces(name, center)];
+    let oldCache = false, partialCache = false;
+    const source = (provider, operation) => cachedServices.cachedSearch({ source: provider, query: name, center, radius: 5000 }, operation, { force }).then((result) => {
+      oldCache ||= Boolean(result.stale); partialCache ||= Boolean(result.partial);
+      if (request.current === seq && (result.stale || result.partial)) setSearchNeedsRefresh(true);
+      return result.places;
+    });
+    const sources = [source('osm-search', () => searchPlaces(name, center))];
     if (inMadridArea(center)) {
       const category = searchCategory(name);
-      if (!category || category.kind !== 'public') sources.push(searchMadridFallback(center, 5000, name));
-      if (!category || (category.kind === 'public' && !category.filter.includes('square'))) sources.push(searchMadridParks(center, 5000, name));
+      if (!category || category.kind !== 'public') sources.push(source('madrid-terraces', () => searchMadridFallback(center, 5000, name)));
+      if (!category || (category.kind === 'public' && !category.filter.includes('square'))) sources.push(source('madrid-parks', () => searchMadridParks(center, 5000, name)));
     }
-    if (inBarcelonaArea(center)) sources.push(searchBarcelonaTerraces(center, 5000, name));
+    if (inBarcelonaArea(center)) sources.push(source('barcelona-terraces', () => searchBarcelonaTerraces(center, 5000, name)));
     let waiting = sources.length, successes = 0, failures = 0, merged = [];
     await Promise.all(sources.map(async (source) => {
       try {
@@ -238,10 +310,10 @@ function Main() {
         if (request.current !== seq) return;
         if (merged.length) {
           setPlaces([...merged]); setResultsType('search'); setBusy('');
-          setNotice(msg(`Lugares encontrados hasta 5 km del mapa${waiting ? ' · buscando más…' : '.'}${failures ? ' Algunas fuentes no están disponibles; la búsqueda puede estar incompleta.' : ''}`, `Places found within 5 km of the map${waiting ? ' · searching for more…' : '.'}${failures ? ' Some sources are unavailable; the search may be incomplete.' : ''}`));
+          setNotice(msg(`Lugares encontrados hasta 5 km del mapa${waiting ? ' · buscando más…' : '.'}${failures || partialCache ? ' La búsqueda puede estar incompleta.' : ''}${oldCache ? ' Algunos resultados se guardaron hace más de un día.' : ''}`, `Places found within 5 km of the map${waiting ? ' · searching for more…' : '.'}${failures || partialCache ? ' Results may be incomplete.' : ''}${oldCache ? ' Some results were saved over a day ago.' : ''}`));
         } else if (!waiting) {
           setPlaces([]); setBusy('');
-          if (successes) setNotice(failures ? msg('No hay coincidencias en las fuentes disponibles; la búsqueda está incompleta. Vuelve a intentarlo.', 'No matches in available sources; the search is incomplete. Please try again.') : msg('No hay coincidencias cerca del mapa. Prueba una ciudad o mueve el mapa.', 'No matches near the map. Try a city or move the map.'));
+          if (successes) setNotice(failures || partialCache || oldCache ? msg('No hay coincidencias en los datos disponibles; la búsqueda puede estar incompleta o desactualizada.', 'No matches in available data; results may be incomplete or out of date.') : msg('No hay coincidencias cerca del mapa. Prueba una ciudad o mueve el mapa.', 'No matches near the map. Try a city or move the map.'));
           else setError(msg('No se han podido consultar los lugares. Vuelve a intentarlo.', 'Could not retrieve places. Please try again.'));
         }
       }
@@ -250,37 +322,46 @@ function Main() {
 
   async function findNearby() {
     const seq = ++request.current; setBusy(msg('Buscando lugares cercanos…', 'Searching for nearby places…')); setError(''); setNotice(''); setNearbySourceFailure(false);
+    const force = forceSearch.current; forceSearch.current = false; setSearchNeedsRefresh(false);
+    if (force) { clearPlacesMemoryCache(); clearMadridSearchMemoryCache(); clearBarcelonaSearchMemoryCache(); }
     setSelected(null); setBuildings([]); setCoverage([]); setSunOnly(true); setResultsType(null);
     jumpToResults.current = true;
     setShowAllResults(false);
     try {
       const warnSourceFailure = () => { if (request.current === seq) setNearbySourceFailure(true); };
-      const sources = [searchNearby(center, searchRadius).then((places) => ({ places, source: 'osm' }))];
+      const source = (provider, operation) => cachedServices.cachedSearch({ source: provider, query: '', center, radius: searchRadius }, operation, { force }).then((result) => {
+        if (request.current === seq && (result.stale || result.partial)) setSearchNeedsRefresh(true);
+        return result;
+      });
+      const sources = [source('osm-nearby', () => searchNearby(center, searchRadius)).then((result) => ({ ...result, source: 'osm' }))];
       if (inMadridArea(center)) sources.push(Promise.allSettled([
-        searchMadridFallback(center, searchRadius, ''), searchMadridParks(center, searchRadius),
+        source('madrid-terraces', () => searchMadridFallback(center, searchRadius, '')), source('madrid-parks', () => searchMadridParks(center, searchRadius)),
       ]).then((results) => {
         if (results.every((result) => result.status === 'rejected')) throw new Error('Catálogos municipales no disponibles.');
         if (results.some((result) => result.status === 'rejected')) warnSourceFailure();
-        return { places: results.flatMap((result) => result.status === 'fulfilled' ? result.value : []).sort((a, b) => a.distance - b.distance), source: 'madrid' };
+        const ok = results.flatMap((result) => result.status === 'fulfilled' ? [result.value] : []);
+        return { places: ok.flatMap((result) => result.places).sort((a, b) => a.distance - b.distance), source: 'madrid', stale: ok.some((result) => result.stale), partial: ok.some((result) => result.partial) };
       }));
-      if (inBarcelonaArea(center)) sources.push(searchBarcelonaTerraces(center, searchRadius).then((places) => ({ places, source: 'barcelona' })));
-      const { places: found, source } = await firstWithResults(sources, warnSourceFailure);
+      if (inBarcelonaArea(center)) sources.push(source('barcelona-terraces', () => searchBarcelonaTerraces(center, searchRadius)).then((result) => ({ ...result, source: 'barcelona' })));
+      const { places: found, source: selectedSource, stale: searchStale, partial: searchPartial } = await firstWithResults(sources, warnSourceFailure);
       if (request.current !== seq) return;
       setPlaces(found); setResultsType('nearby');
-      const points = found.filter((place) => place.kind === 'public').slice(0, source === 'madrid' ? 2 : 6);
-      if (!points.length) { setNotice(msg(found.length ? 'Hemos encontrado locales, pero no conocemos la posición de sus mesas.' : 'No se han encontrado lugares en esta búsqueda.', found.length ? 'Businesses found, but their table locations are unknown.' : 'No places found in this search.')); return; }
+      const points = found.filter((place) => place.kind === 'public').slice(0, selectedSource === 'madrid' ? 2 : 6);
+      if (!points.length) { setNotice(msg((found.length ? 'Hemos encontrado locales, pero no conocemos la posición de sus mesas.' : 'No se han encontrado lugares en esta búsqueda.') + (searchPartial || searchStale ? ' Los resultados pueden estar incompletos o desactualizados.' : ''), (found.length ? 'Businesses found, but their table locations are unknown.' : 'No places found in this search.') + (searchPartial || searchStale ? ' Results may be incomplete or out of date.' : ''))); return; }
       setBusy(msg('Calculando la luz de los lugares exteriores…', 'Calculating light at outdoor places…'));
       try {
-        const geometry = source === 'madrid' ? await Promise.allSettled(points.map((point) => getScenes([point]))) : null;
-        const combined = source === 'madrid' ? null : await getScenes(points);
+        const geometry = selectedSource === 'madrid' ? await Promise.allSettled(points.map((point) => cachedServices.cachedScenes([point]))) : null;
+        const combined = selectedSource === 'madrid' ? null : await cachedServices.cachedScenes(points);
         if (request.current !== seq) return;
         const usable = geometry?.flatMap((result, index) => result.status === 'fulfilled' ? [{ point: points[index], ...result.value }] : []);
         setBuildings(combined ? combined.buildings : usable.flatMap((item) => item.buildings));
-        setCoverage(combined ? points.map((point) => ({ ...point, radius: combined.radius, source: combined.source })) : usable.map((item) => ({ ...item.point, radius: item.radius, source: item.source })));
+        setCoverage(combined ? points.map((point) => ({ ...point, radius: combined.radius, source: combined.source, stale: Boolean(combined.cacheInfo?.stale), limited: Boolean(combined.cacheInfo?.limited) })) : usable.map((item) => ({ ...item.point, radius: item.radius, source: item.source, stale: Boolean(item.cacheInfo?.stale), limited: Boolean(item.cacheInfo?.limited) })));
         const count = combined ? points.length : usable.length;
-        setNotice(msg(`Analizados ${count} ${count === 1 ? 'espacio exterior cercano' : 'espacios exteriores cercanos'}. Los locales necesitan una posición de mesas; no se incluyen árboles.`, `Analysed ${count} nearby outdoor ${count === 1 ? 'point' : 'points'}. Businesses need a table location; trees are not included.`));
+        const old = combined?.cacheInfo?.stale || usable?.some((item) => item.cacheInfo?.stale);
+        const limited = combined?.cacheInfo?.limited || usable?.some((item) => item.cacheInfo?.limited);
+        setNotice(msg(`Analizados ${count} ${count === 1 ? 'espacio exterior cercano' : 'espacios exteriores cercanos'}. Los locales necesitan una posición de mesas; no se incluyen árboles.${old ? ' Algunos edificios se guardaron hace más de 30 días.' : ''}${limited ? ' La zona guardada tiene cobertura reducida.' : ''}${searchPartial || searchStale ? ' Los lugares pueden estar incompletos o desactualizados.' : ''}`, `Analysed ${count} nearby outdoor ${count === 1 ? 'point' : 'points'}. Businesses need a table location; trees are not included.${old ? ' Some building data was saved over 30 days ago.' : ''}${limited ? ' The saved area has limited coverage.' : ''}${searchPartial || searchStale ? ' Places may be incomplete or out of date.' : ''}`));
       } catch {
-        if (request.current === seq) setNotice(msg('Encontramos lugares, pero no hemos podido obtener los edificios para calcular su luz.', 'Places found, but building data could not be loaded to calculate their light.'));
+        if (request.current === seq) setNotice(msg(`Encontramos lugares, pero no hemos podido obtener los edificios para calcular su luz.${searchPartial || searchStale ? ' Los lugares pueden estar incompletos o desactualizados.' : ''}`, `Places found, but building data could not be loaded to calculate their light.${searchPartial || searchStale ? ' Places may be incomplete or out of date.' : ''}`));
       }
     } catch (err) {
       if (request.current === seq) { setPlaces([]); setError(describeError(err, 'No se ha podido buscar cerca.', 'Could not search nearby.')); }
@@ -288,22 +369,26 @@ function Main() {
     finally { if (request.current === seq) setBusy(''); }
   }
 
-  async function selectPoint(point) {
+  async function selectPoint(point, force = false) {
     if (!validCoordinate(point)) return;
+    if (force) clearPlacesMemoryCache();
     const seq = ++request.current;
     const selectedPoint = { ...point, id: point.id || 'selected-point', name: point.name || point.i18nName?.es || 'Punto elegido en el mapa', i18nName: point.i18nName || (!point.name ? msg('Punto elegido en el mapa', 'Point selected on the map') : null), kind: point.kind || 'point' };
     setSelected(selectedPoint); setError(''); setNotice(''); setNearbySourceFailure(false);
     focusCamera(point, seq);
-    if (coverage.some((area) => distanceMetres(area, point) < 5)) {
-      setBusy(''); setNotice(msg('Cálculo aproximado para el punto elegido, no para todo el recinto.', 'Approximate calculation for the selected point, not the whole area.')); return;
+    const existingCoverage = coverage.find((area) => distanceMetres(area, point) < 5);
+    if (existingCoverage && !force) {
+      setBusy(''); setNotice(msg(`Cálculo aproximado para el punto elegido, no para todo el recinto.${existingCoverage.stale ? ' Los edificios se guardaron hace más de 30 días.' : ''}${existingCoverage.limited ? ' La zona guardada tiene cobertura reducida.' : ''}`, `Approximate calculation for the selected point, not the whole area.${existingCoverage.stale ? ' Building data was saved over 30 days ago.' : ''}${existingCoverage.limited ? ' The saved area has limited coverage.' : ''}`)); return;
     }
-    setBusy(msg('Consultando edificios para este punto…', 'Checking buildings around this point…')); setBuildings([]); setCoverage([]);
+    const previous = force ? { buildings, coverage } : null;
+    setBusy(msg('Consultando edificios para este punto…', 'Checking buildings around this point…')); if (!previous) { setBuildings([]); setCoverage([]); }
     try {
-      const geometry = await getScenes([point]);
+      const geometry = await cachedServices.cachedScenes([point], { force });
       if (request.current !== seq) return;
-      setBuildings(geometry.buildings); setCoverage([{ ...point, radius: geometry.radius, source: geometry.source }]);
-      setNotice(msg(selectedPoint.kind === 'business' ? 'La marca es la ubicación aproximada del local, no la posición de las mesas. Toca las mesas en el mapa para una estimación de ese punto.' : 'Cálculo aproximado para el punto elegido, no para todo el recinto.', selectedPoint.kind === 'business' ? 'The marker shows the approximate business location, not its tables. Tap the tables on the map for an estimate at that point.' : 'Approximate calculation for the selected point, not the whole area.'));
-    } catch { if (request.current === seq) setError(msg('No hay edificios suficientes disponibles para calcular la luz de este punto.', 'Not enough building data is available to calculate light at this point.')); }
+      setBuildings(geometry.buildings); setCoverage([{ ...point, radius: geometry.radius, source: geometry.source, stale: Boolean(geometry.cacheInfo?.stale), limited: Boolean(geometry.cacheInfo?.limited) }]);
+      const old = geometry.cacheInfo?.stale;
+      setNotice(msg((selectedPoint.kind === 'business' ? 'La marca es la ubicación aproximada del local, no la posición de las mesas. Toca las mesas en el mapa para una estimación de ese punto.' : 'Cálculo aproximado para el punto elegido, no para todo el recinto.') + (old ? ' Los edificios se guardaron hace más de 30 días.' : '') + (geometry.cacheInfo?.limited ? ' La zona guardada tiene cobertura reducida.' : ''), (selectedPoint.kind === 'business' ? 'The marker shows the approximate business location, not its tables. Tap the tables on the map for an estimate at that point.' : 'Approximate calculation for the selected point, not the whole area.') + (old ? ' Building data was saved over 30 days ago.' : '') + (geometry.cacheInfo?.limited ? ' The saved area has limited coverage.' : '')));
+    } catch { if (request.current === seq) setError(previous ? msg('No se han podido actualizar los edificios; seguimos usando los datos guardados.', 'Could not update buildings; saved data is still in use.') : msg('No hay edificios suficientes disponibles para calcular la luz de este punto.', 'Not enough building data is available to calculate light at this point.')); }
     finally { if (request.current === seq) setBusy(''); }
   }
 
@@ -311,7 +396,7 @@ function Main() {
     const seq = ++request.current;
     const point = { ...choice.point, id: `outside-${choice.direction}`, kind: 'approx', name: `Punto al ${choice.direction.toLocaleLowerCase('es')} de ${selected.i18nName?.es || selected.name}`, i18nName: msg(`Punto al ${choice.direction.toLocaleLowerCase('es')} de ${selected.i18nName?.es || selected.name}`, `Point ${translateDirection('en', choice.direction.toLocaleLowerCase('es'))} of ${selected.i18nName?.en || selected.name}`) };
     const area = coverage.find((item) => distanceMetres(item, selected) < 5);
-    setCoverage((previous) => [...previous, { ...point, radius: choice.scene.radius, source: area?.source }]);
+    setCoverage((previous) => [...previous, { ...point, radius: choice.scene.radius, source: area?.source, stale: Boolean(area?.stale), limited: Boolean(area?.limited) }]);
     setSelected(point); focusCamera(point, seq); setError(''); setBusy(''); setSheetExpanded(false);
     sheetScroll.current?.scrollTo({ y: 0, animated: false });
     setNotice(msg('Punto exterior aproximado; confirma en el mapa dónde están las mesas.', 'Approximate outdoor point; check where the tables are on the map.'));
@@ -394,7 +479,12 @@ function Main() {
     {!!error && <View accessibilityRole="alert" style={styles.alert}><Text style={styles.alertText}>{localized(error)}</Text></View>}
     {!!notice && <Text style={styles.notice}>{localized(notice)}</Text>}
     {nearbySourceFailure && !error && <Text accessibilityRole="alert" style={styles.notice}>{t('Algunas fuentes no están disponibles; los resultados pueden estar incompletos.', 'Some sources are unavailable; results may be incomplete.')}</Text>}
+    {searchNeedsRefresh && !busy && (searchOpen || mode === 'nearby') && <Pressable accessibilityRole="button" onPress={() => { forceSearch.current = true; if (searchOpen) void search(); else void findNearby(); }} style={styles.textAction}><Text style={styles.textActionLabel}>{t('Actualizar resultados', 'Refresh results')}</Text></Pressable>}
   </>;
+  const mapAction = shadows.limitExceeded ? undefined
+    : shadowFailed ? () => setMapRetry((value) => value + 1)
+      : mapFailed ? (mapStale ? updateSavedMap : () => setMapRetry((value) => value + 1))
+        : !shadowPending && mapStale ? updateSavedMap : undefined;
   const daylight = <>
     <View style={styles.rowBetween}><Text style={styles.miniHeading}>{t('SOL Y SOMBRA · 24 H', 'SUN AND SHADE · 24 H')}</Text>{!sheetExpanded && <Pressable accessibilityRole="button" hitSlop={8} onPress={() => setSheetExpanded(true)} style={styles.inlineDetails}><Text style={styles.textActionLabel}>{choices.length ? t('Punto exterior ↑', 'Outdoor point ↑') : t('Ver detalle ↑', 'See details ↑')}</Text></Pressable>}</View>
     <View accessible accessibilityLabel={windows.length ? windows.map((window) => t(`${statusText[window.state]} de ${clockTime(window.from)} a ${clockTime(window.to)}`, `${statusText[window.state]} from ${clockTime(window.from)} to ${clockTime(window.to)}`)).join('. ') : t('Aún sin horas disponibles', 'No hours available yet')} style={styles.daylightTrack}>
@@ -437,8 +527,9 @@ function Main() {
           setVisibleBounds((previous) => point.visibleBounds?.join(',') === previous?.join(',') ? previous : point.visibleBounds);
           setOriginLabel(myLocation.current && distanceMetres(myLocation.current, point) < 25 ? 'Tu ubicación' : 'Zona del mapa');
         }} onPick={choosePoint} onPlace={choosePoint} />
+        {mapBuildings?.source === 'osm' && <Text accessibilityRole="link" onPress={() => Linking.openURL('https://www.openstreetmap.org/copyright')} style={styles.mapAttribution}>Datos © OpenStreetMap</Text>}
         {!map3DAvailable && <Text style={styles.mapFallback}>{t('3D no disponible · mapa en 2D', '3D unavailable · showing 2D map')}</Text>}
-        {(mapIssue || shadows.limitExceeded || shadowPending || shadowFailed || sunStatus) && <Text accessibilityRole={mapFailed || shadowFailed ? 'button' : undefined} onPress={mapFailed || shadowFailed ? () => setMapRetry((value) => value + 1) : undefined} style={[styles.mapFallback, { top: map3DAvailable ? 115 : 150 }]}>{shadows.limitExceeded ? t('Acerca el mapa para ver las sombras.', 'Zoom in to see the shadows.') : shadowFailed ? t('No se han podido dibujar las sombras. Toca para reintentar.', 'Could not draw shadows. Tap to retry.') : mapFailed ? localized(mapStatus) : shadowPending ? t('Calculando sombras de la zona…', 'Calculating shadows in this area…') : sunStatus === 'night' ? t('Es de noche a esta hora. Cambia la hora para ver sombras.', 'It is night at this time. Change the time to see shadows.') : sunStatus === 'low' ? t('El sol está muy bajo. Cambia la hora para ver sombras.', 'The sun is too low. Change the time to see shadows.') : localized(mapStatus)}</Text>}
+        {(mapIssue || shadows.limitExceeded || shadowPending || shadowFailed || sunStatus) && <Text accessibilityRole={mapAction ? 'button' : undefined} onPress={mapAction} style={[styles.mapFallback, { top: map3DAvailable ? 115 : 150 }]}>{shadows.limitExceeded ? t('Acerca el mapa para ver las sombras.', 'Zoom in to see the shadows.') : shadowFailed ? t('No se han podido dibujar las sombras. Toca para reintentar.', 'Could not draw shadows. Tap to retry.') : mapFailed ? localized(mapStatus) : shadowPending ? t('Calculando sombras de la zona…', 'Calculating shadows in this area…') : mapStale ? localized(mapStatus) : sunStatus === 'night' ? t('Es de noche a esta hora. Cambia la hora para ver sombras.', 'It is night at this time. Change the time to see shadows.') : sunStatus === 'low' ? t('El sol está muy bajo. Cambia la hora para ver sombras.', 'The sun is too low. Change the time to see shadows.') : localized(mapStatus)}</Text>}
       </View>
       {Platform.OS !== 'web' && <ShadowRasterizer shadows={shadows} bounds={visibleBounds} retryToken={mapRetry} onReady={acceptShadowResult} onError={(failure) => acceptShadowResult({ ...failure, failed: true })} />}
       <View pointerEvents="box-none" style={styles.topControls}>
@@ -480,6 +571,8 @@ function Main() {
               {direction && <Text style={styles.direction}>{t(`A las ${formatTime(minutes)}, las sombras apuntan hacia el ${direction.label}.`, `At ${formatTime(minutes)}, shadows point ${translateDirection(language, direction.label)}.`)}</Text>}
               <Text style={styles.small}>{t('Horas aproximadas, calculadas cada 30 minutos. No incluyen nubes, árboles, toldos ni sombrillas.', 'Approximate times, calculated every 30 minutes. Clouds, trees, awnings and parasols are not included.')}</Text>
               <Text style={styles.small}>{localized(mapStatus)} {t('Hora del teléfono', 'Phone time')}: {timezone}.</Text>
+              {Platform.OS !== 'web' && selected && coverage.some((area) => (area.stale || area.limited) && distanceMetres(area, selected) < 5) && <Pressable accessibilityRole="button" onPress={() => selectPoint(selected, true)} style={styles.textAction}><Text style={styles.textActionLabel}>{t('Actualizar edificios de este punto', 'Update buildings for this point')}</Text></Pressable>}
+              {Platform.OS !== 'web' && <><Text style={styles.small}>{t('Para abrir zonas y búsquedas visitadas más rápido, se guardan datos y consultas en este dispositivo.', 'To reopen visited areas and searches faster, data and queries are saved on this device.')}</Text><Pressable accessibilityRole="button" onPress={clearSavedData} style={styles.textAction}><Text style={styles.textActionLabel}>{t('Borrar datos guardados', 'Clear saved data')}</Text></Pressable>{!!cacheNotice && <Text accessibilityRole="alert" style={styles.small}>{localized(cacheNotice)}</Text>}</>}
               <Text style={styles.small}>{t('Datos de', 'Data from')} <Text accessibilityRole="link" style={styles.link} onPress={() => Linking.openURL('https://www.openstreetmap.org/copyright')}>OpenStreetMap</Text>, <Text accessibilityRole="link" style={styles.link} onPress={() => Linking.openURL('https://datos.madrid.es/dataset/300750-0-servicio-mapas')}>{t('Ayuntamiento de Madrid', 'Madrid City Council')}</Text> {t('y', 'and')} <Text accessibilityRole="link" style={styles.link} onPress={() => Linking.openURL('https://opendata-ajuntament.barcelona.cat/data/en/dataset/terrasses-comercos-vigents')}>{t('Ayuntamiento de Barcelona', 'Barcelona City Council')}</Text> (<Text accessibilityRole="link" style={styles.link} onPress={() => Linking.openURL('https://creativecommons.org/licenses/by/4.0/')}>CC BY 4.0</Text>). {t('No indican apertura ni disponibilidad.', 'Results do not indicate opening times or availability.')}</Text>
             </>}
           </> : <>
@@ -523,7 +616,7 @@ const styles = StyleSheet.create({
   safe: { flex: 1, backgroundColor: '#faf7ee' }, app: { flex: 1, width: '100%', maxWidth: 760, alignSelf: 'center', backgroundColor: '#e9e5d9', overflow: 'hidden' }, mapArea: { position: 'absolute', top: 0, left: 0, right: 0 },
   topControls: { position: 'absolute', top: 0, left: 0, right: 0, paddingHorizontal: 16, paddingTop: 6 }, brandRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }, brandBadge: { backgroundColor: '#fffcf5', borderRadius: 18, paddingHorizontal: 11, paddingVertical: 7 }, brand: { color: '#263f32', fontFamily: Platform.OS === 'ios' ? 'Georgia' : 'serif', fontSize: 20, fontWeight: '700', letterSpacing: -0.7 }, brandSun: { color: '#cb8d24', fontFamily: 'System' }, accent: { color: '#c66e4e' },
   languageControl: { flexDirection: 'row', backgroundColor: '#fcfaf3', borderRadius: 22, overflow: 'hidden', elevation: 2 }, languageOption: { minWidth: 44, minHeight: 44, alignItems: 'center', justifyContent: 'center' }, languageSelected: { backgroundColor: '#304a3a' }, languageText: { color: '#617266', fontSize: 10, fontWeight: '800' }, languageSelectedText: { color: '#fffdf7' },
-  searchBarRow: { flexDirection: 'row', gap: 7 }, searchBar: { flex: 1, minWidth: 0, minHeight: 50, backgroundColor: '#fffdf8', borderRadius: 15, flexDirection: 'row', alignItems: 'center', paddingHorizontal: 14, gap: 10, elevation: 4, shadowColor: '#263f32', shadowOpacity: 0.16, shadowRadius: 8, shadowOffset: { width: 0, height: 3 } }, searchIcon: { fontSize: 28, color: '#304a3a', lineHeight: 32 }, searchPlaceholder: { color: '#79867b', fontSize: 14, flex: 1 }, locationButton: { width: 46, minHeight: 50, borderRadius: 15, backgroundColor: '#fffdf8', alignItems: 'center', justifyContent: 'center', elevation: 4, shadowColor: '#263f32', shadowOpacity: 0.16, shadowRadius: 8, shadowOffset: { width: 0, height: 3 } }, locationIcon: { color: '#304a3a', fontSize: 27 }, mapModeText: { color: '#304a3a', fontSize: 13, fontWeight: '800' }, mapFallback: { position: 'absolute', top: 115, alignSelf: 'center', maxWidth: '90%', textAlign: 'center', backgroundColor: '#fffcf5', color: '#526b5b', paddingHorizontal: 10, paddingVertical: 6, borderRadius: 9, fontSize: 11 },
+  searchBarRow: { flexDirection: 'row', gap: 7 }, searchBar: { flex: 1, minWidth: 0, minHeight: 50, backgroundColor: '#fffdf8', borderRadius: 15, flexDirection: 'row', alignItems: 'center', paddingHorizontal: 14, gap: 10, elevation: 4, shadowColor: '#263f32', shadowOpacity: 0.16, shadowRadius: 8, shadowOffset: { width: 0, height: 3 } }, searchIcon: { fontSize: 28, color: '#304a3a', lineHeight: 32 }, searchPlaceholder: { color: '#79867b', fontSize: 14, flex: 1 }, locationButton: { width: 46, minHeight: 50, borderRadius: 15, backgroundColor: '#fffdf8', alignItems: 'center', justifyContent: 'center', elevation: 4, shadowColor: '#263f32', shadowOpacity: 0.16, shadowRadius: 8, shadowOffset: { width: 0, height: 3 } }, locationIcon: { color: '#304a3a', fontSize: 27 }, mapModeText: { color: '#304a3a', fontSize: 13, fontWeight: '800' }, mapFallback: { position: 'absolute', top: 115, alignSelf: 'center', maxWidth: '90%', textAlign: 'center', backgroundColor: '#fffcf5', color: '#526b5b', paddingHorizontal: 10, paddingVertical: 6, borderRadius: 9, fontSize: 11 }, mapAttribution: { position: 'absolute', bottom: 4, right: 6, backgroundColor: '#fffcf5', color: '#304a3a', fontSize: 10, paddingHorizontal: 4, paddingVertical: 2 },
   sheet: { position: 'absolute', left: 0, right: 0, bottom: 0, backgroundColor: '#fffcf5', borderTopLeftRadius: 25, borderTopRightRadius: 25, overflow: 'hidden', elevation: 10, shadowColor: '#25372d', shadowOpacity: 0.16, shadowRadius: 14, shadowOffset: { width: 0, height: -4 } }, handleArea: { height: 25, alignItems: 'center' }, handleButton: { width: 90, height: 25, alignItems: 'center', justifyContent: 'center' }, handle: { width: 42, height: 4, borderRadius: 3, backgroundColor: '#d8c6a5' }, sheetScroll: { flex: 1 }, sheetContent: { paddingHorizontal: 20, paddingBottom: 14 },
   rowBetween: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', gap: 8 }, titleWrap: { flex: 1, minWidth: 0 }, miniHeading: { color: '#7b897b', fontSize: 10, fontWeight: '800', letterSpacing: 1, marginBottom: 4 }, placeTitle: { color: '#263e31', fontFamily: Platform.OS === 'ios' ? 'Georgia' : 'serif', fontWeight: '700', fontSize: 23, letterSpacing: -0.5 }, largeSun: { color: '#e3a52f', fontSize: 36, lineHeight: 42, marginLeft: 8 }, placeStatus: { color: '#657568', fontSize: 13, lineHeight: 19, marginTop: 3, fontWeight: '600' }, businessHint: { color: '#805d48', fontSize: 11, lineHeight: 16, marginTop: 4 },
   timelineBlock: { marginTop: 10 }, inlineDetails: { minHeight: 30, justifyContent: 'center', paddingHorizontal: 2 }, daylightTrack: { height: 11, borderRadius: 6, overflow: 'hidden', flexDirection: 'row', backgroundColor: '#dfdfd5', marginTop: 3, marginBottom: 5 }, scale: { color: '#7b897b', fontSize: 10 }, subtle: { color: '#79877b', fontSize: 11 },

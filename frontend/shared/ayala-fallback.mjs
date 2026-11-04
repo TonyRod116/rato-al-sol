@@ -5,11 +5,14 @@ import { inMadridArea } from './madrid-scene.mjs';
 const PARKS_URL = 'https://datos.madrid.es/dataset/200761-0-parques-jardines/resource/200761-5-parques-jardines-json/download/200761-0-parques-jardines.json';
 let parksCache = null;
 let terracesCache = null;
+let memoryGeneration = 0;
+export function clearMadridSearchMemoryCache() { memoryGeneration++; parksCache = null; terracesCache = null; }
 const fold = (text) => text.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLocaleLowerCase('es');
 
 // Madrid's list covers major parks, not every green space. Its coordinates are
 // reference points rather than surveyed sunny seating locations.
 export async function searchMadridParks(center, radius, query = '', fetchFn = fetch) {
+  const generation = memoryGeneration;
   if (!validCoordinate(center) || !inMadridArea(center) || !Number.isFinite(radius) || radius < 100 || radius > 5000) return [];
   const category = searchCategory(query);
   if (category && (category.kind !== 'public' || category.filter.includes('square'))) return [];
@@ -29,7 +32,7 @@ export async function searchMadridParks(center, radius, query = '', fetchFn = fe
           typeof latitude !== 'number' || typeof longitude !== 'number' || !validCoordinate({ latitude, longitude })) return null;
         return { id: `madrid-park/${item.id}`, name: item.title.trim(), latitude, longitude, kind: 'public' };
       }).filter(Boolean);
-      if (fetchFn === fetch) parksCache = { items: parks, expires: Date.now() + 5 * 60 * 1000 };
+      if (fetchFn === fetch && generation === memoryGeneration) parksCache = { items: parks, expires: Date.now() + 5 * 60 * 1000 };
     } finally { clearTimeout(timer); }
   }
   return parks.filter((park) => !name || matchesName(name, park.name))
@@ -40,6 +43,7 @@ export async function searchMadridParks(center, radius, query = '', fetchFn = fe
 // The municipal terrace register does not specify the business activity. Its
 // coordinates identify entrances and a category match must remain unconfirmed.
 export async function searchMadridFallback(center, radius, query, fetchFn = fetch) {
+  const generation = memoryGeneration;
   const name = typeof query === 'string' ? query.trim() : '';
   if (!inMadridArea(center) || !Number.isFinite(radius) || radius < 100 || radius > 5000 || (name && name.length < 2) || name.length > 80 || /[\x00-\x1f]/.test(name)) return [];
   const category = searchCategory(name);
@@ -78,7 +82,7 @@ export async function searchMadridFallback(center, radius, query, fetchFn = fetc
     let catalogue = fetchFn === fetch && terracesCache?.expires > Date.now() ? terracesCache.items : null;
     if (!catalogue) {
       catalogue = normalize(await requestRecords(true));
-      if (fetchFn === fetch) terracesCache = { items: catalogue, expires: Date.now() + 5 * 60 * 1000 };
+      if (fetchFn === fetch && generation === memoryGeneration) terracesCache = { items: catalogue, expires: Date.now() + 5 * 60 * 1000 };
     }
     return inArea(catalogue);
   } finally { clearTimeout(timer); }

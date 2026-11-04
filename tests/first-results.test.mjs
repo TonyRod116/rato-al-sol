@@ -2,6 +2,12 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { firstWithResults } from '../mobile/src/first-results.mjs';
 
+test('empty saved results retain their incomplete and old-data flags', async () => {
+  const result = await firstWithResults([Promise.resolve({ places: [], source: 'osm', partial: true, stale: true })]);
+  assert.equal(result.partial, true);
+  assert.equal(result.stale, true);
+});
+
 test('nearby search reports a provider failure even after another source returns', async () => {
   let fail, warnings = 0;
   const slow = new Promise((_, reject) => { fail = reject; });

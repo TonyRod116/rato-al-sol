@@ -5,12 +5,15 @@ import { distanceMetres, matchesName, searchCategory, validCoordinate } from './
 const API = 'https://opendata-ajuntament.barcelona.cat/data/api/3/action/';
 const CITY_CENTER = { latitude: 41.39172, longitude: 2.16495 };
 let cached;
+let memoryGeneration = 0;
+export function clearBarcelonaSearchMemoryCache() { memoryGeneration++; cached = null; }
 
 export function inBarcelonaArea(point) {
   return validCoordinate(point) && distanceMetres(CITY_CENTER, point) <= 15000;
 }
 
 export async function searchBarcelonaTerraces(center, radius, query = '', fetchFn = fetch) {
+  const generation = memoryGeneration;
   const text = typeof query === 'string' ? query.trim() : '';
   if (!inBarcelonaArea(center) || !Number.isFinite(radius) || radius < 100 || radius > 5000 ||
       (text && text.length < 2) || text.length > 80 || /[\x00-\x1f]/.test(text)) return [];
@@ -49,7 +52,7 @@ export async function searchBarcelonaTerraces(center, radius, query = '', fetchF
         return [{ id: `barcelona/${version.id}/${item._id}`, name, latitude, longitude, kind: 'business', outdoor: true,
           categoryUnknown: true, municipalPeriod: { year: version.year, semester: version.semester } }];
       });
-      if (live) cached = { items: catalogue, expires: Date.now() + 5 * 60 * 1000 };
+      if (live && generation === memoryGeneration) cached = { items: catalogue, expires: Date.now() + 5 * 60 * 1000 };
     } finally { clearTimeout(timer); }
   }
   return catalogue.filter((place) => !text || category || matchesName(text, place.name))

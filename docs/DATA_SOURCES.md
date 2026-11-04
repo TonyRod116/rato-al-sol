@@ -82,3 +82,11 @@ Antes de integrarlo, registrar enlace oficial y fecha de revisión, acceso, lice
 No guardar secretos, direcciones precisas ni respuestas completas con datos personales como fixture. Un ejemplo sintético se identifica; una muestra real solo se conserva cuando sus derechos y contenido lo permiten.
 
 No sustituir un error del proveedor por un dato inventado. Cambiar de fuente requiere revisar compatibilidad semántica y comunicar los límites relevantes, sin arrastrar derechos o confianza del proveedor anterior.
+
+## Datos guardados en el teléfono: 2026-11-04
+
+- La app nativa puede conservar en su caché privada las zonas consultadas de Madrid y Barcelona: geometría visible de edificios, escenas para puntos y resultados de búsquedas. Las áreas, fechas y consultas guardadas pueden revelar intereses o lugares consultados; no se envían como historial ni deben aparecer en registros. El panel ampliado permite borrar estos datos.
+- Los presupuestos previstos son 25 MiB para edificios, 15 MiB para escenas y 2 MiB para búsquedas, con expulsión de entradas antiguas; el sistema puede borrar su caché. Se conserva la fecha original de consulta, no la fecha de actualización de la fuente. La app avisa al reutilizar geometría guardada hace más de 30 días y búsquedas de más de un día; la persona puede solicitar una actualización.
+- Una vista solo usa una zona guardada si la cobertura es suficiente. Las escenas de puntos conservan los edificios sin altura como obstáculos desconocidos y reducen el radio al reutilizar un punto cercano; los resultados de búsquedas cercanas pueden ser parciales y se indican. Un fallo de almacenamiento no debe impedir consultar las fuentes.
+- El mapa base de Apple o Google y la geocodificación son independientes de estos datos: guardar edificios no garantiza una app completamente funcional sin red. No se descargan regiones completas ni teselas por adelantado. Se muestra atribución de OpenStreetMap junto al mapa cuando la geometría procede de esa fuente.
+- Los límites de la instancia pública de Overpass y su capacidad para tráfico de producción siguen pendientes de revisión. Antes de publicar, la política de privacidad y las declaraciones de las tiendas deben reflejar el almacenamiento local y los proveedores reales. Falta verificar en teléfonos y sin red la retención, eliminación y fluidez de esta caché.

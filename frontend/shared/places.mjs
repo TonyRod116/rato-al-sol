@@ -8,6 +8,9 @@ const MAX_PLACES = 80;
 const MAX_BUILDINGS = 4000;
 const recent = new Map();
 const pauseUntil = new Map();
+let memoryGeneration = 0;
+// Keep provider backoff intact while allowing the user to refresh local data.
+export function clearPlacesMemoryCache() { memoryGeneration++; recent.clear(); }
 
 function endpointFor(points) {
   return points.every((point) => point.latitude >= 41.1 && point.latitude <= 41.65 && point.longitude >= 1.75 && point.longitude <= 2.5)
@@ -87,6 +90,7 @@ function around(point, radius) {
 
 async function queryOverpass(query, fetchFn = fetch, endpoint = ENDPOINT) {
   const live = fetchFn === globalThis.fetch;
+  const generation = memoryGeneration;
   const now = Date.now();
   const cacheKey = `${endpoint}|${query}`;
   const cached = live && recent.get(cacheKey);
@@ -108,7 +112,7 @@ async function queryOverpass(query, fetchFn = fetch, endpoint = ENDPOINT) {
     if (!response.ok) throw new Error('El servicio de lugares no está disponible.');
     const data = await response.json();
     if (!data || !Array.isArray(data.elements) || data.remark) throw new Error('La respuesta de lugares está incompleta.');
-    if (live) {
+    if (live && generation === memoryGeneration) {
       if (recent.size >= 8) recent.delete(recent.keys().next().value);
       recent.set(cacheKey, { elements: data.elements, until: Date.now() + 60000 });
     }
