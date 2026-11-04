@@ -24,12 +24,13 @@ function normalize(feature, bounds) {
   return { type: 'Feature', properties: { height, id: feature.properties.OBJECTID }, geometry };
 }
 
-export async function getMadridBuildings(fetchFn = fetch, bounds = AYALA_BOUNDS) {
+export async function getMadridBuildings(fetchFn = fetch, bounds = AYALA_BOUNDS, { allowEmpty = false } = {}) {
   if (!Array.isArray(bounds) || bounds.length !== 4 || !bounds.every(Number.isFinite) ||
       bounds[0] >= bounds[2] || bounds[1] >= bounds[3] || bounds[2] - bounds[0] > .04 || bounds[3] - bounds[1] > .03 ||
       bounds[0] < -3.94 || bounds[2] > -3.50 || bounds[1] < 40.28 || bounds[3] > 40.62) throw new Error('Acerca el mapa para cargar edificios.');
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), 20000);
+  let retried = false;
   try {
     async function query(area, depth = 0) {
       const body = new URLSearchParams({
@@ -37,8 +38,22 @@ export async function getMadridBuildings(fetchFn = fetch, bounds = AYALA_BOUNDS)
         inSR: '4326', outSR: '4326', spatialRel: 'esriSpatialRelIntersects',
         outFields: 'OBJECTID,ALTURA', returnGeometry: 'true', f: 'geojson',
       });
-      const response = await fetchFn(ENDPOINT, { method: 'POST', headers: { 'Content-Type': 'application/x-www-form-urlencoded;charset=UTF-8' },
-        body: body.toString(), signal: controller.signal, credentials: 'omit', referrerPolicy: 'no-referrer' });
+      const options = { method: 'POST', headers: { 'Content-Type': 'application/x-www-form-urlencoded;charset=UTF-8' },
+        body: body.toString(), signal: controller.signal, credentials: 'omit', referrerPolicy: 'no-referrer' };
+      let response;
+      try {
+        response = await fetchFn(ENDPOINT, options);
+      } catch (error) {
+        if (retried || controller.signal.aborted || error?.name !== 'TypeError') throw error;
+        retried = true;
+        await new Promise((resolve) => setTimeout(resolve, 350));
+        response = await fetchFn(ENDPOINT, options);
+      }
+      if (response.status >= 500 && response.status <= 599 && !retried && !controller.signal.aborted) {
+        retried = true;
+        await new Promise((resolve) => setTimeout(resolve, 350));
+        response = await fetchFn(ENDPOINT, options);
+      }
       if (!response.ok) throw new Error('Building service unavailable');
       const data = await response.json();
       if (data?.type !== 'FeatureCollection' || !Array.isArray(data.features)) throw new Error('Incomplete building geometry');
@@ -53,7 +68,10 @@ export async function getMadridBuildings(fetchFn = fetch, bounds = AYALA_BOUNDS)
       return data.features;
     }
     const raw = await query(bounds);
-    if (!raw.length) throw new Error('No building geometry available');
+    if (!raw.length) {
+      if (allowEmpty) return { type: 'FeatureCollection', features: [], bounds, omitted: 0 };
+      throw new Error('No building geometry available');
+    }
     if (raw.length > 8000) throw new Error('Acerca el mapa para cargar edificios.');
     const seen = new Set();
     const features = [];
@@ -66,7 +84,10 @@ export async function getMadridBuildings(fetchFn = fetch, bounds = AYALA_BOUNDS)
       if (id !== undefined) seen.add(id);
       features.push(feature);
     }
-    if (!features.length) throw new Error('No valid building heights');
+    if (!features.length) {
+      if (allowEmpty) return { type: 'FeatureCollection', features: [], bounds, omitted };
+      throw new Error('No valid building heights');
+    }
     const vertices = features.reduce((total, feature) => {
       const polygons = feature.geometry.type === 'Polygon' ? [feature.geometry.coordinates] : feature.geometry.coordinates;
       return total + polygons.reduce((count, polygon) => count + polygon.reduce((sum, ring) => sum + ring.length, 0), 0);

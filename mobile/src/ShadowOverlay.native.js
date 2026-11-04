@@ -3,19 +3,23 @@ import { View } from 'react-native';
 import Svg, { Path } from 'react-native-svg';
 import * as FileSystem from 'expo-file-system/legacy';
 import { createShadowRasterPath } from './shadow-raster-path.mjs';
+import { captureShadow } from './shadow-capture.mjs';
 
-let nextFile = 0;
+let nextFile = 0, nextJob = 0;
 const removeLater = (uri) => {
   if (uri) setTimeout(() => { FileSystem.deleteAsync(uri, { idempotent: true }).catch(() => {}); }, 10000);
 };
 
 // Render outside the MapView. Work is split into small JavaScript batches;
 // SVG rasterization and PNG encoding are native and may still pause the UI.
-// onReady receives {uri, bounds}; onError receives no sensitive geometry.
-export function ShadowRasterizer({ shadows, bounds, onReady, onError }) {
+// Errors carry the original input identities so the caller can ignore old jobs.
+export function ShadowRasterizer({ shadows, bounds, retryToken = 0, onReady, onError }) {
   const svg = useRef(null), callbacks = useRef({ onReady, onError });
   callbacks.current = { onReady, onError };
   const [job, setJob] = useState(null);
+  const [laidOutJob, setLaidOutJob] = useState(null);
+  const currentJob = useRef(null);
+  currentJob.current = job;
 
   useEffect(() => {
     let cancelled = false, timer;
@@ -26,41 +30,45 @@ export function ShadowRasterizer({ shadows, bounds, onReady, onError }) {
       const advance = () => {
         if (cancelled) return;
         try {
-          if (builder.step(100)) setJob({ ...builder.result(), source: shadows, area: bounds });
+          if (builder.step(100)) setJob({ ...builder.result(), source: shadows, area: bounds, retryToken, id: ++nextJob });
           else timer = setTimeout(advance, 0);
-        } catch { callbacks.current.onError?.(); }
+        } catch { if (!cancelled) callbacks.current.onError?.({ reason: 'geometry', source: shadows, area: bounds, retryToken }); }
       };
       // Let the time slider and map finish moving before preparing the mask.
       timer = setTimeout(advance, 180);
-    } catch { callbacks.current.onError?.(); }
+    } catch { if (!cancelled) callbacks.current.onError?.({ reason: 'geometry', source: shadows, area: bounds, retryToken }); }
     return () => { cancelled = true; clearTimeout(timer); };
-  }, [shadows, bounds]);
+  }, [shadows, bounds, retryToken]);
 
   useEffect(() => {
-    if (!job || job.source !== shadows || job.area !== bounds) return;
-    let cancelled = false, file, watchdog;
-    const timer = setTimeout(() => {
-      try {
-        if (!svg.current || !FileSystem.cacheDirectory) { callbacks.current.onError?.(); return; }
-        watchdog = setTimeout(() => { cancelled = true; callbacks.current.onError?.(); }, 10000);
-        svg.current.toDataURL(async (base64) => {
-          clearTimeout(watchdog);
-          if (cancelled) return;
-          if (!base64) { callbacks.current.onError?.(); return; }
-          file = `${FileSystem.cacheDirectory}rato-shadow-${Date.now()}-${nextFile++}.png`;
-          try {
-            await FileSystem.writeAsStringAsync(file, base64, { encoding: 'base64' });
-            if (cancelled) { removeLater(file); return; }
-            callbacks.current.onReady?.({ uri: file, bounds: job.bounds, source: job.source, area: job.area });
-          } catch { removeLater(file); if (!cancelled) callbacks.current.onError?.(); }
-        }, { width: job.width, height: job.height });
-      } catch { clearTimeout(watchdog); callbacks.current.onError?.(); }
-    }, 0);
-    return () => { cancelled = true; clearTimeout(timer); clearTimeout(watchdog); removeLater(file); };
-  }, [job, shadows, bounds]);
+    if (!job || job.source !== shadows || job.area !== bounds || job.retryToken !== retryToken) return;
+    if (laidOutJob !== job) {
+      const timer = setTimeout(() => callbacks.current.onError?.({ reason: 'layout', source: job.source, area: job.area, retryToken: job.retryToken }), 8000);
+      return () => clearTimeout(timer);
+    }
+    let file;
+    const cancel = captureShadow({
+      capture: (callback) => {
+        if (!svg.current) throw new Error('SVG unavailable');
+        svg.current.toDataURL(callback, { width: job.width, height: job.height });
+      },
+      write: async (base64) => {
+        if (!FileSystem.cacheDirectory) throw new Error('Cache unavailable');
+        file = `${FileSystem.cacheDirectory}rato-shadow-${Date.now()}-${nextFile++}.png`;
+        try { await FileSystem.writeAsStringAsync(file, base64, { encoding: 'base64' }); }
+        catch (error) { removeLater(file); throw error; }
+        return file;
+      },
+      discard: removeLater,
+      onReady: (uri) => callbacks.current.onReady?.({ uri, bounds: job.bounds, source: job.source, area: job.area, retryToken: job.retryToken }),
+      onError: (reason) => callbacks.current.onError?.({ reason, source: job.source, area: job.area, retryToken: job.retryToken }),
+    });
+    return () => { cancel(); removeLater(file); };
+  }, [job, shadows, bounds, laidOutJob, retryToken]);
 
-  if (!job || job.source !== shadows || job.area !== bounds) return null;
-  return <View pointerEvents="none" style={{ position: 'absolute', left: -10000, top: 0 }}>
+  if (!job || job.source !== shadows || job.area !== bounds || job.retryToken !== retryToken) return null;
+  return <View key={job.id} collapsable={false} pointerEvents="none" style={{ position: 'absolute', left: -10000, top: 0, width: job.width, height: job.height }}
+    onLayout={() => { if (currentJob.current === job) setLaidOutJob(job); }}>
     <Svg ref={svg} width={job.width} height={job.height} viewBox={`0 0 ${job.width} ${job.height}`}>
       <Path d={job.d} fill="#304349" fillOpacity={0.26} fillRule="nonzero" />
     </Svg>

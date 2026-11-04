@@ -10,17 +10,20 @@ export function viewportBounds(bounds) {
   return bounds.map((value, index) => (index < 2 ? Math.floor(value * 1000) : Math.ceil(value * 1000)) / 1000);
 }
 
-export async function getViewportBuildings(view, fetchFn = fetch) {
-  const bounds = viewportBounds(view);
-  if (!bounds) throw new Error('No se reconoce la zona visible.');
+export async function getViewportBuildings(view, fetchFn = fetch, { allowEmpty = false } = {}) {
+  const rounded = viewportBounds(view);
+  if (!rounded) throw new Error('No se reconoce la zona visible.');
+  // Incremental strips have their own narrow safety margin and must not be
+  // rounded to an entire extra 0.001° cell on all four edges.
+  const bounds = allowEmpty ? [...view] : rounded;
   const key = bounds.join(',');
-  const cached = fetchFn === fetch && recent.get(key);
+  const cached = !allowEmpty && fetchFn === fetch && recent.get(key);
   if (cached && cached.expires > Date.now()) return cached.value;
   const [w, s, e, n] = bounds;
   const center = { latitude: (s + n) / 2, longitude: (w + e) / 2 };
   let result;
   if (inMadridArea(center)) {
-    result = { ...await getMadridBuildings(fetchFn, bounds), source: 'madrid' };
+    result = { ...await getMadridBuildings(fetchFn, bounds, { allowEmpty }), source: 'madrid' };
   } else {
     // Each 500 m cell fits inside an OpenStreetMap query of 400 m radius.
     const x = (e - w) * 111319.49 * Math.cos(center.latitude * Math.PI / 180);
@@ -39,7 +42,7 @@ export async function getViewportBuildings(view, fetchFn = fetch) {
     if (!features.length) throw new Error('No hay alturas suficientes en esta zona.');
     result = { type: 'FeatureCollection', features, bounds, source: 'osm', omitted: buildings.length - features.length };
   }
-  if (fetchFn === fetch) {
+  if (!allowEmpty && fetchFn === fetch) {
     if (recent.size >= 6) recent.delete(recent.keys().next().value);
     recent.set(key, { value: result, expires: Date.now() + 2 * 60 * 1000 });
   }

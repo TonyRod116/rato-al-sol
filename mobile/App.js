@@ -111,6 +111,7 @@ function Main() {
   const [mapBounds, setMapBounds] = useState(null), [mapBuildings, setMapBuildings] = useState(null);
   const [visibleBounds, setVisibleBounds] = useState(null);
   const [mapStatus, setMapStatus] = useState(''), [mapIssue, setMapIssue] = useState(false);
+  const [mapFailed, setMapFailed] = useState(false), [mapRetry, setMapRetry] = useState(0);
   const request = useRef(0);
   const pendingCamera = useRef(null);
   const myLocation = useRef(null);
@@ -133,18 +134,20 @@ function Main() {
     const cached = viewportLoader.current.find(mapBounds);
     if (cached) {
       setMapBuildings(cached);
+      setMapFailed(false);
       setMapIssue(Boolean(cached.omitted));
       setMapStatus(cached.omitted
         ? msg('Sombras aproximadas; algunos edificios no tienen altura disponible.', 'Approximate shadows; some buildings have no available height.')
         : msg('Sombras aproximadas de los edificios de la zona visible.', 'Approximate building shadows in the visible area.'));
       return;
     }
-    setMapBuildings(null); setMapIssue(true);
+    setMapBuildings(null); setMapIssue(true); setMapFailed(false);
     setMapStatus(msg('Cargando edificios de la zona…', 'Loading buildings in this area…'));
     const timer = setTimeout(() => {
       viewportLoader.current.get(mapBounds).then((geometry) => {
         if (!cancelled) {
           setMapBuildings(geometry);
+          setMapFailed(false);
           setMapIssue(Boolean(geometry.omitted));
           setMapStatus(geometry.omitted
             ? msg('Sombras aproximadas; algunos edificios no tienen altura disponible.', 'Approximate shadows; some buildings have no available height.')
@@ -153,14 +156,16 @@ function Main() {
       }).catch((error) => {
         if (!cancelled) {
           setMapIssue(true);
-          setMapStatus(error?.message?.startsWith('Acerca el mapa')
+          const zoomRequired = error?.message?.startsWith('Acerca el mapa');
+          setMapFailed(!zoomRequired);
+          setMapStatus(zoomRequired
             ? msg('Acerca el mapa para cargar las sombras.', 'Zoom in to load shadows.')
-            : msg('No hay alturas disponibles para dibujar las sombras de esta zona.', 'Building heights are unavailable to draw shadows in this area.'));
+            : msg('No se han podido cargar los edificios. Toca para reintentar.', 'Could not load buildings. Tap to retry.'));
         }
       });
     }, 600);
     return () => { cancelled = true; clearTimeout(timer); };
-  }, [mapBounds]);
+  }, [mapBounds, mapRetry]);
 
   const day = useMemo(() => { const value = new Date(); value.setHours(12, 0, 0, 0); value.setDate(value.getDate() + dayOffset); return value; }, [dayOffset]);
   const instant = useMemo(() => atMinutes(day, minutes), [day, minutes]);
@@ -177,7 +182,13 @@ function Main() {
   const shadows = useMemo(() => mapBuildings && visibleBounds ? buildingShadows(mapBuildings, mapSun, visibleBounds,
     Platform.OS === 'web' ? undefined : { maxVertices: 120000 }) : emptyShadows, [mapBuildings, mapSun, visibleBounds]);
   const [nativeShadowResult, setNativeShadowResult] = useState(null);
-  const currentShadowResult = nativeShadowResult?.source === shadows && nativeShadowResult?.area === visibleBounds ? nativeShadowResult : null;
+  const shadowContext = useRef(null);
+  shadowContext.current = { source: shadows, area: visibleBounds, retryToken: mapRetry };
+  function acceptShadowResult(result) {
+    const current = shadowContext.current;
+    if (result.source === current.source && result.area === current.area && result.retryToken === current.retryToken) setNativeShadowResult(result);
+  }
+  const currentShadowResult = nativeShadowResult?.source === shadows && nativeShadowResult?.area === visibleBounds && nativeShadowResult?.retryToken === mapRetry ? nativeShadowResult : null;
   const shadowPending = Platform.OS !== 'web' && shadows.features.length > 0 && !currentShadowResult;
   const shadowFailed = Platform.OS !== 'web' && currentShadowResult?.failed;
   const direction = useMemo(() => shadowDirection(mapSun), [mapSun]);
@@ -418,6 +429,7 @@ function Main() {
           if (!bounds) {
             setMapBuildings(null);
             setMapIssue(true);
+            setMapFailed(false);
             setMapStatus(msg('Acerca el mapa para cargar las sombras.', 'Zoom in to load shadows.'));
           }
           setCenter({ latitude: point.latitude, longitude: point.longitude });
@@ -426,9 +438,9 @@ function Main() {
           setOriginLabel(myLocation.current && distanceMetres(myLocation.current, point) < 25 ? 'Tu ubicación' : 'Zona del mapa');
         }} onPick={choosePoint} onPlace={choosePoint} />
         {!map3DAvailable && <Text style={styles.mapFallback}>{t('3D no disponible · mapa en 2D', '3D unavailable · showing 2D map')}</Text>}
-        {(mapIssue || shadows.limitExceeded || shadowPending || shadowFailed || sunStatus) && <Text style={[styles.mapFallback, { top: map3DAvailable ? 115 : 150 }]}>{shadows.limitExceeded ? t('Acerca el mapa para ver las sombras.', 'Zoom in to see the shadows.') : shadowFailed ? t('No se han podido dibujar las sombras de esta zona.', 'Could not draw shadows in this area.') : shadowPending ? t('Calculando sombras de la zona…', 'Calculating shadows in this area…') : sunStatus === 'night' ? t('Es de noche a esta hora. Cambia la hora para ver sombras.', 'It is night at this time. Change the time to see shadows.') : sunStatus === 'low' ? t('El sol está muy bajo. Cambia la hora para ver sombras.', 'The sun is too low. Change the time to see shadows.') : localized(mapStatus)}</Text>}
+        {(mapIssue || shadows.limitExceeded || shadowPending || shadowFailed || sunStatus) && <Text accessibilityRole={mapFailed || shadowFailed ? 'button' : undefined} onPress={mapFailed || shadowFailed ? () => setMapRetry((value) => value + 1) : undefined} style={[styles.mapFallback, { top: map3DAvailable ? 115 : 150 }]}>{shadows.limitExceeded ? t('Acerca el mapa para ver las sombras.', 'Zoom in to see the shadows.') : shadowFailed ? t('No se han podido dibujar las sombras. Toca para reintentar.', 'Could not draw shadows. Tap to retry.') : mapFailed ? localized(mapStatus) : shadowPending ? t('Calculando sombras de la zona…', 'Calculating shadows in this area…') : sunStatus === 'night' ? t('Es de noche a esta hora. Cambia la hora para ver sombras.', 'It is night at this time. Change the time to see shadows.') : sunStatus === 'low' ? t('El sol está muy bajo. Cambia la hora para ver sombras.', 'The sun is too low. Change the time to see shadows.') : localized(mapStatus)}</Text>}
       </View>
-      {Platform.OS !== 'web' && <ShadowRasterizer shadows={shadows} bounds={visibleBounds} onReady={setNativeShadowResult} onError={() => setNativeShadowResult({ source: shadows, area: visibleBounds, failed: true })} />}
+      {Platform.OS !== 'web' && <ShadowRasterizer shadows={shadows} bounds={visibleBounds} retryToken={mapRetry} onReady={acceptShadowResult} onError={(failure) => acceptShadowResult({ ...failure, failed: true })} />}
       <View pointerEvents="box-none" style={styles.topControls}>
         <View style={styles.brandRow}>
           <View style={styles.brandBadge}><Text style={styles.brand}><Text style={styles.brandSun}>☼ </Text>Rato al Sol<Text style={styles.accent}>.</Text></Text></View>
