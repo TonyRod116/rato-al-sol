@@ -5,7 +5,7 @@ import { atMinutes, lightAt, nearbyOutdoorScenes, prepareScene, solarWindows } f
 import { getMadridScene } from '../frontend/shared/madrid-scene.mjs';
 import { searchMadridFallback, searchMadridParks } from '../frontend/shared/ayala-fallback.mjs';
 import { searchBarcelonaTerraces } from '../frontend/shared/barcelona-terraces.mjs';
-import { nativeViewport, nativeVisibleViewport, paddedViewport, shadowsFitNativeBudget } from '../mobile/src/viewport.mjs';
+import { nativeViewport, nativeVisibleViewport, paddedViewport } from '../mobile/src/viewport.mjs';
 import { sunPosition } from '../frontend/solar.mjs';
 
 const madrid = { latitude: 40.42785, longitude: -3.6873 };
@@ -21,12 +21,6 @@ test('map coverage follows all visible edges with a margin and falls back to the
   assert.deepEqual(native, padded);
   assert.deepEqual(nativeVisibleViewport(region, { southWest: { latitude: 41.39, longitude: 2.16 }, northEast: { latitude: 41.40, longitude: 2.17 } }), bounds);
   assert.ok(nativeViewport(region, null));
-});
-
-test('native shadows stay complete or request a closer view when too dense', () => {
-  const shapes = { features: [{ geometry: { coordinates: [[], [], []] } }, { geometry: { coordinates: [[]] } }] };
-  assert.equal(shadowsFitNativeBudget(shapes, 4), true);
-  assert.equal(shadowsFitNativeBudget(shapes, 3), false);
 });
 
 test('place search sends literal bounded input in POST, never in the URL', async () => {

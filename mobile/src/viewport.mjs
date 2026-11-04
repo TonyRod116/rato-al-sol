@@ -82,14 +82,3 @@ export function createViewportLoader(load, now = Date.now, requestBounds = (boun
   }
   return { find, get };
 }
-
-// Each shape becomes a native map overlay. Never leave a misleading partial
-// set of shadows visible if an unusually dense view would overload the phone.
-export function shadowsFitNativeBudget(shadows, limit = 4000) {
-  let count = 0;
-  for (const feature of shadows.features) {
-    count += feature.geometry.coordinates.length;
-    if (count > limit) return false;
-  }
-  return true;
-}

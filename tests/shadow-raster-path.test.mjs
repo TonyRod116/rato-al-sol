@@ -1,0 +1,49 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import { createShadowRasterPath } from '../mobile/src/shadow-raster-path.mjs';
+
+const rectangle = (x1, y1, x2, y2) => [[x1, y1], [x2, y1], [x2, y2], [x1, y2], [x1, y1]];
+const feature = (coordinates) => ({ geometry: { type: 'Polygon', coordinates } });
+const bounds = [-1, -1, 1, 1];
+function finish(features) {
+  const builder = createShadowRasterPath({ features }, bounds);
+  while (!builder.step(2)) {};
+  return builder.result();
+}
+function windingAt(result, longitude, latitude) {
+  const mercator = (lat) => (1 - Math.asinh(Math.tan(lat * Math.PI / 180)) / Math.PI) / 2;
+  const x = (longitude + 1) / 2 * result.width;
+  const y = (mercator(latitude) - mercator(1)) / (mercator(-1) - mercator(1)) * result.height;
+  let winding = 0;
+  for (const subpath of result.d.match(/M[^M]+?Z/g) || []) {
+    const ring = subpath.slice(1, -1).split('L').map((point) => point.split(',').map(Number));
+    for (let i = 0; i < ring.length; i++) {
+      const a = ring[i], b = ring[(i + 1) % ring.length];
+      const cross = (b[0] - a[0]) * (y - a[1]) - (x - a[0]) * (b[1] - a[1]);
+      if (a[1] <= y && b[1] > y && cross > 0) winding++;
+      if (a[1] > y && b[1] <= y && cross < 0) winding--;
+    }
+  }
+  return winding;
+}
+
+test('one nonzero-fill path covers overlap once and preserves an uncovered courtyard', () => {
+  const outer = rectangle(-.8, -.8, .5, .8).reverse();
+  const hole = rectangle(-.4, -.4, .2, .4).reverse();
+  const overlap = rectangle(-.1, -.5, .8, .5);
+  const result = finish([feature([outer, hole]), feature([overlap])]);
+  assert.notEqual(windingAt(result, -.6, 0), 0, 'outer area is painted');
+  assert.equal(windingAt(result, -.3, 0), 0, 'uncovered courtyard remains open');
+  assert.notEqual(windingAt(result, .1, 0), 0, 'another shadow covers a courtyard');
+  assert.notEqual(windingAt(result, .4, .6), 0, 'building shadow remains painted');
+  assert.equal(windingAt(result, .9, 0), 0, 'outside stays clear');
+  assert.deepEqual(result.bounds, [[1, 1], [-1, -1]]);
+});
+
+test('work is incremental and oversized or invalid geometry is rejected', () => {
+  const geometry = feature([rectangle(-.5, -.5, .5, .5)]);
+  const builder = createShadowRasterPath({ features: [geometry, geometry] }, bounds, { maxVertices: 9 });
+  assert.equal(builder.step(1), false);
+  assert.throws(() => builder.step(1), /too large/);
+  assert.throws(() => createShadowRasterPath({ features: [] }, [1, 1, -1, -1]), /bounds/);
+});

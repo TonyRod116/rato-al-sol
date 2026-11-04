@@ -1,0 +1,44 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Prueba de máscara raster de sombras</title>
+<p id="result">Probando…</p>
+<script type="module">
+  import { createShadowRasterPath } from '../mobile/src/shadow-raster-path.mjs';
+  const rectangle = (west, south, east, north) => [[west, south], [east, south], [east, north], [west, north], [west, south]];
+  const shape = (rings) => ({ geometry: { type: 'Polygon', coordinates: rings } });
+  const collection = { features: [
+    shape([rectangle(.1, .1, .65, .9), rectangle(.2, .45, .3, .55)]),
+    shape([rectangle(.35, .1, .9, .9)]),
+    shape([rectangle(.24, .48, .28, .52)]),
+  ] };
+  const bounds = [0, 0, 1, 1];
+  const mercatorY = (lat) => (1 - Math.asinh(Math.tan(lat * Math.PI / 180)) / Math.PI) / 2;
+  function assert(condition, message) { if (!condition) throw new Error(message); }
+  try {
+    const builder = createShadowRasterPath(collection, bounds, { longestSide: 512 });
+    while (!builder.step(1)) { /* exercise incremental construction */ }
+    const path = builder.result(), canvas = document.createElement('canvas');
+    canvas.width = path.width; canvas.height = path.height;
+    const ctx = canvas.getContext('2d');
+    const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${path.width}" height="${path.height}" viewBox="0 0 ${path.width} ${path.height}"><path d="${path.d}" fill="#304349" fill-opacity=".26" fill-rule="nonzero"/></svg>`;
+    const url = URL.createObjectURL(new Blob([svg], { type: 'image/svg+xml' }));
+    const image = new Image();
+    await new Promise((resolve, reject) => { image.onload = resolve; image.onerror = reject; image.src = url; });
+    ctx.drawImage(image, 0, 0);
+    URL.revokeObjectURL(url);
+    function pixel(lng, lat) {
+      const x = Math.floor(lng * canvas.width);
+      const y = Math.floor((mercatorY(lat) - mercatorY(1)) / (mercatorY(0) - mercatorY(1)) * canvas.height);
+      return [...ctx.getImageData(x, y, 1, 1).data];
+    }
+    const single = pixel(.15, .3), overlap = pixel(.5, .3), other = pixel(.8, .3), coveredHole = pixel(.26, .5);
+    assert(single[3] > 0 && single[3] < 255, 'Las sombras deben ser translúcidas.');
+    assert([overlap, other, coveredHole].every((value) => JSON.stringify(value) === JSON.stringify(single)),
+      'Las zonas solapadas deben tener la misma opacidad que una sombra simple, también dentro de un patio cubierto.');
+    assert(pixel(.21, .5)[3] === 0 && pixel(.95, .5)[3] === 0, 'El patio no cubierto y el exterior deben ser transparentes.');
+    document.querySelector('#result').textContent = `PASS: opacidad ${single[3]}, solapes uniformes y patio respetado`;
+  } catch (error) {
+    document.querySelector('#result').textContent = `FAIL: ${error.message}`;
+    throw error;
+  }
+</script>

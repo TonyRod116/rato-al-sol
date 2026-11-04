@@ -27,8 +27,12 @@ function mayReachView(building, offset, view, eastPerDegree) {
 
 // Sweep each boundary, including courtyard boundaries, and the translated roof.
 // Geometry remains a visual estimate; it is not used to classify a terrace.
-export function buildingShadows(buildings, sun, view = null) {
+export function buildingShadows(buildings, sun, view = null, { maxVertices = Infinity } = {}) {
+  if (maxVertices !== Infinity && (!Number.isSafeInteger(maxVertices) || maxVertices < 0)) {
+    throw new RangeError('Invalid shadow vertex limit');
+  }
   const features = [];
+  let vertices = 0;
   for (const building of buildings?.features ?? []) {
     const offset = shadowOffset(sun, building.properties.height);
     if (!offset) continue;
@@ -36,6 +40,21 @@ export function buildingShadows(buildings, sun, view = null) {
     const east = METRES_PER_DEGREE * Math.cos((buildingBounds[1] + buildingBounds[3]) / 2 * Math.PI / 180);
     if (!mayReachView(building, offset, view, east)) continue;
     const polygons = building.geometry.type === 'Polygon' ? [building.geometry.coordinates] : building.geometry.coordinates;
+    if (maxVertices !== Infinity) {
+      // Count the translated rings and each five-vertex swept edge before
+      // allocating them. If the next building would cross the budget, return
+      // no shapes at all: a partial shadow mask could imply false sunshine.
+      for (const polygon of polygons) for (const ring of polygon) {
+        vertices += ring.length;
+        if (vertices > maxVertices) return { type: 'FeatureCollection', features: [], limitExceeded: true };
+        for (let i = 0; i < ring.length - 1; i++) {
+          const a = ring[i], b = ring[i + 1];
+          if (a[0] === b[0] && a[1] === b[1]) continue;
+          vertices += 5;
+          if (vertices > maxVertices) return { type: 'FeatureCollection', features: [], limitExceeded: true };
+        }
+      }
+    }
     const shapes = [];
     for (const polygon of polygons) {
       const shifted = polygon.map((ring) => ring.map((point) => shift(point, ...offset, east)));
