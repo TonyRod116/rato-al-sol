@@ -23,6 +23,52 @@ test('Madrid movement fetches only missing complete strips and deduplicates buil
   assert.strictEqual(loader.find(b), result);
 });
 
+test('a pan while Madrid is loading requests only the missing strip in parallel and waits for both', async () => {
+  const requests = [];
+  let resolveFirst, resolveStrip;
+  const loader = createViewportLoader((bounds, _fetch, options) => {
+    requests.push({ bounds, options });
+    if (requests.length === 1) return new Promise((resolve) => { resolveFirst = resolve; });
+    return new Promise((resolve) => { resolveStrip = resolve; });
+  });
+  const first = loader.get(a);
+  await Promise.resolve();
+  const next = loader.get(b);
+  await Promise.resolve();
+  assert.equal(requests.length, 2);
+  assert.deepEqual(requests[1].bounds, [-3.7022, 40.4138, -3.7008, 40.4182]);
+  assert.equal(requests[1].options.allowEmpty, true);
+  resolveStrip({ source: 'madrid', bounds: requests[1].bounds, features: [feature(2)], omitted: 0 });
+  assert.equal(loader.find(b), null, 'partial coverage is never exposed as complete');
+  resolveFirst({ source: 'madrid', bounds: a, features: [feature(1)], omitted: 0 });
+  await first;
+  const result = await next;
+  assert.deepEqual(result.bounds, b);
+  assert.deepEqual(result.features.map((item) => item.properties.id), [1, 2]);
+  assert.strictEqual(loader.find(b), result);
+});
+
+test('if the pending area fails, an overlapping pan falls back to a complete query', async () => {
+  const requests = [];
+  let rejectFirst;
+  const loader = createViewportLoader((bounds, _fetch, options) => {
+    requests.push({ bounds, options });
+    if (requests.length === 1) return new Promise((_resolve, reject) => { rejectFirst = reject; });
+    return Promise.resolve({ source: 'madrid', bounds, features: [feature(requests.length)], omitted: 0 });
+  });
+  const first = loader.get(a);
+  const firstRejected = assert.rejects(first, /offline/);
+  await Promise.resolve();
+  const next = loader.get(b);
+  await Promise.resolve();
+  rejectFirst(new Error('offline'));
+  await firstRejected;
+  const result = await next;
+  assert.deepEqual(requests.map((request) => Boolean(request.options?.allowEmpty)), [false, true, false]);
+  assert.deepEqual(requests[2].bounds, b);
+  assert.deepEqual(result.features.map((item) => item.properties.id), [3]);
+});
+
 test('a failed missing strip never appears as complete and can be retried', async () => {
   let fail = true;
   const loader = createViewportLoader(async (bounds, _fetch, options) => {

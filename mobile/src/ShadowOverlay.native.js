@@ -1,14 +1,14 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { View } from 'react-native';
-import Svg, { Path } from 'react-native-svg';
+import Svg, { Defs, Mask, Path, Rect } from 'react-native-svg';
 import * as FileSystem from 'expo-file-system/legacy';
 import { advanceShadowRasterPath, createShadowRasterPath } from './shadow-raster-path.mjs';
 import { captureShadow } from './shadow-capture.mjs';
+import { createShadowFileLifetime } from './shadow-file-lifetime.mjs';
 
 let nextFile = 0, nextJob = 0;
-const removeLater = (uri) => {
-  if (uri) setTimeout(() => { FileSystem.deleteAsync(uri, { idempotent: true }).catch(() => {}); }, 10000);
-};
+const files = createShadowFileLifetime((uri) => { FileSystem.deleteAsync(uri, { idempotent: true }).catch(() => {}); });
+const removeLater = files.retire;
 
 // Render outside the MapView. Work is split into small JavaScript batches;
 // SVG rasterization and PNG encoding are native and may still pause the UI.
@@ -70,7 +70,11 @@ export function ShadowRasterizer({ shadows, bounds, retryToken = 0, onReady, onE
   return <View key={job.id} collapsable={false} pointerEvents="none" style={{ position: 'absolute', left: -10000, top: 0, width: job.width, height: job.height }}
     onLayout={() => { if (currentJob.current === job) setLaidOutJob(job); }}>
     <Svg ref={svg} width={job.width} height={job.height} viewBox={`0 0 ${job.width} ${job.height}`}>
-      <Path d={job.d} fill="#304349" fillOpacity={0.26} fillRule="nonzero" />
+      {!!job.roofD && <Defs><Mask id="roofs" x="0" y="0" width={job.width} height={job.height} maskUnits="userSpaceOnUse" maskType="luminance">
+        <Rect x="0" y="0" width={job.width} height={job.height} fill="white" />
+        <Path d={job.roofD} fill="black" fillRule="nonzero" />
+      </Mask></Defs>}
+      <Path d={job.d} fill="#304349" fillOpacity={0.26} fillRule="nonzero" mask={job.roofD ? 'url(#roofs)' : undefined} />
     </Svg>
   </View>;
 }
@@ -80,6 +84,12 @@ export function ShadowRasterizer({ shadows, bounds, retryToken = 0, onReady, onE
 // Render the Overlay itself as a direct MapView child, not a wrapper component.
 export function useGroundShadowImage(image) {
   const [readyUri, setReadyUri] = useState(null);
+  useEffect(() => {
+    const uri = image?.uri;
+    if (!uri) return;
+    files.retain(uri);
+    return () => files.release(uri);
+  }, [image?.uri]);
   useEffect(() => {
     if (!image?.uri) return;
     const timer = setTimeout(() => setReadyUri(image.uri), 100);

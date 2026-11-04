@@ -25,15 +25,17 @@ export function createShadowRasterPath(collection, bounds, { longestSide = 384, 
   const size = Math.max(64, Math.min(768, longestSide));
   const scale = size / Math.max(spanX, spanY);
   const width = Math.max(1, Math.ceil(spanX * scale)), height = Math.max(1, Math.ceil(spanY * scale));
-  const paths = [], features = collection?.features || [];
-  let featureIndex = 0, polygonIndex = 0, vertices = 0, pieces = 0;
-  function addPolygon(polygon) {
+  const paths = [], roofPaths = [], shadowFeatures = collection?.features || [], roofs = collection?.roofs || [];
+  const features = [...shadowFeatures, ...roofs];
+  let featureIndex = 0, polygonIndex = 0, vertices = 0, roofVertices = 0, pieces = 0;
+  function addPolygon(polygon, roof) {
     if (!Array.isArray(polygon) || !polygon.length) throw new Error('Invalid shadow polygon');
     for (let ringIndex = 0; ringIndex < polygon.length; ringIndex++) {
       const ring = polygon[ringIndex];
       if (!Array.isArray(ring) || ring.length < 4) throw new Error('Invalid shadow ring');
-      vertices += ring.length;
-      if (vertices > maxVertices) throw new Error('Shadow geometry is too large');
+      if (roof) roofVertices += ring.length;
+      else vertices += ring.length;
+      if ((roof ? roofVertices : vertices) > maxVertices) throw new Error('Shadow geometry is too large');
       const points = ring.map((point) => {
         if (!Array.isArray(point) || !Number.isFinite(point[0]) || !Number.isFinite(point[1]) || Math.abs(point[1]) > MERCATOR_LIMIT) throw new Error('Invalid shadow point');
         return [quantize(((point[0] - west) / 360) * width / spanX), quantize((mercator(point[1]) - top) * height / spanY)];
@@ -49,7 +51,7 @@ export function createShadowRasterPath(collection, bounds, { longestSide = 384, 
       // Z already closes the ring; omitting a repeated closing coordinate
       // makes the native SVG path smaller without changing its silhouette.
       if (points[0][0] === points[points.length - 1][0] && points[0][1] === points[points.length - 1][1]) points.pop();
-      paths.push(`M${points.map(([x, y]) => `${x},${y}`).join('L')}Z`);
+      (roof ? roofPaths : paths).push(`M${points.map(([x, y]) => `${x},${y}`).join('L')}Z`);
     }
     pieces++;
   }
@@ -60,14 +62,14 @@ export function createShadowRasterPath(collection, bounds, { longestSide = 384, 
       const polygons = geometry?.type === 'Polygon' ? [geometry.coordinates] : geometry?.type === 'MultiPolygon' ? geometry.coordinates : null;
       if (!Array.isArray(polygons)) throw new Error('Invalid shadow geometry');
       if (polygonIndex >= polygons.length) { featureIndex++; polygonIndex = 0; continue; }
-      addPolygon(polygons[polygonIndex++]);
+      addPolygon(polygons[polygonIndex++], featureIndex >= shadowFeatures.length);
       processed++;
     }
     return featureIndex >= features.length;
   }
   function result() {
     if (featureIndex < features.length) throw new Error('Shadow path is incomplete');
-    return { d: paths.join(''), width, height, bounds: [[north, east], [south, west]], vertices, pieces };
+    return { d: paths.join(''), roofD: roofPaths.join(''), width, height, bounds: [[north, east], [south, west]], vertices, roofVertices, pieces };
   }
   return { step, result };
 }

@@ -60,8 +60,11 @@ export function createViewportLoader(load, now = Date.now, requestBounds = (boun
     if (!entirelyMadrid(bounds)) return null;
     const [w, s, e, n] = bounds, area = (e - w) * (n - s), time = now();
     let best = null, bestArea = 0;
-    for (const entry of recent) {
-      if (entry.expires <= time || entry.value.source !== 'madrid') continue;
+    // A pan can finish while the first request is still downloading. Its
+    // eventual result is just as reusable as a completed request, provided
+    // that it succeeds and proves complete coverage before we publish it.
+    for (const entry of [...recent, ...pending]) {
+      if (entry.value ? entry.expires <= time || entry.value.source !== 'madrid' : !entry.promise || !entirelyMadrid(entry.bounds)) continue;
       const [ow, os, oe, on] = entry.bounds;
       const intersection = [Math.max(w, ow), Math.max(s, os), Math.min(e, oe), Math.min(n, on)];
       const overlap = Math.max(0, intersection[2] - intersection[0]) * Math.max(0, intersection[3] - intersection[1]);
@@ -80,7 +83,21 @@ export function createViewportLoader(load, now = Date.now, requestBounds = (boun
     // strip so shadows from boundary buildings are not lost at the seams.
     const expanded = strips.map(([left, bottom, right, top]) => [left - .0002, bottom - .0002, right + .0002, top + .0002]);
     if (expanded.some((strip) => !entirelyMadrid(strip))) return { value: await load(bounds), expires: now() + 120000 };
-    const additions = await Promise.all(expanded.map((strip) => load(strip, undefined, { allowEmpty: true })));
+    // Start the missing strips immediately, in parallel with a pending base.
+    // Attach a rejection handler now: the base may take longer to complete.
+    const additionsResult = Promise.all(expanded.map((strip) => load(strip, undefined, { allowEmpty: true })))
+      .then((value) => ({ value }), (error) => ({ error }));
+    if (base.entry.promise && !base.entry.value) {
+      let value;
+      try { value = await base.entry.promise; } catch { /* Fetch the whole area below. */ }
+      if (!value || value.source !== 'madrid' || !covers(value.bounds, base.entry.bounds) || base.entry.expires <= now()) {
+        return { value: await load(bounds), expires: now() + 120000 };
+      }
+      base = { ...base, entry: { ...base.entry, value } };
+    }
+    const additionsOutcome = await additionsResult;
+    if ('error' in additionsOutcome) throw additionsOutcome.error;
+    const additions = additionsOutcome.value;
     if (additions.some((item, i) => item?.source !== 'madrid' || !Array.isArray(item.features) || !covers(item.bounds, expanded[i]))) {
       throw new Error('Geometría de edificios incompleta.');
     }
@@ -125,6 +142,7 @@ export function createViewportLoader(load, now = Date.now, requestBounds = (boun
     const base = incrementalBase(entry.bounds);
     entry.promise = Promise.resolve().then(() => base ? loadIncrementally(entry.bounds, base)
       : Promise.resolve(load(entry.bounds)).then((value) => ({ value, expires: now() + 120000 }))).then(({ value, expires }) => {
+      entry.expires = expires;
       if (covers(value?.bounds, entry.bounds)) {
         recent.push({ bounds: value.bounds, value, expires });
         if (recent.length > 6) recent.shift();

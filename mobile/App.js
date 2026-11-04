@@ -25,6 +25,7 @@ import { firstWithResults } from './src/first-results.mjs';
 import { initialSelectedTime, TIME_END, TIME_START } from '../frontend/shared/time-selection.mjs';
 import { isLanguage, languageKey, translate, translateDirection } from '../frontend/shared/i18n.mjs';
 import { PLAYBACK_START, nextPlaybackTime } from './src/day-playback.mjs';
+import { retainedShadow } from './src/retained-shadow.mjs';
 
 const msg = (es, en) => ({ es, en });
 const cachedServices = createCachedServices({ scenes: getScenes, sceneCache, searchCache, generation: cacheGeneration });
@@ -246,17 +247,32 @@ function Main() {
   }, [center, instant]);
   const sunStatus = shadowSunStatus(mapSun);
   const shadows = useMemo(() => mapBuildings && visibleBounds ? buildingShadows(mapBuildings, mapSun, visibleBounds,
-    Platform.OS === 'web' ? undefined : { maxVertices: 120000 }) : emptyShadows, [mapBuildings, mapSun, visibleBounds]);
+    Platform.OS === 'web' ? undefined : { maxVertices: 120000, excludeRoofs: true }) : emptyShadows, [mapBuildings, mapSun, visibleBounds]);
   const [nativeShadowResult, setNativeShadowResult] = useState(null);
+  const [lastShadowImage, setLastShadowImage] = useState(null);
+  const shadowTimeKey = instant?.getTime() ?? null;
   const shadowContext = useRef(null);
-  shadowContext.current = { source: shadows, area: visibleBounds, retryToken: mapRetry };
+  shadowContext.current = { source: shadows, area: visibleBounds, retryToken: mapRetry, timeKey: shadowTimeKey, geometrySource: mapBuildings?.source };
   function acceptShadowResult(result) {
     const current = shadowContext.current;
-    if (result.source === current.source && result.area === current.area && result.retryToken === current.retryToken) setNativeShadowResult(result);
+    if (result.source === current.source && result.area === current.area && result.retryToken === current.retryToken) {
+      const tagged = { ...result, timeKey: current.timeKey, geometrySource: current.geometrySource };
+      setNativeShadowResult(tagged);
+      if (tagged.uri) setLastShadowImage(tagged);
+    }
   }
   const currentShadowResult = nativeShadowResult?.source === shadows && nativeShadowResult?.area === visibleBounds && nativeShadowResult?.retryToken === mapRetry ? nativeShadowResult : null;
   const shadowPending = Platform.OS !== 'web' && shadows.features.length > 0 && !currentShadowResult;
   const shadowFailed = Platform.OS !== 'web' && currentShadowResult?.failed;
+  const groundShadow = currentShadowResult?.uri ? currentShadowResult : retainedShadow(lastShadowImage,
+    { timeKey: shadowTimeKey, visibleBounds, retryToken: mapRetry, sunStatus });
+  const partialShadow = Boolean(groundShadow && groundShadow !== currentShadowResult);
+  useEffect(() => {
+    // Once a mask leaves the map it can be released from the file cache. Do
+    // not try to resurrect that URI after a later move back or time change.
+    setLastShadowImage((previous) => retainedShadow(previous,
+      { timeKey: shadowTimeKey, visibleBounds, retryToken: mapRetry, sunStatus }));
+  }, [shadowTimeKey, visibleBounds, mapRetry, sunStatus]);
   useEffect(() => {
     const subscription = AppState.addEventListener('change', (state) => {
       if (state !== 'active') setPlayingDay(false);
@@ -548,7 +564,7 @@ function Main() {
     <StatusBar style="dark" />
     <View style={styles.app} accessibilityElementsHidden={searchOpen} importantForAccessibility={searchOpen ? 'no-hide-descendants' : 'auto'} {...(Platform.OS === 'web' ? { 'aria-hidden': searchOpen, inert: searchOpen } : {})}>
       <View style={[styles.mapArea, { bottom: sheetHeight }]}>
-        <MapCanvas camera={camera} places={resultsAreForMode ? visiblePlaces : []} selected={selected ? { ...selected, name: pointName(selected) } : null} language={language} shadows={shadows} groundShadow={currentShadowResult?.uri ? currentShadowResult : null} sun={mapSun} view3D={view3D} on3DAvailable={(available) => { setMap3DAvailable(available); if (!available) setView3D(false); }} onMove={(point) => {
+        <MapCanvas camera={camera} places={resultsAreForMode ? visiblePlaces : []} selected={selected ? { ...selected, name: pointName(selected) } : null} language={language} shadows={shadows} groundShadow={groundShadow} sun={mapSun} view3D={view3D} on3DAvailable={(available) => { setMap3DAvailable(available); if (!available) setView3D(false); }} onMove={(point) => {
           const pending = pendingCamera.current;
           if (pending && Date.now() < pending.until && distanceMetres(pending, point) > 40) return;
           pendingCamera.current = null;
@@ -564,9 +580,9 @@ function Main() {
           setVisibleBounds((previous) => point.visibleBounds?.join(',') === previous?.join(',') ? previous : point.visibleBounds);
           setOriginLabel(myLocation.current && distanceMetres(myLocation.current, point) < 25 ? 'Tu ubicación' : 'Zona del mapa');
         }} onPick={choosePoint} onPlace={choosePoint} />
-        {mapBuildings?.source === 'osm' && <Text accessibilityRole="link" onPress={() => Linking.openURL('https://www.openstreetmap.org/copyright')} style={styles.mapAttribution}>Datos © OpenStreetMap</Text>}
+        {(mapBuildings?.source === 'osm' || groundShadow?.geometrySource === 'osm') && <Text accessibilityRole="link" onPress={() => Linking.openURL('https://www.openstreetmap.org/copyright')} style={styles.mapAttribution}>Datos © OpenStreetMap</Text>}
         {!map3DAvailable && <Text style={styles.mapFallback}>{t('3D no disponible · mapa en 2D', '3D unavailable · showing 2D map')}</Text>}
-        {(mapIssue || shadows.limitExceeded || shadowPending || shadowFailed || sunStatus) && <Text accessibilityRole={mapAction ? 'button' : undefined} onPress={mapAction} style={[styles.mapFallback, { top: map3DAvailable ? 115 : 150 }]}>{shadows.limitExceeded ? t('Acerca el mapa para ver las sombras.', 'Zoom in to see the shadows.') : shadowFailed ? t('No se han podido dibujar las sombras. Toca para reintentar.', 'Could not draw shadows. Tap to retry.') : mapFailed ? localized(mapStatus) : shadowPending ? t('Calculando sombras de la zona…', 'Calculating shadows in this area…') : mapStale || (mapIssue && !mapBuildings) ? localized(mapStatus) : sunStatus === 'night' ? t('Es de noche a esta hora. Cambia la hora para ver sombras.', 'It is night at this time. Change the time to see shadows.') : sunStatus === 'low' ? t('El sol está muy bajo. Cambia la hora para ver sombras.', 'The sun is too low. Change the time to see shadows.') : localized(mapStatus)}</Text>}
+        {(mapIssue || shadows.limitExceeded || shadowPending || shadowFailed || sunStatus || partialShadow) && <Text accessibilityRole={mapAction ? 'button' : undefined} onPress={mapAction} style={[styles.mapFallback, { top: map3DAvailable ? 115 : 150 }]}>{shadows.limitExceeded ? t('Acerca el mapa para ver las sombras.', 'Zoom in to see the shadows.') : shadowFailed ? t('No se han podido dibujar las sombras. Toca para reintentar.', 'Could not draw shadows. Tap to retry.') : mapFailed ? localized(mapStatus) : partialShadow ? t('Actualizando sombras; solo se muestra la zona anterior.', 'Updating shadows; only the previous area is shown.') : shadowPending ? t('Calculando sombras de la zona…', 'Calculating shadows in this area…') : mapStale || (mapIssue && !mapBuildings) ? localized(mapStatus) : sunStatus === 'night' ? t('Es de noche a esta hora. Cambia la hora para ver sombras.', 'It is night at this time. Change the time to see shadows.') : sunStatus === 'low' ? t('El sol está muy bajo. Cambia la hora para ver sombras.', 'The sun is too low. Change the time to see shadows.') : localized(mapStatus)}</Text>}
       </View>
       {Platform.OS !== 'web' && <ShadowRasterizer shadows={shadows} bounds={visibleBounds} retryToken={mapRetry} onReady={acceptShadowResult} onError={(failure) => acceptShadowResult({ ...failure, failed: true })} />}
       <View pointerEvents="box-none" style={styles.topControls}>

@@ -72,3 +72,19 @@ test('a fast clock cannot produce an unbounded batch', () => {
   assert.equal(advanceShadowRasterPath({ step() { calls++; return false; } }, () => 0), false);
   assert.equal(calls, 80);
 });
+
+test('the separate rooftop mask covers overlapping roofs and preserves open courtyards', () => {
+  const shadow = feature([rectangle(-.9, -.9, .9, .9)]);
+  const firstRoof = feature([rectangle(-.8, -.8, .5, .8), rectangle(-.4, -.4, .2, .4)]);
+  const secondRoof = feature([rectangle(-.1, -.5, .8, .5)]);
+  const builder = createShadowRasterPath({ features: [shadow], roofs: [firstRoof, secondRoof] }, bounds);
+  while (!builder.step(2)) {}
+  const result = builder.result(), roofs = { ...result, d: result.roofD };
+  assert.notEqual(windingAt(roofs, -.6, 0), 0, 'roof is masked');
+  assert.equal(windingAt(roofs, -.3, 0), 0, 'courtyard remains open');
+  assert.notEqual(windingAt(roofs, .1, 0), 0, 'other roof masks its overlap with the courtyard');
+  assert.notEqual(windingAt(roofs, .4, .1), 0, 'overlapping roofs remain masked');
+  assert.equal(windingAt(roofs, .9, 0), 0, 'street is not masked');
+  assert.notEqual(windingAt(result, .85, 0), 0, 'the shadow itself is still present on the street');
+  assert.ok(result.roofVertices > 0);
+});

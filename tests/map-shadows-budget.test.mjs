@@ -14,9 +14,10 @@ const sun = { altitude: 45, azimuth: 180 };
 
 test('the optional budget returns no partial shadow geometry when the next building is too large', () => {
   const unlimited = buildingShadows(buildings, sun);
+  const vertexCount = unlimited.features.flatMap((feature) => feature.geometry.coordinates).flat().reduce((sum, ring) => sum + ring.length, 0);
   assert.equal(unlimited.features.length, 2);
-  assert.deepEqual(buildingShadows(buildings, sun, null, { maxVertices: 50 }), unlimited);
-  assert.deepEqual(buildingShadows(buildings, sun, null, { maxVertices: 49 }), {
+  assert.deepEqual(buildingShadows(buildings, sun, null, { maxVertices: vertexCount }), unlimited);
+  assert.deepEqual(buildingShadows(buildings, sun, null, { maxVertices: vertexCount - 1 }), {
     type: 'FeatureCollection', features: [], limitExceeded: true,
   });
   assert.deepEqual(buildingShadows(buildings, sun, null, { maxVertices: 0 }), {
