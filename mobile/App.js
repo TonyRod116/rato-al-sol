@@ -16,7 +16,7 @@ import { sunPosition } from '../frontend/solar.mjs';
 import { buildingShadows, shadowDirection } from '../frontend/map-shadows.mjs';
 import { clearViewportBuildingMemoryCache, getViewportBuildings, viewportBounds } from '../frontend/viewport-buildings.mjs';
 import { DEFAULT_LOCATION } from '../frontend/shared/default-location.mjs';
-import { createViewportLoader, expandedMadridViewport } from './src/viewport.mjs';
+import { createViewportLoader, expandedMadridViewport, stableShadowViewport } from './src/viewport.mjs';
 import { ShadowRasterizer, retainShadowFile, releaseShadowFile, retireShadowFile } from './src/ShadowOverlay';
 import { shadowSunStatus } from './src/shadow-status.mjs';
 import { buildingCache, sceneCache, searchCache, shadowCache, clearOfflineData, cacheGeneration } from './src/offline-data';
@@ -28,6 +28,7 @@ import { PLAYBACK_START, nextPlaybackTime } from './src/day-playback.mjs';
 import { retainedShadow } from './src/retained-shadow.mjs';
 import { playbackFrameReady, shadowFrameMatches } from './src/shadow-frame.mjs';
 import { createZoomPrefetch } from './src/zoom-prefetch.mjs';
+import { swipeSheet, tapSheet } from './src/sheet-position.mjs';
 import { geometrySignature, localFrameDay, millisecondsUntilNextDay, renderedShadowKey } from './src/shadow-cache-key.mjs';
 
 const msg = (es, en) => ({ es, en });
@@ -94,14 +95,15 @@ function Main() {
   const [mode, setMode] = useState('place');
   const [view3D, setView3D] = useState(true), [map3DAvailable, setMap3DAvailable] = useState(true);
   const [searchOpen, setSearchOpen] = useState(false);
-  const [sheetExpanded, setSheetExpanded] = useState(false);
+  const [sheetPosition, setSheetPosition] = useState('normal');
+  const sheetExpanded = sheetPosition === 'expanded', sheetMinimized = sheetPosition === 'minimized';
+  const setSheetExpanded = (expanded) => setSheetPosition(expanded ? 'expanded' : 'normal');
   const sheetScroll = useRef(null);
   const jumpToResults = useRef(false);
   const sheetGesture = useRef(PanResponder.create({
     onMoveShouldSetPanResponder: (_, gesture) => Math.abs(gesture.dy) > 8 && Math.abs(gesture.dy) > Math.abs(gesture.dx),
     onPanResponderRelease: (_, gesture) => {
-      if (gesture.dy < -24) setSheetExpanded(true);
-      if (gesture.dy > 24) setSheetExpanded(false);
+      setSheetPosition((current) => swipeSheet(current, gesture.dy));
     },
   })).current;
   const [center, setCenter] = useState(DEFAULT_LOCATION), [camera, setCamera] = useState(null);
@@ -212,14 +214,7 @@ function Main() {
     if (!previous) setMapBuildings(null);
     setMapIssue(true); setMapFailed(false); setMapStale(false);
     setMapStatus(msg('Cargando edificios de la zona.', 'Loading buildings in this area.'));
-    const load = async () => {
-      const saved = !force && Platform.OS !== 'web' ? await buildingCache.find(mapBounds) : null;
-      if (cancelled || cacheGeneration() !== generation) return;
-      if (saved) {
-        const geometry = { ...saved.value, fetchedAt: saved.fetchedAt };
-        viewportLoader.current.prime(geometry); applyGeometry(geometry); return;
-      }
-      timer = setTimeout(() => {
+    const loadFromProvider = () => {
         if (cancelled || cacheGeneration() !== generation) return;
         viewportLoader.current.get(mapBounds).then((geometry) => {
           if (!cancelled && cacheGeneration() === generation) {
@@ -244,7 +239,19 @@ function Main() {
                 : msg('No se han podido cargar los edificios. Toca para reintentar.', 'Could not load buildings. Tap to retry.'));
           }
         });
-      }, 400);
+    };
+    const load = async () => {
+      // A nearby area already in memory can be completed incrementally. Do
+      // not wait for a disk scan and a second debounce before starting it.
+      if (!force && Platform.OS !== 'web' && viewportLoader.current.hasIncremental(mapBounds) &&
+          buildingCache.coverageHint(mapBounds) === false) { loadFromProvider(); return; }
+      const saved = !force && Platform.OS !== 'web' ? await buildingCache.find(mapBounds) : null;
+      if (cancelled || cacheGeneration() !== generation) return;
+      if (saved) {
+        const geometry = { ...saved.value, fetchedAt: saved.fetchedAt };
+        viewportLoader.current.prime(geometry); applyGeometry(geometry); return;
+      }
+      timer = setTimeout(loadFromProvider, 400);
     };
     void load();
     return () => { cancelled = true; clearTimeout(timer); };
@@ -274,6 +281,24 @@ function Main() {
     return sunPosition(instant, center.latitude, center.longitude);
   }, [center, instant]);
   const sunStatus = shadowSunStatus(mapSun);
+  const shadowTimeKey = instant?.getTime() ?? null;
+  const stableFrameRef = useRef(null);
+  const stableFrame = useMemo(() => {
+    const previous = stableFrameRef.current;
+    const next = Platform.OS !== 'web' && mapBuildings && visibleBounds
+      ? stableShadowViewport(visibleBounds, mapBuildings, shadowTimeKey, previous) : null;
+    if (next && next !== previous) {
+      // A fixed solar anchor avoids rebuilding an unchanged geographic mask
+      // after a short pan. Across the small retained area this is approximate.
+      next.anchor = previous?.bounds === next.bounds ? previous.anchor : { latitude: center.latitude, longitude: center.longitude };
+    }
+    stableFrameRef.current = next;
+    return next;
+  }, [mapBuildings, visibleBounds, shadowTimeKey]);
+  const candidateArea = stableFrame?.bounds || visibleBounds;
+  const shadowAnchor = stableFrame?.anchor || center;
+  const shadowSun = useMemo(() => sunPosition(instant, shadowAnchor.latitude, shadowAnchor.longitude),
+    [instant, shadowAnchor.latitude, shadowAnchor.longitude]);
   const [nativeShadowResult, setNativeShadowResult] = useState(null);
   const [lastShadowImage, setLastShadowImage] = useState(null);
   const [futureShadow, setFutureShadow] = useState(null);
@@ -281,12 +306,20 @@ function Main() {
   const [playbackDwellFrame, setPlaybackDwellFrame] = useState(null);
   const [shadowGeometrySignature, setShadowGeometrySignature] = useState(null);
   const activeGeometrySignature = shadowGeometrySignature?.buildings === mapBuildings ? shadowGeometrySignature.value : null;
-  const shadowTimeKey = instant?.getTime() ?? null;
-  const frameContext = { timeKey: shadowTimeKey, area: visibleBounds, buildings: mapBuildings, retryToken: mapRetry,
-    latitude: center.latitude, longitude: center.longitude, generation: cacheGeneration() };
+  const baseContext = { timeKey: shadowTimeKey, area: candidateArea, buildings: mapBuildings, retryToken: mapRetry,
+    latitude: shadowAnchor.latitude, longitude: shadowAnchor.longitude, generation: cacheGeneration() };
+  const candidateAdopted = shadowFrameMatches(nativeShadowResult, baseContext) ? nativeShadowResult : null;
+  const candidateShadows = useMemo(() => candidateAdopted?.source || (mapBuildings && candidateArea ? buildingShadows(mapBuildings, shadowSun, candidateArea,
+    Platform.OS === 'web' ? undefined : { maxVertices: 120000, excludeRoofs: true }) : emptyShadows), [candidateAdopted?.source, mapBuildings, shadowSun, candidateArea]);
+  // Dense areas may fit at the visible size but not the expanded size.
+  // Fall back to the visible screen rather than losing its shadows.
+  const useVisibleOnly = Boolean(candidateShadows.limitExceeded && candidateArea !== visibleBounds);
+  const shadowArea = useVisibleOnly ? visibleBounds : candidateArea;
+  const frameContext = { ...baseContext, area: shadowArea };
   const adopted = shadowFrameMatches(nativeShadowResult, frameContext) ? nativeShadowResult : null;
-  const shadows = useMemo(() => adopted?.source || (mapBuildings && visibleBounds ? buildingShadows(mapBuildings, mapSun, visibleBounds,
-    Platform.OS === 'web' ? undefined : { maxVertices: 120000, excludeRoofs: true }) : emptyShadows), [adopted?.source, mapBuildings, mapSun, visibleBounds]);
+  const shadows = useMemo(() => adopted?.source || (useVisibleOnly && mapBuildings && shadowArea
+    ? buildingShadows(mapBuildings, shadowSun, shadowArea, { maxVertices: 120000, excludeRoofs: true })
+    : candidateShadows), [adopted?.source, useVisibleOnly, mapBuildings, shadowSun, shadowArea, candidateShadows]);
   const shadowContext = useRef(null);
   shadowContext.current = { ...frameContext, source: shadows, geometrySource: mapBuildings?.source };
   function acceptShadowResult(result) {
@@ -297,7 +330,7 @@ function Main() {
       if (tagged.uri) setLastShadowImage(tagged);
     }
   }
-  const currentShadowResult = nativeShadowResult?.source === shadows && nativeShadowResult?.area === visibleBounds && nativeShadowResult?.retryToken === mapRetry ? nativeShadowResult : null;
+  const currentShadowResult = nativeShadowResult?.source === shadows && nativeShadowResult?.area === shadowArea && nativeShadowResult?.retryToken === mapRetry ? nativeShadowResult : null;
   shadowContext.current.hasReady = Boolean(currentShadowResult);
   const shadowPending = Platform.OS !== 'web' && shadows.features.length > 0 && !currentShadowResult;
   const shadowFailed = Platform.OS !== 'web' && currentShadowResult?.failed;
@@ -328,23 +361,23 @@ function Main() {
   useEffect(() => {
     setFutureJob(null); setFutureShadow(null);
     if (Platform.OS === 'web' || !playingDay || mode !== 'place' || searchOpen || mapFailed || shadowFailed ||
-        shadowPending || shadows.limitExceeded || !mapBuildings || !visibleBounds) return;
+        shadowPending || shadows.limitExceeded || !mapBuildings || !shadowArea) return;
     let cancelled = false;
     const timer = setTimeout(() => {
       if (cancelled) return;
       const next = nextPlaybackTime(minutes), nextInstant = atMinutes(day, next);
       if (!nextInstant) { setPlayingDay(false); return; }
-      const nextSun = sunPosition(nextInstant, center.latitude, center.longitude);
-      const nextShadows = buildingShadows(mapBuildings, nextSun, visibleBounds, { maxVertices: 120000, excludeRoofs: true });
+      const nextSun = sunPosition(nextInstant, shadowAnchor.latitude, shadowAnchor.longitude);
+      const nextShadows = buildingShadows(mapBuildings, nextSun, shadowArea, { maxVertices: 120000, excludeRoofs: true });
       if (cancelled) return;
-      const frame = { source: nextShadows, area: visibleBounds, buildings: mapBuildings, retryToken: mapRetry,
-        timeKey: nextInstant.getTime(), latitude: center.latitude, longitude: center.longitude,
+      const frame = { source: nextShadows, area: shadowArea, buildings: mapBuildings, retryToken: mapRetry,
+        timeKey: nextInstant.getTime(), latitude: shadowAnchor.latitude, longitude: shadowAnchor.longitude,
         geometrySource: mapBuildings?.source, generation: cacheGeneration() };
       setFutureJob(frame);
       if (!nextShadows.features.length) setFutureShadow({ ...frame, failed: Boolean(nextShadows.limitExceeded) });
     }, 100);
     return () => { cancelled = true; clearTimeout(timer); };
-  }, [playingDay, minutes, day, center, mapBuildings, visibleBounds, mapRetry, mode, searchOpen, mapFailed, shadowFailed, shadowPending, shadows.limitExceeded]);
+  }, [playingDay, minutes, day, shadowAnchor.latitude, shadowAnchor.longitude, mapBuildings, shadowArea, mapRetry, mode, searchOpen, mapFailed, shadowFailed, shadowPending, shadows.limitExceeded]);
   useEffect(() => {
     setShadowGeometrySignature(null);
     if (Platform.OS === 'web' || playingDay || !appActive || !cacheEnabled || !mapBuildings) return;
@@ -361,7 +394,7 @@ function Main() {
     const key = renderedShadowKey(activeGeometrySignature, frameContext);
     if (!key) return;
     let cancelled = false;
-    const generation = frameContext.generation, source = shadows, area = visibleBounds;
+    const generation = frameContext.generation, source = shadows, area = shadowArea;
     shadowCache.get(key, localFrameDay(day), { generation }).then((uri) => {
       if (!uri) return;
       // A cache hit is copied to a disposable file. Retire it even if the
@@ -374,7 +407,7 @@ function Main() {
       setNativeShadowResult(tagged); setLastShadowImage(tagged);
     }).catch(() => {});
     return () => { cancelled = true; };
-  }, [activeGeometrySignature, playingDay, appActive, cacheEnabled, shadows, currentShadowResult, day, visibleBounds, mapRetry]);
+  }, [activeGeometrySignature, playingDay, appActive, cacheEnabled, shadows, currentShadowResult, day, shadowArea, mapRetry]);
   useEffect(() => {
     if (Platform.OS === 'web' || playingDay || !appActive || !cacheEnabled || !activeGeometrySignature || !currentShadowResult?.uri) return;
     const generation = currentShadowResult.generation;
@@ -382,7 +415,7 @@ function Main() {
     if (!key || generation !== cacheGeneration()) return;
     const timer = setTimeout(() => { void shadowCache.put(key, localFrameDay(day), currentShadowResult.uri, { generation }); }, 1200);
     return () => clearTimeout(timer);
-  }, [activeGeometrySignature, playingDay, appActive, cacheEnabled, currentShadowResult, day, visibleBounds, mapRetry]);
+  }, [activeGeometrySignature, playingDay, appActive, cacheEnabled, currentShadowResult, day, shadowArea, mapRetry]);
   useEffect(() => {
     // Once a mask leaves the map it can be released from the file cache. Do
     // not try to resurrect that URI after a later move back or time change.
@@ -416,7 +449,7 @@ function Main() {
       setPlaybackDwellFrame(dwellFrame);
     }, 700);
     return () => clearTimeout(timer);
-  }, [playingDay, minutes, day, mode, searchOpen, mapFailed, shadowFailed, shadows.limitExceeded, mapBuildings, visibleBounds, shadowPending, center, mapRetry]);
+  }, [playingDay, minutes, day, mode, searchOpen, mapFailed, shadowFailed, shadows.limitExceeded, mapBuildings, shadowArea, shadowPending, shadowAnchor.latitude, shadowAnchor.longitude, mapRetry]);
   useEffect(() => {
     if (!playingDay || mode !== 'place' || searchOpen || mapFailed || shadowFailed || shadows.limitExceeded ||
         !mapBuildings || !visibleBounds || shadowPending) return;
@@ -429,7 +462,7 @@ function Main() {
     }
     setMinutes(next);
     setEndMinutes((previous) => Math.max(previous, next + 15));
-  }, [playingDay, minutes, day, mode, searchOpen, mapFailed, shadowFailed, shadows.limitExceeded, mapBuildings, visibleBounds, shadowPending, playbackDwellFrame, futureShadow, center, mapRetry]);
+  }, [playingDay, minutes, day, mode, searchOpen, mapFailed, shadowFailed, shadows.limitExceeded, mapBuildings, shadowArea, shadowPending, playbackDwellFrame, futureShadow, shadowAnchor.latitude, shadowAnchor.longitude, mapRetry]);
   const direction = useMemo(() => shadowDirection(mapSun), [mapSun]);
   const choices = useMemo(() => selected && scene ? nearbyOutdoorScenes(scene, buildings).map((choice) => ({ ...choice, windows: solarWindows(choice.scene, day) })) : [], [selected, scene, buildings, day]);
   const nearbyScenes = useMemo(() => {
@@ -631,7 +664,7 @@ function Main() {
   }
 
   const timezone = Intl.DateTimeFormat().resolvedOptions().timeZone || t('hora del teléfono', 'phone time');
-  const sheetHeight = sheetExpanded ? Math.max(340, Math.min(height - insets.top - 42, 690)) : Math.min(370, Math.max(330, height * 0.45));
+  const sheetHeight = sheetMinimized ? 97 + Math.max(insets.bottom, 6) : sheetExpanded ? Math.max(340, Math.min(height - insets.top - 42, 690)) : Math.min(370, Math.max(330, height * 0.45));
   const choosePoint = (point) => {
     jumpToResults.current = false;
     setSearchOpen(false); setMode('place'); setSheetExpanded(false); selectPoint(point);
@@ -730,7 +763,7 @@ function Main() {
         {!map3DAvailable && <Text style={styles.mapFallback}>{t('3D no disponible · mapa en 2D', '3D unavailable · showing 2D map')}</Text>}
         {(mapIssue || shadows.limitExceeded || shadowPending || shadowFailed || sunStatus || partialShadow) && <Text accessibilityRole={mapAction ? 'button' : undefined} onPress={mapAction} style={[styles.mapFallback, { top: map3DAvailable ? 115 : 150 }]}>{shadows.limitExceeded ? t('Acerca el mapa para ver las sombras.', 'Zoom in to see the shadows.') : shadowFailed ? t('No se han podido dibujar las sombras. Toca para reintentar.', 'Could not draw shadows. Tap to retry.') : mapFailed ? localized(mapStatus) : partialShadow ? t('Actualizando sombras; solo se muestra la zona anterior.', 'Updating shadows; only the previous area is shown.') : shadowPending ? t('Calculando sombras de la zona…', 'Calculating shadows in this area…') : mapStale || (mapIssue && !mapBuildings) ? localized(mapStatus) : sunStatus === 'night' ? t('Es de noche a esta hora. Cambia la hora para ver sombras.', 'It is night at this time. Change the time to see shadows.') : sunStatus === 'low' ? t('El sol está muy bajo. Cambia la hora para ver sombras.', 'The sun is too low. Change the time to see shadows.') : localized(mapStatus)}</Text>}
       </View>
-      {Platform.OS !== 'web' && <ShadowRasterizer shadows={currentShadowResult?.uri ? emptyShadows : shadows} bounds={visibleBounds} retryToken={mapRetry} onReady={acceptShadowResult} onError={(failure) => acceptShadowResult({ ...failure, failed: true })} />}
+      {Platform.OS !== 'web' && <ShadowRasterizer shadows={currentShadowResult?.uri ? emptyShadows : shadows} bounds={shadowArea} retryToken={mapRetry} onReady={acceptShadowResult} onError={(failure) => acceptShadowResult({ ...failure, failed: true })} />}
       {Platform.OS !== 'web' && playingDay && futureJob?.source?.features?.length > 0 && !futureShadow && <ShadowRasterizer shadows={futureJob.source} bounds={futureJob.area} retryToken={futureJob.retryToken} onReady={acceptFutureShadow} onError={failFutureShadow} />}
       <View pointerEvents="box-none" style={styles.topControls}>
         <View style={styles.brandRow}>
@@ -744,10 +777,10 @@ function Main() {
         </View>
       </View>
       <View style={[styles.sheet, { height: sheetHeight }]}>
-        <View {...sheetGesture.panHandlers} style={styles.handleArea}>
-          <Pressable accessibilityRole="button" accessibilityLabel={sheetExpanded ? t('Reducir panel', 'Collapse panel') : t('Ampliar panel', 'Expand panel')} accessibilityState={{ expanded: sheetExpanded }} hitSlop={10} onPress={() => setSheetExpanded(!sheetExpanded)} style={styles.handleButton}><View style={styles.handle} /></Pressable>
+        <View {...sheetGesture.panHandlers} style={[styles.handleArea, sheetMinimized && styles.handleAreaMinimized]}>
+          <Pressable accessibilityRole="button" accessibilityLabel={sheetMinimized ? t('Mostrar panel', 'Show panel') : sheetExpanded ? t('Reducir panel', 'Collapse panel') : t('Ver mapa a pantalla completa', 'Show full map')} accessibilityHint={t('Desliza hacia arriba o abajo para cambiar el tamaño del panel.', 'Swipe up or down to resize the panel.')} accessibilityState={{ expanded: !sheetMinimized }} hitSlop={10} onPress={() => setSheetPosition((current) => tapSheet(current))} style={[styles.handleButton, sheetMinimized && styles.handleButtonMinimized]}><View style={styles.handle} /></Pressable>
         </View>
-        <ScrollView ref={sheetScroll} style={styles.sheetScroll} contentContainerStyle={styles.sheetContent} keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={sheetExpanded}>
+        {!sheetMinimized && <ScrollView ref={sheetScroll} style={styles.sheetScroll} contentContainerStyle={styles.sheetContent} keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={sheetExpanded}>
           {mode === 'place' ? <>
             <View style={styles.rowBetween}>
               <View style={styles.titleWrap}><Text style={styles.miniHeading}>{selected ? t('TU LUGAR', 'YOUR PLACE') : t('ENCUENTRA TU RATO AL SOL', 'FIND YOUR PLACE IN THE SUN')}</Text><Text style={styles.placeTitle} numberOfLines={2}>{selected ? pointName(selected) : t('¿Dónde te sentarías?', 'Where would you sit?')}</Text></View>
@@ -796,7 +829,7 @@ function Main() {
             {feedback}{results}
             <Text style={styles.small}>{t('La ubicación solo se usa si la eliges. Consultamos OpenStreetMap y los datos municipales disponibles.', 'Your location is only used if you choose it. We consult OpenStreetMap and available city data.')}</Text>
           </>}
-        </ScrollView>
+        </ScrollView>}
         <View style={[styles.nav, { paddingBottom: Math.max(insets.bottom, 6) }]}>
           <Pressable accessibilityRole="tab" accessibilityLabel={t('Explorar', 'Explore')} accessibilityState={{ selected: mode === 'place' }} onPress={() => setView('place')} style={styles.navItem}><Text style={[styles.navIcon, mode === 'place' && styles.navSelected]}>⌾</Text><Text style={[styles.navText, mode === 'place' && styles.navSelected]}>{t('Explorar', 'Explore')}</Text><View style={[styles.navIndicator, mode === 'place' && styles.navIndicatorSelected]} /></Pressable>
           <Pressable accessibilityRole="tab" accessibilityLabel={t('Buscar sol', 'Find sun')} accessibilityState={{ selected: mode === 'nearby' }} onPress={() => setView('nearby')} style={styles.navItem}><Text style={[styles.navIcon, mode === 'nearby' && styles.navSelected]}>☼</Text><Text style={[styles.navText, mode === 'nearby' && styles.navSelected]}>{t('Buscar sol', 'Find sun')}</Text><View style={[styles.navIndicator, mode === 'nearby' && styles.navIndicatorSelected]} /></Pressable>
@@ -824,7 +857,7 @@ const styles = StyleSheet.create({
   topControls: { position: 'absolute', top: 0, left: 0, right: 0, paddingHorizontal: 16, paddingTop: 6 }, brandRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }, brandBadge: { backgroundColor: '#fffcf5', borderRadius: 18, paddingHorizontal: 11, paddingVertical: 7 }, brand: { color: '#263f32', fontFamily: Platform.OS === 'ios' ? 'Georgia' : 'serif', fontSize: 20, fontWeight: '700', letterSpacing: -0.7 }, brandSun: { color: '#cb8d24', fontFamily: 'System' }, accent: { color: '#c66e4e' },
   languageControl: { flexDirection: 'row', backgroundColor: '#fcfaf3', borderRadius: 22, overflow: 'hidden', elevation: 2 }, languageOption: { minWidth: 44, minHeight: 44, alignItems: 'center', justifyContent: 'center' }, languageSelected: { backgroundColor: '#304a3a' }, languageText: { color: '#617266', fontSize: 10, fontWeight: '800' }, languageSelectedText: { color: '#fffdf7' },
   searchBarRow: { flexDirection: 'row', gap: 7 }, searchBar: { flex: 1, minWidth: 0, minHeight: 50, backgroundColor: '#fffdf8', borderRadius: 15, flexDirection: 'row', alignItems: 'center', paddingHorizontal: 14, gap: 10, elevation: 4, shadowColor: '#263f32', shadowOpacity: 0.16, shadowRadius: 8, shadowOffset: { width: 0, height: 3 } }, searchIcon: { fontSize: 28, color: '#304a3a', lineHeight: 32 }, searchPlaceholder: { color: '#79867b', fontSize: 14, flex: 1 }, locationButton: { width: 46, minHeight: 50, borderRadius: 15, backgroundColor: '#fffdf8', alignItems: 'center', justifyContent: 'center', elevation: 4, shadowColor: '#263f32', shadowOpacity: 0.16, shadowRadius: 8, shadowOffset: { width: 0, height: 3 } }, locationIcon: { color: '#304a3a', fontSize: 27 }, mapModeText: { color: '#304a3a', fontSize: 13, fontWeight: '800' }, mapFallback: { position: 'absolute', top: 115, alignSelf: 'center', maxWidth: '90%', textAlign: 'center', backgroundColor: '#fffcf5', color: '#526b5b', paddingHorizontal: 10, paddingVertical: 6, borderRadius: 9, fontSize: 11 }, mapAttribution: { position: 'absolute', bottom: 4, right: 6, backgroundColor: '#fffcf5', color: '#304a3a', fontSize: 10, paddingHorizontal: 4, paddingVertical: 2 },
-  sheet: { position: 'absolute', left: 0, right: 0, bottom: 0, backgroundColor: '#fffcf5', borderTopLeftRadius: 25, borderTopRightRadius: 25, overflow: 'hidden', elevation: 10, shadowColor: '#25372d', shadowOpacity: 0.16, shadowRadius: 14, shadowOffset: { width: 0, height: -4 } }, handleArea: { height: 25, alignItems: 'center' }, handleButton: { width: 90, height: 25, alignItems: 'center', justifyContent: 'center' }, handle: { width: 42, height: 4, borderRadius: 3, backgroundColor: '#d8c6a5' }, sheetScroll: { flex: 1 }, sheetContent: { paddingHorizontal: 20, paddingBottom: 14 },
+  sheet: { position: 'absolute', left: 0, right: 0, bottom: 0, backgroundColor: '#fffcf5', borderTopLeftRadius: 25, borderTopRightRadius: 25, overflow: 'hidden', elevation: 10, shadowColor: '#25372d', shadowOpacity: 0.16, shadowRadius: 14, shadowOffset: { width: 0, height: -4 } }, handleArea: { height: 25, alignItems: 'center' }, handleAreaMinimized: { height: 44 }, handleButton: { width: 90, height: 25, alignItems: 'center', justifyContent: 'center' }, handleButtonMinimized: { height: 44 }, handle: { width: 42, height: 4, borderRadius: 3, backgroundColor: '#d8c6a5' }, sheetScroll: { flex: 1 }, sheetContent: { paddingHorizontal: 20, paddingBottom: 14 },
   rowBetween: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', gap: 8 }, titleWrap: { flex: 1, minWidth: 0 }, miniHeading: { color: '#7b897b', fontSize: 10, fontWeight: '800', letterSpacing: 1, marginBottom: 4 }, placeTitle: { color: '#263e31', fontFamily: Platform.OS === 'ios' ? 'Georgia' : 'serif', fontWeight: '700', fontSize: 23, letterSpacing: -0.5 }, largeSun: { color: '#e3a52f', fontSize: 36, lineHeight: 42, marginLeft: 8 }, placeStatus: { color: '#657568', fontSize: 13, lineHeight: 19, marginTop: 3, fontWeight: '600' }, businessHint: { color: '#805d48', fontSize: 11, lineHeight: 16, marginTop: 4 },
   timelineBlock: { marginTop: 10 }, inlineDetails: { minHeight: 30, justifyContent: 'center', paddingHorizontal: 2 }, daylightTrack: { height: 11, borderRadius: 6, overflow: 'hidden', flexDirection: 'row', backgroundColor: '#dfdfd5', marginTop: 3, marginBottom: 5 }, scale: { color: '#7b897b', fontSize: 10 }, subtle: { color: '#79877b', fontSize: 11 },
   playbackRow: { flexDirection: 'row', alignItems: 'flex-start', gap: 4 }, playbackSlider: { flex: 1, minWidth: 0 }, playbackButton: { width: 44, height: 44, alignItems: 'center', justifyContent: 'center' }, playIcon: { width: 0, height: 0, marginLeft: 3, borderTopWidth: 8, borderBottomWidth: 8, borderLeftWidth: 13, borderTopColor: 'transparent', borderBottomColor: 'transparent', borderLeftColor: '#30463a' }, pauseIcon: { flexDirection: 'row', gap: 4 }, pauseBar: { width: 4, height: 16, borderRadius: 1, backgroundColor: '#30463a' },

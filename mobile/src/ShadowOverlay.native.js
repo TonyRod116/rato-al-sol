@@ -1,5 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { View } from 'react-native';
+import { Platform, View } from 'react-native';
 import Svg, { Defs, Mask, Path, Rect } from 'react-native-svg';
 import * as FileSystem from 'expo-file-system/legacy';
 import { advanceShadowRasterPath, createShadowRasterPath } from './shadow-raster-path.mjs';
@@ -29,7 +29,10 @@ export function ShadowRasterizer({ shadows, bounds, retryToken = 0, onReady, onE
     setJob(null);
     if (!shadows?.features?.length || !bounds) return;
     try {
-      const builder = createShadowRasterPath(shadows, bounds);
+      // iOS rasterizes SVG at the device's screen scale. A 256-point mask is
+      // still rendered at Retina resolution while using less than half the
+      // pixels of the previous 384-point luminance mask on the same device.
+      const builder = createShadowRasterPath(shadows, bounds, { longestSide: Platform.OS === 'ios' ? 256 : 384 });
       const advance = () => {
         if (cancelled) return;
         try {

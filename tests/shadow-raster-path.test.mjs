@@ -44,6 +44,19 @@ test('one nonzero-fill path covers overlap once and preserves an uncovered court
   }
 });
 
+test('a smaller retina mask retains shadows, overlap and an uncovered courtyard', () => {
+  const shapes = [feature([rectangle(-.8, -.8, .5, .8), rectangle(-.4, -.4, .2, .4)]),
+    feature([rectangle(-.1, -.5, .8, .5)])];
+  const builder = createShadowRasterPath({ features: shapes }, bounds, { longestSide: 256 });
+  while (!builder.step(10)) {}
+  const image = builder.result();
+  assert.equal(Math.max(image.width, image.height), 256);
+  assert.notEqual(windingAt(image, -.6, 0), 0);
+  assert.equal(windingAt(image, -.3, 0), 0);
+  assert.notEqual(windingAt(image, .1, 0), 0);
+  assert.equal(windingAt(image, .9, 0), 0);
+});
+
 test('work is incremental and oversized or invalid geometry is rejected', () => {
   const geometry = feature([rectangle(-.5, -.5, .5, .5)]);
   const builder = createShadowRasterPath({ features: [geometry, geometry] }, bounds, { maxVertices: 9 });

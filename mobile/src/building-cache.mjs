@@ -14,6 +14,7 @@ const CHUNK_BYTES = 256 * 1024;
 const FEATURE_VERTEX_LIMIT = 6000;
 const fileStores = new WeakMap();
 const cacheChains = new WeakMap();
+const indexHints = new WeakMap();
 
 function validBounds(bounds) {
   return Array.isArray(bounds) && bounds.length === 4 && bounds.every(Number.isFinite) &&
@@ -258,9 +259,18 @@ export function createBuildingCache(store, { now = Date.now, maxBytes = DEFAULT_
       cleaned = true;
       try { await store.pruneOrphans(metadata.flatMap((entry) => entry.parts.map((part) => part.id)), now()); } catch { /* Cache remains usable. */ }
     }
+    // Retain only the small, already validated index as a hint. Full reads
+    // still validate every chunk: the OS can purge files at any time.
+    // A missing or unreadable index cannot prove a disk miss: the file
+    // adapter may also report null on transient I/O failures. Keep the hint
+    // unknown until an actual index has been read or successfully written.
+    indexHints.set(store, validIndex ? metadata : null);
     return metadata;
   }
-  async function persistIndex(entries) { await store.setItem(INDEX, JSON.stringify({ version: VERSION, entries })); }
+  async function persistIndex(entries) {
+    await store.setItem(INDEX, JSON.stringify({ version: VERSION, entries }));
+    indexHints.set(store, entries);
+  }
   async function removeEntries(entries, strict = false, progress = () => {}) {
     for (const item of entries) {
       for (const part of item.parts) {
@@ -270,6 +280,15 @@ export function createBuildingCache(store, { now = Date.now, maxBytes = DEFAULT_
     }
   }
   return {
+    // A cheap hint avoids a disk scan before an incremental request, while
+    // never making a known saved, complete area compete with the network.
+    // Null means the index has not yet been read and must not be treated as
+    // a miss. `find` remains the sole authority for valid saved data.
+    coverageHint(bounds) {
+      const metadataSnapshot = indexHints.get(store);
+      if (!validBounds(bounds) || !Array.isArray(metadataSnapshot)) return null;
+      return metadataSnapshot.some((entry) => covers(entry.bounds, bounds) && entry.fetchedAt <= now() + 60000);
+    },
     async find(bounds) {
       if (!validBounds(bounds)) return null;
       try {

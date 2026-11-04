@@ -23,6 +23,63 @@ test('Madrid movement fetches only missing complete strips and deduplicates buil
   assert.strictEqual(loader.find(b), result);
 });
 
+test('overlapping in-memory Madrid coverage can start incremental loading without a disk lookup', async () => {
+  const loader = createViewportLoader(async (bounds) => ({ source: 'madrid', bounds, features: [feature(1)], omitted: 0 }));
+  assert.equal(loader.hasIncremental(b), false);
+  await loader.get(a);
+  assert.equal(loader.hasIncremental(b), true);
+  assert.equal(loader.hasIncremental([-3.600, 40.414, -3.596, 40.418]), false);
+  assert.equal(loader.hasIncremental([2.160, 41.390, 2.164, 41.394]), false);
+});
+
+test('Barcelona pans fetch just the new strip and merge OSM buildings by id', async () => {
+  const left = [2.160, 41.390, 2.164, 41.394], right = [2.161, 41.390, 2.165, 41.394];
+  const requests = [];
+  const loader = createViewportLoader(async (bounds, _fetch, options) => {
+    requests.push({ bounds, options });
+    return { source: 'osm', bounds, features: requests.length === 1 ? [feature(1), feature(2)] : [feature(2), feature(3)], omitted: 1 };
+  });
+  await loader.get(left);
+  assert.equal(loader.hasIncremental(right), true);
+  const result = await loader.get(right);
+  assert.equal(requests.length, 2);
+  assert.equal(requests[1].options.allowEmpty, true);
+  assert.ok(requests[1].bounds[0] > left[0]);
+  assert.deepEqual(result.features.map((item) => item.properties.id), [1, 2, 3]);
+  assert.equal(result.omitted, 2);
+  assert.deepEqual(result.bounds, right);
+});
+
+test('a diagonal Barcelona pan sends one bounded OSM query instead of concurrent strip queries', async () => {
+  const initial = [2.160, 41.390, 2.164, 41.394], moved = [2.161, 41.391, 2.165, 41.395];
+  const requests = [];
+  const loader = createViewportLoader(async (bounds, _fetch, options) => {
+    requests.push({ bounds, options });
+    return { source: 'osm', bounds, features: [feature(requests.length)], omitted: 0 };
+  });
+  await loader.get(initial);
+  const result = await loader.get(moved);
+  assert.equal(requests.length, 2);
+  assert.equal(requests[1].options.allowEmpty, true);
+  assert.deepEqual(result.bounds, moved);
+  assert.equal(result.features.length, 2);
+});
+
+test('an OSM strip exceeding the query limit falls back to the full view', async () => {
+  const initial = [2.160, 41.390, 2.164, 41.394], moved = [2.161, 41.391, 2.165, 41.395];
+  const requests = [];
+  const loader = createViewportLoader(async (bounds, _fetch, options) => {
+    requests.push({ bounds, options });
+    if (options?.allowEmpty) throw new Error('Acerca el mapa para cargar edificios.');
+    return { source: 'osm', bounds, features: [feature(requests.length)], omitted: 0 };
+  });
+  await loader.get(initial);
+  assert.deepEqual((await loader.get(moved)).bounds, moved);
+  assert.equal(requests.length, 3);
+  assert.deepEqual(requests[2].bounds, moved);
+  assert.equal(loader.hasIncremental(null), false);
+});
+
 test('a pan while Madrid is loading requests only the missing strip in parallel and waits for both', async () => {
   const requests = [];
   let resolveFirst, resolveStrip;

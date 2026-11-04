@@ -37,12 +37,12 @@ export async function getViewportBuildings(view, fetchFn = fetch, { allowEmpty =
     for (let row = 0; row < rows; row++) for (let column = 0; column < columns; column++) {
       points.push({ latitude: s + (row + .5) * (n - s) / rows, longitude: w + (column + .5) * (e - w) / columns });
     }
-    const buildings = await getBuildings(points, fetchFn);
+    const buildings = await getBuildings(points, fetchFn, { allowEmpty });
     const features = buildings.filter((building) => Number.isFinite(building.height)).map((building) => ({
       type: 'Feature', properties: { height: building.height, id: building.id },
       geometry: { type: 'Polygon', coordinates: [building.footprint.map((point) => [point.longitude, point.latitude])] },
     }));
-    if (!features.length) throw new Error('No hay alturas suficientes en esta zona.');
+    if (!features.length && !allowEmpty) throw new Error('No hay alturas suficientes en esta zona.');
     result = { type: 'FeatureCollection', features, bounds, source: 'osm', omitted: buildings.length - features.length };
   }
   result.fetchedAt = Date.now();

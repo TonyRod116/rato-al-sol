@@ -57,3 +57,30 @@ test('a building area saved and restored produces the same shadow signature', as
   const hit = await cache.find(bounds);
   assert.equal(await geometrySignature(original), await geometrySignature({ ...hit.value, fetchedAt: hit.fetchedAt }));
 });
+
+test('a change deep in a courtyard, polygon nesting or building id changes the signature', async () => {
+  const sample = () => ({ source: 'osm', bounds: [2, 41, 3, 42], fetchedAt: 123, omitted: 0, features: [{
+    properties: { id: 123456789, height: 25 }, geometry: { type: 'Polygon', coordinates: [
+      [[2, 41], [3, 41], [3, 42], [2, 41]],
+      [[2.1, 41.1], [2.2, 41.1], [2.2, 41.2], [2.1, 41.1]],
+    ] },
+  }] });
+  const original = await geometrySignature(sample());
+  const changedVertex = sample(); changedVertex.features[0].geometry.coordinates[1][2][1] += .0000001;
+  assert.notEqual(await geometrySignature(changedVertex), original);
+  const changedId = sample(); changedId.features[0].properties.id++;
+  assert.notEqual(await geometrySignature(changedId), original);
+  const changedShape = sample(); changedShape.features[0].geometry = { type: 'MultiPolygon', coordinates: [changedShape.features[0].geometry.coordinates] };
+  assert.notEqual(await geometrySignature(changedShape), original);
+});
+
+test('a very large single footprint yields and cancels without caching a partial signature', async () => {
+  const large = { features: [{ properties: { height: 10 }, geometry: { type: 'Polygon', coordinates: [
+    Array.from({ length: 20000 }, (_, i) => [i / 1e6, 40]),
+  ] } }] };
+  let cancelled = false, yields = 0;
+  let time = 0;
+  assert.equal(await geometrySignature(large, () => cancelled, async () => { yields++; cancelled = true; }, () => time++), null);
+  assert.equal(yields, 1);
+  assert.ok(await geometrySignature(large));
+});

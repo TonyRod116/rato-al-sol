@@ -176,14 +176,14 @@ function heightOf(tags) {
   return { value: null, source: 'unknown' };
 }
 
-export async function getBuildings(points, fetchFn = fetch) {
+export async function getBuildings(points, fetchFn = fetch, { allowEmpty = false } = {}) {
   if (!Array.isArray(points) || !points.length || points.length > 6 || !points.every(validCoordinate)) throw new Error('Puntos no válidos.');
   const clauses = points.map((point) => `way(around:${around(point, 400)})["building"];`).join('');
   const elements = await queryOverpass(`(${clauses});out geom ${MAX_BUILDINGS};`, fetchFn, endpointFor(points));
-  if (!elements.length || elements.length >= MAX_BUILDINGS) throw new Error('No hay geometría de edificios suficiente para calcular.');
+  if ((!elements.length && !allowEmpty) || elements.length >= MAX_BUILDINGS) throw new Error('No hay geometría de edificios suficiente para calcular.');
   const buildings = [];
   for (const item of elements) {
-    if (item.type !== 'way' || !Array.isArray(item.geometry) || item.geometry.length < 4 || item.geometry.length > 10000) throw new Error('Hay geometría de edificios incompleta.');
+    if (item.type !== 'way' || !Number.isSafeInteger(item.id) || !Array.isArray(item.geometry) || item.geometry.length < 4 || item.geometry.length > 10000) throw new Error('Hay geometría de edificios incompleta.');
     const footprint = item.geometry.map((p) => ({ latitude: p.lat, longitude: p.lon }));
     if (!footprint.every(validCoordinate) || distanceMetres(footprint[0], footprint.at(-1)) > 1) throw new Error('Hay geometría de edificios incompleta.');
     const height = heightOf(item.tags);

@@ -14,6 +14,44 @@ function memoryStore() {
   return { files, async getItem(k) { return files.get(k) ?? null; }, async setItem(k, v) { files.set(k, v); }, async removeItem(k) { files.delete(k); } };
 }
 
+test('the memory-only coverage hint is conservative and follows saves and clearing', async () => {
+  const store = memoryStore(), cache = createBuildingCache(store);
+  const inside = [-3.705, 40.415, -3.703, 40.417];
+  assert.equal(cache.coverageHint(inside), null, 'a new process has not read its index');
+  assert.equal(await cache.find(inside), null);
+  assert.equal(cache.coverageHint(inside), null, 'a missing index is not proof of a usable disk scan');
+  assert.equal(await cache.save(result()), true);
+  assert.equal(cache.coverageHint(inside), true);
+  assert.equal(cache.coverageHint(barcelona), false);
+  assert.equal(await cache.save(result(barcelona, 'osm')), true);
+  assert.equal(cache.coverageHint(barcelona), true);
+  assert.equal(await cache.clear(), true);
+  assert.equal(cache.coverageHint(inside), false);
+  assert.equal(cache.coverageHint(barcelona), false);
+});
+
+test('an unreadable or damaged saved area never becomes a trusted disk hit', async () => {
+  const store = memoryStore(), cache = createBuildingCache(store);
+  await cache.save(result());
+  const chunk = [...store.files.keys()].find((name) => name.startsWith('area-'));
+  store.files.delete(chunk);
+  assert.equal(cache.coverageHint(madrid), true, 'a hint never replaces reading and validating chunks');
+  assert.equal(await cache.find(madrid), null);
+  store.files.set('index', '{broken json');
+  assert.equal(await cache.find(madrid), null);
+  assert.equal(cache.coverageHint(madrid), null, 'a broken index is unknown rather than a definite miss');
+});
+
+test('coverage hints follow other cache instances sharing the same store', async () => {
+  const store = memoryStore(), first = createBuildingCache(store), second = createBuildingCache(store);
+  await first.save(result());
+  assert.equal(second.coverageHint(madrid), true);
+  assert.equal(await second.clear(), true);
+  assert.equal(first.coverageHint(madrid), false);
+  await second.save(result(barcelona, 'osm'));
+  assert.equal(first.coverageHint(barcelona), true);
+});
+
 test('visited Madrid and Barcelona coverage survives a new session, even when stale', async () => {
   const store = memoryStore(); let time = 1_000_000;
   const first = createBuildingCache(store, { now: () => time, freshMs: 1000 });
