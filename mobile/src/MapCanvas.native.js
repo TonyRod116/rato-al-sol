@@ -36,7 +36,7 @@ export default function MapCanvas({ camera, places, selected, language, groundSh
     onMove({ latitude: region.latitude, longitude: region.longitude, bounds: paddedViewport(visibleBounds), visibleBounds });
   }
   return <View style={[styles.container, style]}>
-    <MapView ref={map} style={StyleSheet.absoluteFill} initialCamera={{ center: DEFAULT_LOCATION, pitch: 20, heading: 0, altitude: 450, zoom: 17.3 }}
+    <MapView ref={map} style={StyleSheet.absoluteFill} initialCamera={{ center: DEFAULT_LOCATION, pitch: 20, heading: 0, altitude: 525, zoom: 17.1 }}
       showsBuildings showsCompass pitchEnabled rotateEnabled userInterfaceStyle={Platform.OS === 'android' ? 'light' : atmosphere.isNight ? 'dark' : 'light'}
       customMapStyle={Platform.OS === 'android' ? atmosphere.isNight ? nightMap : defaultMap : undefined}
       onRegionChangeComplete={move}
