@@ -2,7 +2,7 @@
 // all if the native SVG view is not in the registry yet. Never deliver a
 // result from an obsolete attempt and release any file written after cancel.
 export function captureShadow({ capture, write, discard, onReady, onError,
-  schedule = setTimeout, unschedule = clearTimeout, timeout = 4000, attempts = 2 }) {
+  schedule = setTimeout, unschedule = clearTimeout, timeout = 8000, attempts = 2 }) {
   let stopped = false, active = 0, timer, writing = false;
   function fail(reason) {
     if (stopped) return;
@@ -15,7 +15,10 @@ export function captureShadow({ capture, write, discard, onReady, onError,
     const id = ++active;
     timer = schedule(() => {
       if (stopped || active !== id || writing) return;
-      if (id < attempts) start(); else fail('timeout');
+      // A native SVG capture can still be running even if its callback is
+      // late. Starting another one would queue a second costly rasterization
+      // on the iOS UI thread and discard the first result.
+      fail('timeout');
     }, timeout);
     try {
       capture((data) => {

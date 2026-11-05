@@ -19,6 +19,7 @@ import { clearViewportBuildingMemoryCache, getViewportBuildings, viewportBounds 
 import { DEFAULT_LOCATION } from '../frontend/shared/default-location.mjs';
 import { createViewportLoader, expandedMadridViewport, stableShadowViewport } from './src/viewport.mjs';
 import { ShadowRasterizer, retainShadowFile, releaseShadowFile, retireShadowFile } from './src/ShadowOverlay';
+import { ShadowBitmap } from './src/ShadowBitmap';
 import { shadowSunStatus } from './src/shadow-status.mjs';
 import { buildingCache, sceneCache, searchCache, shadowCache, clearOfflineData, cacheGeneration } from './src/offline-data';
 import { createCachedServices } from './src/cached-services.mjs';
@@ -783,8 +784,12 @@ function Main() {
         {!map3DAvailable && <Text style={styles.mapFallback}>{t('3D no disponible · mapa en 2D', '3D unavailable · showing 2D map')}</Text>}
         {(mapIssue || shadows.limitExceeded || shadowPending || shadowFailed || sunStatus || partialShadow) && <Text accessibilityRole={mapAction ? 'button' : undefined} onPress={mapAction} style={[styles.mapFallback, { top: map3DAvailable ? 115 : 150 }]}>{shadows.limitExceeded ? t('Acerca el mapa para ver las sombras.', 'Zoom in to see the shadows.') : shadowFailed ? t('No se han podido dibujar las sombras. Toca para reintentar.', 'Could not draw shadows. Tap to retry.') : mapFailed ? localized(mapStatus) : partialShadow ? t('Actualizando sombras.', 'Updating shadows.') : shadowPending ? t('Calculando sombras de la zona…', 'Calculating shadows in this area…') : mapStale || (mapIssue && !mapBuildings) ? localized(mapStatus) : sunStatus === 'night' ? t('Es de noche a esta hora. Cambia la hora para ver sombras.', 'It is night at this time. Change the time to see shadows.') : sunStatus === 'low' ? t('El sol está muy bajo. Cambia la hora para ver sombras.', 'The sun is too low. Change the time to see shadows.') : localized(mapStatus)}</Text>}
       </View>
-      {Platform.OS !== 'web' && <ShadowRasterizer shadows={currentShadowResult?.uri ? emptyShadows : shadows} bounds={shadowArea} retryToken={mapRetry} onReady={acceptShadowResult} onError={(failure) => acceptShadowResult({ ...failure, failed: true })} />}
-      {Platform.OS !== 'web' && playingDay && futureJob?.source?.features?.length > 0 && !futureShadow && <ShadowRasterizer shadows={futureJob.source} bounds={futureJob.area} retryToken={futureJob.retryToken} onReady={acceptFutureShadow} onError={failFutureShadow} />}
+      {Platform.OS !== 'web' && (Platform.OS === 'ios' && mapBuildings?.source === 'madrid'
+        ? <ShadowBitmap shadows={currentShadowResult?.uri ? emptyShadows : shadows} bounds={shadowArea} retryToken={mapRetry} onReady={acceptShadowResult} onError={(failure) => acceptShadowResult({ ...failure, failed: true })} />
+        : <ShadowRasterizer shadows={currentShadowResult?.uri ? emptyShadows : shadows} bounds={shadowArea} retryToken={mapRetry} onReady={acceptShadowResult} onError={(failure) => acceptShadowResult({ ...failure, failed: true })} />)}
+      {Platform.OS !== 'web' && playingDay && futureJob?.source?.features?.length > 0 && !futureShadow && (Platform.OS === 'ios' && futureJob.geometrySource === 'madrid'
+        ? <ShadowBitmap shadows={futureJob.source} bounds={futureJob.area} retryToken={futureJob.retryToken} onReady={acceptFutureShadow} onError={failFutureShadow} />
+        : <ShadowRasterizer shadows={futureJob.source} bounds={futureJob.area} retryToken={futureJob.retryToken} onReady={acceptFutureShadow} onError={failFutureShadow} />)}
       <View pointerEvents="box-none" style={styles.topControls}>
         <View style={styles.brandRow}>
           <View style={styles.brandBadge}><Text style={styles.brand}><Text style={styles.brandSun}>☼ </Text>Rato al Sol<Text style={styles.accent}>.</Text></Text></View>

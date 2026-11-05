@@ -9,15 +9,15 @@ function fakeClock() {
     tick() { const [key, fn] = timers.entries().next().value; timers.delete(key); fn(); }, timers };
 }
 
-test('a timed-out capture retries once and ignores the late earlier callback', async () => {
+test('a timed-out native capture is not duplicated and its late result is ignored', async () => {
   const clock = fakeClock(), callbacks = [], ready = [], errors = [];
   captureShadow({ capture: (callback) => callbacks.push(callback), write: async (data) => data,
     discard: () => assert.fail('no orphan expected'), onReady: (uri) => ready.push(uri), onError: (error) => errors.push(error), ...clock });
   clock.tick();
-  assert.equal(callbacks.length, 2);
-  callbacks[0]('old'); callbacks[1]('new');
+  assert.equal(callbacks.length, 1);
+  callbacks[0]('old');
   await new Promise((resolve) => setImmediate(resolve));
-  assert.deepEqual(ready, ['new']); assert.deepEqual(errors, []);
+  assert.deepEqual(ready, []); assert.deepEqual(errors, ['timeout']);
   assert.equal(clock.timers.size, 0);
 });
 
@@ -33,12 +33,22 @@ test('a cancelled viewport cannot report failure or success and releases a file 
   assert.deepEqual(ready, []); assert.deepEqual(errors, []); assert.deepEqual(removed, ['file://old.png']);
 });
 
-test('a missing callback after both attempts is reported as timeout', () => {
+test('a missing callback is reported without launching another capture', () => {
   const clock = fakeClock(), errors = [];
   captureShadow({ capture: () => {}, write: () => {}, discard: () => {}, onReady: () => {}, onError: (error) => errors.push(error), ...clock });
-  clock.tick(); clock.tick();
+  clock.tick();
   assert.deepEqual(errors, ['timeout']);
   assert.equal(clock.timers.size, 0);
+});
+
+test('a synchronous capture failure may retry because no native work was queued', async () => {
+  const clock = fakeClock(), ready = [], errors = [];
+  let calls = 0;
+  captureShadow({ capture: (callback) => { if (++calls === 1) throw new Error('not queued'); callback('image'); },
+    write: async (data) => data, discard: () => {}, onReady: (uri) => ready.push(uri),
+    onError: (error) => errors.push(error), ...clock });
+  await new Promise((resolve) => setImmediate(resolve));
+  assert.equal(calls, 2); assert.deepEqual(ready, ['image']); assert.deepEqual(errors, []);
 });
 
 test('a stalled file write times out and a later file is discarded', async () => {
