@@ -123,3 +123,22 @@ test('native polygon groups preserve the SVG union, holes and roof cutouts', () 
     }
   }
 });
+
+test('reused roof projections preserve geometry across time, view and resolution changes', () => {
+  const roof = feature([rectangle(-.8, -.8, .5, .8), rectangle(-.4, -.4, .2, .4)]);
+  const second = feature([rectangle(-.1, -.5, .8, .5)]);
+  const shadows = [feature([rectangle(-.95, -.95, .95, .95)])];
+  function render(roofs, area, longestSide, maxVertices = 120000) {
+    const builder = createShadowRasterPath({ features: shadows, roofs }, area, { longestSide, maxVertices, nativeGroups: true });
+    while (!builder.step(1)) {}
+    return builder.result();
+  }
+  const roofs = [roof, second];
+  const cold = render(roofs, bounds, 256);
+  assert.deepEqual(render(roofs, bounds, 256), cold, 'a cached roof produces identical output');
+  const smallerArea = [-.9, -.8, .9, .8];
+  assert.deepEqual(render(roofs, smallerArea, 256), render(structuredClone(roofs), smallerArea, 256));
+  assert.deepEqual(render(roofs, smallerArea, 384), render(structuredClone(roofs), smallerArea, 384));
+  assert.deepEqual(render(roofs, bounds, 256), cold, 'returning to the original area is correct');
+  assert.throws(() => render(roofs, bounds, 256, 14), /too large/, 'cached vertices still count toward the safety limit');
+});

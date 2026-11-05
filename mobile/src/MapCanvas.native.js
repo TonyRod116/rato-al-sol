@@ -1,6 +1,7 @@
 import React, { useEffect, useRef } from 'react';
 import MapView, { Marker, Overlay } from 'react-native-maps';
 import { Platform, StyleSheet, View } from 'react-native';
+import Svg, { Circle, Path } from 'react-native-svg';
 import { mapAtmosphere } from '../../frontend/map-atmosphere.mjs';
 import { DEFAULT_LOCATION } from '../../frontend/shared/default-location.mjs';
 import { translate } from '../../frontend/shared/i18n.mjs';
@@ -19,6 +20,15 @@ const nightMap = [
   { featureType: 'poi.park', elementType: 'geometry', stylers: [{ color: '#304b49' }] },
 ];
 const defaultMap = [];
+
+// A fixed-size annotation avoids MapKit enlarging its default marker on selection.
+function SelectedPin() {
+  return <Svg width={32} height={40} viewBox="0 0 32 40" pointerEvents="none">
+    <Path d="M16 38 9.6 31.5A14 14 0 1 1 22.4 31.5Z" fill="#273e33" stroke="#fffdf7" strokeWidth={2.5} strokeLinejoin="round" />
+    <Circle cx={16} cy={11.5} r={3} fill="#fffdf7" />
+    <Path d="M16 18v8" stroke="#fffdf7" strokeWidth={3} strokeLinecap="round" />
+  </Svg>;
+}
 
 export default function MapCanvas({ camera, places, selected, language, groundShadow, sun, view3D, onMove, onPick, onPlace, style }) {
   const map = useRef(null), viewRequest = useRef(0);
@@ -45,11 +55,16 @@ export default function MapCanvas({ camera, places, selected, language, groundSh
       {groundShadow?.uri && <Overlay key={shadowOverlayBoundsKey(groundShadow)} bounds={groundShadow.bounds} image={shadowImage} />}
       {places.slice(0, 30).map((place) => <Marker key={place.id} coordinate={place} title={place.name} pinColor="#cf7554"
         onPress={(event) => { event.stopPropagation(); onPlace(place); }} />)}
-      {selected && <Marker coordinate={selected} title={selected.name} pinColor="#273e33" />}
+      {selected && <Marker coordinate={selected} accessibilityLabel={selected.name}
+        anchor={{ x: .5, y: 1 }} centerOffset={{ x: 0, y: -20 }} style={styles.selectedPin}
+        onPress={(event) => event.stopPropagation()}>
+        <SelectedPin />
+      </Marker>}
     </MapView>
     <View pointerEvents="none" style={[StyleSheet.absoluteFill, { backgroundColor: atmosphere.nativeTint }]} />
   </View>;
 }
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: '#ebe4d7', overflow: 'hidden' },
+  selectedPin: { width: 32, height: 40 },
 });

@@ -4,6 +4,9 @@
 const MERCATOR_LIMIT = 85.05112878;
 const mercator = (latitude) => (1 - Math.asinh(Math.tan(latitude * Math.PI / 180)) / Math.PI) / 2;
 const quantize = (value) => Math.round(value * 10) / 10;
+// Roof footprints are immutable and reused between times in the same scene.
+// Weak keys keep this small cache tied to the lifetime of the building data.
+const projectedRoofs = new WeakMap();
 
 // Group small batches within a short time budget. Yielding after every 100
 // polygons adds substantial timer overhead in dense city centres, but doing
@@ -25,16 +28,26 @@ export function createShadowRasterPath(collection, bounds, { longestSide = 384, 
   const size = Math.max(64, Math.min(768, longestSide));
   const scale = size / Math.max(spanX, spanY);
   const width = Math.max(1, Math.ceil(spanX * scale)), height = Math.max(1, Math.ceil(spanY * scale));
+  const projectionKey = `${west},${south},${east},${north},${width},${height}`;
   const paths = [], roofPaths = [], shadowFeatures = collection?.features || [], roofs = collection?.roofs || [];
   const features = [...shadowFeatures, ...roofs];
   let featureIndex = 0, polygonIndex = 0, vertices = 0, roofVertices = 0, pieces = 0;
   function addPolygon(polygon, roof) {
     if (!Array.isArray(polygon) || !polygon.length) throw new Error('Invalid shadow polygon');
+    const cached = roof ? projectedRoofs.get(polygon) : null;
+    if (cached?.key === projectionKey) {
+      roofVertices += cached.vertices;
+      if (roofVertices > maxVertices) throw new Error('Shadow geometry is too large');
+      if (cached.path) roofPaths.push(cached.path);
+      pieces++;
+      return;
+    }
     const polygonPaths = [];
+    let polygonVertices = 0;
     for (let ringIndex = 0; ringIndex < polygon.length; ringIndex++) {
       const ring = polygon[ringIndex];
       if (!Array.isArray(ring) || ring.length < 4) throw new Error('Invalid shadow ring');
-      if (roof) roofVertices += ring.length;
+      if (roof) { roofVertices += ring.length; polygonVertices += ring.length; }
       else vertices += ring.length;
       if ((roof ? roofVertices : vertices) > maxVertices) throw new Error('Shadow geometry is too large');
       const points = ring.map((point) => {
@@ -54,7 +67,9 @@ export function createShadowRasterPath(collection, bounds, { longestSide = 384, 
       if (points[0][0] === points[points.length - 1][0] && points[0][1] === points[points.length - 1][1]) points.pop();
       polygonPaths.push(`M${points.map(([x, y]) => `${x},${y}`).join('L')}Z`);
     }
-    if (polygonPaths.length) (roof ? roofPaths : paths).push(polygonPaths.join(''));
+    const path = polygonPaths.join('');
+    if (path) (roof ? roofPaths : paths).push(path);
+    if (roof) projectedRoofs.set(polygon, { key: projectionKey, path, vertices: polygonVertices });
     pieces++;
   }
   function step(maxPieces = 100) {
