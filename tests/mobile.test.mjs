@@ -24,8 +24,8 @@ test('map coverage follows all visible edges with a margin and falls back to the
 });
 
 test('place search sends literal bounded input in POST, never in the URL', async () => {
-  let sent;
-  const fetch = async (url, options) => { sent = { url, ...options }; return { ok: true, json: async () => ({ elements: [{ type: 'node', id: 1, lat: madrid.latitude, lon: madrid.longitude, tags: { name: 'Un parque' } }] }) }; };
+  let sent, calls = 0;
+  const fetch = async (url, options) => { sent = { url, ...options }; calls++; return { ok: true, json: async () => ({ elements: calls === 1 ? [] : [{ type: 'node', id: 1, lat: madrid.latitude, lon: madrid.longitude, tags: { name: 'Un parque' } }] }) }; };
   const result = await searchPlaces('parque.*";out;', madrid, 1000, fetch);
   assert.equal(result.length, 1);
   assert.equal(sent.method, 'POST');

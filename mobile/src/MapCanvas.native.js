@@ -20,6 +20,9 @@ const nightMap = [
   { featureType: 'poi.park', elementType: 'geometry', stylers: [{ color: '#304b49' }] },
 ];
 const defaultMap = [];
+// Google Maps' building layer is subtle at the same tilt used by MapKit.
+// Keep the existing zoom and use a slightly steeper camera only on Android.
+const mapPitch = Platform.OS === 'android' ? 35 : 20;
 
 // A fixed-size annotation avoids MapKit enlarging its default marker on selection.
 function SelectedPin() {
@@ -37,7 +40,7 @@ export default function MapCanvas({ camera, places, selected, language, groundSh
   useEffect(() => {
     if (camera) map.current?.animateCamera({ center: { latitude: camera.latitude, longitude: camera.longitude } }, { duration: 350 });
   }, [camera]);
-  useEffect(() => { map.current?.animateCamera({ pitch: view3D ? 20 : 0 }, { duration: 350 }); }, [view3D]);
+  useEffect(() => { map.current?.animateCamera({ pitch: view3D ? mapPitch : 0 }, { duration: 350 }); }, [view3D]);
   async function move(region) {
     const request = ++viewRequest.current;
     let boundary;
@@ -47,7 +50,7 @@ export default function MapCanvas({ camera, places, selected, language, groundSh
     onMove({ latitude: region.latitude, longitude: region.longitude, bounds: paddedViewport(visibleBounds), visibleBounds });
   }
   return <View style={[styles.container, style]}>
-    <MapView ref={map} style={StyleSheet.absoluteFill} initialCamera={{ center: DEFAULT_LOCATION, pitch: 20, heading: 0, altitude: 525, zoom: 17.1 }}
+    <MapView ref={map} style={StyleSheet.absoluteFill} initialCamera={{ center: DEFAULT_LOCATION, pitch: mapPitch, heading: 0, altitude: 525, zoom: 17.1 }}
       showsBuildings showsCompass pitchEnabled rotateEnabled userInterfaceStyle={Platform.OS === 'android' ? 'light' : atmosphere.isNight ? 'dark' : 'light'}
       customMapStyle={Platform.OS === 'android' ? atmosphere.isNight ? nightMap : defaultMap : undefined}
       onRegionChangeComplete={move}

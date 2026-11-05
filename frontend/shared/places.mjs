@@ -162,11 +162,24 @@ export async function searchPlaces(text, center, radius = 5000, fetchFn = fetch)
   const name = typeof text === 'string' ? text.trim() : '';
   if (name.length < 2 || name.length > 80 || /[\x00-\x1f]/.test(name)) throw new Error('Escribe entre 2 y 80 caracteres.');
   const category = searchCategory(name);
-  // Escape both the regex and Overpass string; only our bounded alternatives are operators.
-  const literal = namePattern(name).replace(/\\/g, '\\\\').replace(/"/g, '\\"');
-  const filter = category ? `${category.filter}["name"]` : `["name"~"${literal}",i]`;
-  const elements = await queryOverpass(`nwr(around:${around(center, radius)})${filter};out center tags ${MAX_PLACES};`, fetchFn, endpointFor([center]));
-  return normalizePlaces(elements, center);
+  const area = around(center, radius), endpoint = endpointFor([center]);
+  if (category) {
+    const elements = await queryOverpass(`nwr(around:${area})${category.filter}["name"];out center tags ${MAX_PLACES};`, fetchFn, endpoint);
+    return normalizePlaces(elements, center);
+  }
+  // Exact names use the index; broad regular expressions can be much slower on
+  // public Overpass servers, even when the spelling is correct.
+  const escapePattern = (pattern) => pattern.replace(/\\/g, '\\\\').replace(/"/g, '\\"');
+  const literal = name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  const tolerant = namePattern(name);
+  const options = { timeoutMs: 7000, serverTimeout: 6 };
+  const find = async (filter) => normalizePlaces(await queryOverpass(
+    `nwr(around:${area})${filter};out center tags ${MAX_PLACES};`, fetchFn, endpoint, options), center);
+  const exact = await find(`["name"="${escapePattern(name)}"]`);
+  if (exact.length) return exact;
+  const partial = await find(`["name"~"${escapePattern(literal)}",i]`);
+  if (partial.length || tolerant === literal) return partial;
+  return find(`["name"~"${escapePattern(tolerant)}",i]`);
 }
 
 export async function searchNearby(center, radius, fetchFn = fetch) {

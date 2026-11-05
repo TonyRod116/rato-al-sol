@@ -27,9 +27,10 @@ import { shadowSunStatus } from './src/shadow-status.mjs';
 import { buildingCache, sceneCache, searchCache, shadowCache, clearOfflineData, cacheGeneration } from './src/offline-data';
 import { createCachedServices } from './src/cached-services.mjs';
 import { firstWithResults } from './src/first-results.mjs';
-import { initialSelectedTime, TIME_END, TIME_START } from '../frontend/shared/time-selection.mjs';
+import { initialSelectedTime } from '../frontend/shared/time-selection.mjs';
 import { isLanguage, languageKey, translate, translateDirection } from '../frontend/shared/i18n.mjs';
-import { PLAYBACK_START, nextPlaybackTime } from './src/day-playback.mjs';
+import { PLAYBACK_START, PLAYBACK_END, nextPlaybackTime } from './src/day-playback.mjs';
+import { clipDaylightWindows } from './src/daylight-range.mjs';
 import { retainedShadow } from './src/retained-shadow.mjs';
 import { playbackFrameReady, shadowFrameMatches } from './src/shadow-frame.mjs';
 import { createPlaybackFrameCache } from './src/playback-frame-cache.mjs';
@@ -37,6 +38,7 @@ import { scenesFromMadridViewport } from './src/madrid-viewport-scenes.mjs';
 import { createZoomPrefetch } from './src/zoom-prefetch.mjs';
 import { swipeSheet, tapSheet } from './src/sheet-position.mjs';
 import { geometrySignature, localFrameDay, millisecondsUntilNextDay, renderedShadowKey } from './src/shadow-cache-key.mjs';
+import { shadowCacheProbePending, startShadowCacheProbe } from './src/shadow-cache-probe.mjs';
 
 const msg = (es, en) => ({ es, en });
 const cachedServices = createCachedServices({ scenes: getScenes, sceneCache, searchCache, generation: cacheGeneration });
@@ -69,19 +71,19 @@ function Loading({ text }) {
 }
 function Range({ label, value, min, max, step, onChange, valueText }) {
   return Platform.OS === 'web' ? <input type="range" aria-label={label} aria-valuetext={valueText} min={min} max={max} step={step} value={value} onChange={(event) => onChange(Number(event.target.value))} style={{ width: '100%', height: 42, marginTop: 4, accentColor: '#30463a', cursor: 'pointer' }} /> :
-    <Slider style={styles.slider} accessibilityLabel={label} accessibilityValue={{ min, max, now: value, text: valueText }} minimumValue={min} maximumValue={max} step={step} value={value} onValueChange={onChange} minimumTrackTintColor="#eeb342" maximumTrackTintColor="#d9d7cb" thumbTintColor="#30463a" />;
+    <Slider style={styles.slider} accessibilityLabel={label} accessibilityValue={{ min, max, now: value, text: valueText }} minimumValue={min} maximumValue={max} step={step} value={value} onValueChange={onChange} minimumTrackTintColor="#eeb342" maximumTrackTintColor="#d9d7cb" thumbTintColor="#30463a" thumbSize={28} />;
 }
 function TimeScale() {
   return <View style={styles.timeScale} accessibilityElementsHidden importantForAccessibility="no-hide-descendants">
     <Text style={[styles.scale, styles.timeScaleFirst]}>06:00</Text>
-    <Text style={[styles.scale, styles.timeScaleTick, { left: '35.294%' }]}>12:00</Text>
-    <Text style={[styles.scale, styles.timeScaleTick, { left: '70.588%' }]}>18:00</Text>
-    <Text style={[styles.scale, styles.timeScaleLast]}>23:00</Text>
+    <Text style={[styles.scale, styles.timeScaleTick, { left: '37.5%' }]}>12:00</Text>
+    <Text style={[styles.scale, styles.timeScaleTick, { left: '75%' }]}>18:00</Text>
+    <Text style={[styles.scale, styles.timeScaleLast]}>22:00</Text>
   </View>;
 }
 
 function Main() {
-  const { height } = useWindowDimensions();
+  const { height, fontScale } = useWindowDimensions();
   const insets = useSafeAreaInsets();
   const [language, setLanguage] = useState('es');
   const languageTouched = useRef(false);
@@ -117,7 +119,7 @@ function Main() {
   const [originLabel, setOriginLabel] = useState('Zona del mapa');
   const [query, setQuery] = useState(''), [radius, setRadius] = useState(500);
   const [dayOffset, setDayOffset] = useState(0);
-  const [minutes, setMinutes] = useState(() => { const now = new Date(); return initialSelectedTime(now.getHours() * 60 + now.getMinutes(), 15); });
+  const [minutes, setMinutes] = useState(() => { const now = new Date(); return Math.min(PLAYBACK_END, initialSelectedTime(now.getHours() * 60 + now.getMinutes(), 15)); });
   const [playingDay, setPlayingDay] = useState(false);
   const playingDayRef = useRef(false);
   playingDayRef.current = playingDay;
@@ -302,6 +304,7 @@ function Main() {
   const state = Platform.OS === 'web' ? webLight
     : calculatedLight?.scene === scene && calculatedLight?.instant === instant ? calculatedLight.value : 'unknown';
   const windows = useMemo(() => scene ? solarWindows(scene, day) : [], [scene, day]);
+  const daylightWindows = useMemo(() => clipDaylightWindows(windows, PLAYBACK_START, PLAYBACK_END), [windows]);
   const mapSun = useMemo(() => {
     return sunPosition(instant, center.latitude, center.longitude);
   }, [center, instant]);
@@ -341,10 +344,37 @@ function Main() {
     (!preparedGeometry.fallback || preparedGeometry.renderArea === visibleBounds) ? preparedGeometry : null;
   const latestVisibleBounds = useRef(visibleBounds);
   latestVisibleBounds.current = visibleBounds;
+  const cacheContext = useRef(null);
+  cacheContext.current = baseContext;
+  const cacheKey = Platform.OS !== 'web' && !playingDay && appActive && cacheEnabled && activeGeometrySignature && candidateArea
+    ? renderedShadowKey(activeGeometrySignature, baseContext) : null;
+  const [cacheProbe, setCacheProbe] = useState(null);
+  const geometryStarted = useRef(null);
+  // Do not interrupt a first calculation merely because its signature became
+  // available halfway through. The cache lookup can still race that job.
+  const cachePending = !shadowFrameMatches(geometryStarted.current, baseContext) &&
+    shadowCacheProbePending(cacheKey, adopted, cacheProbe, baseContext);
+  useEffect(() => {
+    if (!cacheKey || adopted) return;
+    const context = baseContext;
+    return startShadowCacheProbe({
+      lookup: () => shadowCache.get(cacheKey, localFrameDay(day), { generation: context.generation }),
+      isCurrent: () => context.generation === cacheGeneration() && shadowFrameMatches(context, cacheContext.current),
+      retire: retireShadowFile,
+      onHit: (uri) => {
+        const [west, south, east, north] = context.area;
+        const tagged = { ...context, source: emptyShadows, uri, bounds: [[north, east], [south, west]] };
+        setNativeShadowResult(tagged); setLastShadowImage(tagged);
+        setCacheProbe({ key: cacheKey, context });
+      },
+      onMiss: () => setCacheProbe({ key: cacheKey, context }),
+    });
+  }, [cacheKey, adopted, mapBuildings, candidateArea, shadowTimeKey, mapRetry, shadowAnchor.latitude, shadowAnchor.longitude, day]);
   const webShadows = useMemo(() => Platform.OS === 'web' && mapBuildings && candidateArea
     ? buildingShadows(mapBuildings, shadowSun, candidateArea) : emptyShadows, [mapBuildings, shadowSun, candidateArea]);
   useEffect(() => {
-    if (Platform.OS === 'web' || !mapBuildings || !candidateArea || adopted || prepared) return;
+    if (Platform.OS === 'web' || !mapBuildings || !candidateArea || adopted || prepared || cachePending) return;
+    geometryStarted.current = baseContext;
     let cancelled = false, stop = () => {};
     const complete = (source, renderArea, fallback) => {
       if (!cancelled) setPreparedGeometry({ ...baseContext, source, renderArea, fallback });
@@ -364,7 +394,7 @@ function Main() {
       } else complete(source, candidateArea, false);
     }, fail);
     return () => { cancelled = true; stop(); };
-  }, [mapBuildings, candidateArea, shadowSun, shadowTimeKey, mapRetry, shadowAnchor.latitude, shadowAnchor.longitude, adopted, prepared]);
+  }, [mapBuildings, candidateArea, shadowSun, shadowTimeKey, mapRetry, shadowAnchor.latitude, shadowAnchor.longitude, adopted, prepared, cachePending]);
   const shadowArea = Platform.OS === 'web' ? candidateArea : adopted?.area || prepared?.renderArea || candidateArea;
   const frameContext = { ...baseContext, area: shadowArea };
   const shadows = Platform.OS === 'web' ? webShadows : adopted?.source || prepared?.source || emptyShadows;
@@ -451,7 +481,7 @@ function Main() {
     const context = { area: shadowArea, buildings: mapBuildings, retryToken: mapRetry,
       timeKey: nextInstant.getTime(), latitude: shadowAnchor.latitude, longitude: shadowAnchor.longitude,
       geometrySource: mapBuildings?.source, generation: cacheGeneration() };
-    let cancelled = false, timer, stop = () => {};
+    let cancelled = false, timer, stop = () => {}, stopProbe = () => {};
     playbackFrames.current.get(context, emptyShadows).then((hit) => {
       if (cancelled) return;
       if (hit) { setFutureShadow(hit); return; }
@@ -466,15 +496,32 @@ function Main() {
             if (!source.features.length) setFutureShadow(frame);
           }, onError: pauseForShadow });
       };
-      // Give the first image time to attach to MapKit before preparing the next.
-      const delay = playingDayRef.current ? Math.max(0, overlaySettlesAt.current - Date.now()) : 0;
-      if (delay) timer = setTimeout(begin, delay); else begin();
+      const scheduleBegin = () => {
+        // Give the first image time to attach to MapKit before preparing the next.
+        const delay = playingDayRef.current ? Math.max(0, overlaySettlesAt.current - Date.now()) : 0;
+        if (delay) timer = setTimeout(begin, delay); else begin();
+      };
+      const key = cacheEnabled && activeGeometrySignature ? renderedShadowKey(activeGeometrySignature, context) : null;
+      if (!key) { scheduleBegin(); return; }
+      stopProbe = startShadowCacheProbe({
+        lookup: () => shadowCache.get(key, localFrameDay(day), { generation: context.generation }),
+        isCurrent: () => !cancelled && context.generation === cacheGeneration() && shadowFrameMatches(baseContext, cacheContext.current),
+        retire: retireShadowFile,
+        onHit: (uri) => {
+          const [west, south, east, north] = context.area;
+          setFutureShadow({ ...context, source: emptyShadows, uri, bounds: [[north, east], [south, west]] });
+        },
+        onMiss: scheduleBegin,
+      });
     });
-    return () => { cancelled = true; clearTimeout(timer); stop(); };
-  }, [prefetchMinutes, day, shadowAnchor.latitude, shadowAnchor.longitude, mapBuildings, shadowArea, visibleBounds, mapRetry, mode, searchOpen, mapFailed, shadowFailed, shadowPending, shadows.limitExceeded, allowPrefetch, prefetchBlocked]);
+    return () => { cancelled = true; clearTimeout(timer); stop(); stopProbe(); };
+  }, [prefetchMinutes, day, shadowAnchor.latitude, shadowAnchor.longitude, mapBuildings, shadowArea, visibleBounds, mapRetry, mode, searchOpen, mapFailed, shadowFailed, shadowPending, shadows.limitExceeded, allowPrefetch, prefetchBlocked, activeGeometrySignature, cacheEnabled]);
   useEffect(() => {
+    // Keep a signature already computed before playback so prefetched frames
+    // can also use the bounded persistent cache. A new scene never matches.
+    if (playingDay) return;
     setShadowGeometrySignature(null);
-    if (Platform.OS === 'web' || playingDay || !appActive || !cacheEnabled || !mapBuildings) return;
+    if (Platform.OS === 'web' || !appActive || !cacheEnabled || !mapBuildings) return;
     let cancelled = false;
     const timer = setTimeout(() => {
       geometrySignature(mapBuildings, () => cancelled).then((signature) => {
@@ -484,15 +531,16 @@ function Main() {
     return () => { cancelled = true; clearTimeout(timer); };
   }, [mapBuildings, playingDay, appActive, cacheEnabled]);
   useEffect(() => {
-    if (Platform.OS === 'web' || playingDay || !appActive || !cacheEnabled || !activeGeometrySignature || !shadows.features.length || currentShadowResult) return;
+    // A dense expanded frame can fall back to the visible area, whose cache
+    // key is only known after geometry chooses that smaller area.
+    if (Platform.OS === 'web' || !prepared?.fallback || playingDay || !appActive || !cacheEnabled ||
+        !activeGeometrySignature || !shadows.features.length || currentShadowResult) return;
     const key = renderedShadowKey(activeGeometrySignature, frameContext);
     if (!key) return;
     let cancelled = false;
     const generation = frameContext.generation, source = shadows, area = shadowArea;
     shadowCache.get(key, localFrameDay(day), { generation }).then((uri) => {
       if (!uri) return;
-      // A cache hit is copied to a disposable file. Retire it even if the
-      // viewport changed; the map retains the file if it is actually used.
       retireShadowFile(uri);
       const current = shadowContext.current;
       if (cancelled || generation !== cacheGeneration() || current.hasReady || current.source !== source || current.area !== area) return;
@@ -501,7 +549,7 @@ function Main() {
       setNativeShadowResult(tagged); setLastShadowImage(tagged);
     }).catch(() => {});
     return () => { cancelled = true; };
-  }, [activeGeometrySignature, playingDay, appActive, cacheEnabled, shadows, currentShadowResult, day, shadowArea, mapRetry]);
+  }, [activeGeometrySignature, playingDay, appActive, cacheEnabled, shadows, currentShadowResult, day, shadowArea, mapRetry, prepared]);
   useEffect(() => {
     if (Platform.OS === 'web' || playingDay || !appActive || !cacheEnabled || !activeGeometrySignature || !currentShadowResult?.uri) return;
     const generation = currentShadowResult.generation;
@@ -771,7 +819,13 @@ function Main() {
   }
 
   const timezone = Intl.DateTimeFormat().resolvedOptions().timeZone || t('hora del teléfono', 'phone time');
-  const sheetHeight = sheetMinimized ? 97 + Math.max(insets.bottom, 6) : sheetExpanded ? Math.max(340, Math.min(height - insets.top - 42, 690)) : Math.min(370, Math.max(330, height * 0.45));
+  // Keep the daylight and time controls outside the scrolling details, with
+  // enough space for them even when the selected name wraps or text is larger.
+  const normalSheetHeight = Math.min(
+    Math.max(0, height - insets.top - 42),
+    Math.min(550, Math.max(390 + Math.max(0, fontScale - 1) * 120, height * 0.48))
+  );
+  const sheetHeight = sheetMinimized ? 97 + Math.max(insets.bottom, 6) : sheetExpanded ? Math.max(0, Math.min(height - insets.top - 42, 690)) : normalSheetHeight;
   const choosePoint = (point) => {
     jumpToResults.current = false;
     setSearchOpen(false); setMode('place'); setSheetExpanded(false); selectPoint(point);
@@ -825,11 +879,18 @@ function Main() {
       : mapFailed ? (mapStale ? updateSavedMap : () => setMapRetry((value) => value + 1))
         : !shadowPending && mapStale ? updateSavedMap : undefined;
   const daylight = <>
-    <View style={styles.rowBetween}><Text style={styles.miniHeading}>{t('SOL Y SOMBRA · 24 H', 'SUN AND SHADE · 24 H')}</Text>{!sheetExpanded && <Pressable accessibilityRole="button" hitSlop={8} onPress={() => setSheetExpanded(true)} style={styles.inlineDetails}><Text style={styles.textActionLabel}>{choices.length ? t('Punto exterior ↑', 'Outdoor point ↑') : t('Ver detalle ↑', 'See details ↑')}</Text></Pressable>}</View>
-    <View accessible accessibilityLabel={windows.length ? windows.map((window) => t(`${statusText[window.state]} de ${clockTime(window.from)} a ${clockTime(window.to)}`, `${statusText[window.state]} from ${clockTime(window.from)} to ${clockTime(window.to)}`)).join('. ') : t('Aún sin horas disponibles', 'No hours available yet')} style={styles.daylightTrack}>
-      {windows.map((window) => <View key={window.from} style={{ flex: window.to - window.from, backgroundColor: barColor[window.state] }} />)}
+    <View style={styles.rowBetween}><Text style={styles.miniHeading}>{t('SOL Y SOMBRA · 06–22 H', 'SUN AND SHADE · 06–22 H')}</Text>{!sheetExpanded && <Pressable accessibilityRole="button" hitSlop={8} onPress={() => setSheetExpanded(true)} style={styles.inlineDetails}><Text style={styles.textActionLabel}>{choices.length ? t('Punto exterior ↑', 'Outdoor point ↑') : t('Ver detalle ↑', 'See details ↑')}</Text></Pressable>}</View>
+    <View style={styles.playbackRow}>
+      <View style={styles.playbackSlider}>
+        <View style={styles.timeTrackInset}>
+          <View accessible accessibilityLabel={daylightWindows.length ? daylightWindows.map((window) => t(`${statusText[window.state]} de ${clockTime(window.from)} a ${clockTime(window.to)}`, `${statusText[window.state]} from ${clockTime(window.from)} to ${clockTime(window.to)}`)).join('. ') : t('Aún sin horas disponibles', 'No hours available yet')} style={styles.daylightTrack}>
+            {daylightWindows.map((window) => <View key={window.from} style={{ flex: window.to - window.from, backgroundColor: barColor[window.state] }} />)}
+          </View>
+          <TimeScale />
+        </View>
+      </View>
+      <View style={styles.playbackButton} />
     </View>
-    <View style={styles.rowBetween}><Text style={styles.scale}>00</Text><Text style={styles.scale}>06</Text><Text style={styles.scale}>12</Text><Text style={styles.scale}>18</Text><Text style={styles.scale}>24</Text></View>
   </>;
   const results = resultsAreForMode && <View style={styles.results} onLayout={(event) => {
     if (mode === 'nearby' && jumpToResults.current) {
@@ -913,18 +974,6 @@ function Main() {
             {!sheetExpanded && !!error && <Text accessibilityRole="alert" style={styles.alertText}>{localized(error)}</Text>}
             {!sheetExpanded && !selected && !!busy && <Text style={styles.notice}>{localized(busy)}</Text>}
             {!sheetExpanded && !selected && !busy && !!notice && <Text style={styles.notice}>{localized(notice)}</Text>}
-            <View style={styles.timelineBlock}>{daylight}</View>
-            <View style={styles.timeTitleRow}><View style={styles.daySwitch}><Pressable accessibilityRole="button" accessibilityState={{ selected: dayOffset === 0 }} onPress={() => chooseDay(0)} style={[styles.dayButton, dayOffset === 0 && styles.dayButtonSelected]}><Text style={[styles.dayButtonText, dayOffset === 0 && styles.dayButtonTextSelected]}>{t('Hoy', 'Today')}</Text></Pressable><Pressable accessibilityRole="button" accessibilityState={{ selected: dayOffset === 1 }} onPress={() => chooseDay(1)} style={[styles.dayButton, dayOffset === 1 && styles.dayButtonSelected]}><Text style={[styles.dayButtonText, dayOffset === 1 && styles.dayButtonTextSelected]}>{t('Mañana', 'Tomorrow')}</Text></Pressable></View><Text style={styles.clock}>{formatTime(minutes)}</Text></View>
-            <View style={styles.playbackRow}>
-              <View style={styles.playbackSlider}>
-                <Range label={t('Hora para consultar el sol', 'Time to check sunlight')} value={minutes} min={TIME_START} max={TIME_END} step={15} valueText={formatTime(minutes)} onChange={changeTime} />
-                <TimeScale />
-              </View>
-              <Pressable accessibilityRole="button" accessibilityLabel={playingDay ? t('Pausar reproducción del día', 'Pause day playback') : t('Reproducir el día', 'Play the day')} accessibilityHint={t('Recorre las horas entre las 6 y las 22 en bucle.', 'Loops through the hours between 6 am and 10 pm.')} accessibilityState={{ pressed: playingDay }} onPress={toggleDayPlayback} style={({ pressed }) => [styles.playbackButton, pressed && styles.pressed]}>
-                {playingDay ? <View style={styles.pauseIcon}><View style={styles.pauseBar} /><View style={styles.pauseBar} /></View> : <View style={styles.playIcon} />}
-              </Pressable>
-            </View>
-            {!instant && <Text accessibilityRole="alert" style={styles.alertText}>{t('Esta hora no existe por el cambio horario. Elige otra.', 'This time does not exist due to the clock change. Choose another time.')}</Text>}
             {sheetExpanded && <>
               {feedback}
               <View style={styles.legend}>{[['sun', t('Sol', 'Sun')], ['shade', t('Sombra', 'Shade')], ['night', t('Noche', 'Night')], ['unknown', t('Sin datos', 'No data')]].map(([key, label]) => <View key={key} style={styles.legendItem}><View style={[styles.legendSwatch, { backgroundColor: barColor[key] }]} /><Text style={styles.subtle}>{label}</Text></View>)}</View>
@@ -942,7 +991,7 @@ function Main() {
             <Text style={styles.body}>{t('Elige a qué hora y hasta dónde quieres ir.', 'Choose a time and how far you want to go.')}</Text>
             <View style={styles.nearbySection}><View style={styles.rowBetween}><View style={styles.titleWrap}><Text style={styles.fieldLabel}>{t('Desde', 'From')}</Text><Text style={styles.fieldValue}>{t(originLabel, originLabel === 'Tu ubicación' ? 'Your location' : 'Map area')}</Text></View><Pressable accessibilityRole="button" onPress={useLocation} disabled={!!busy} style={styles.outlineButton}><Text style={styles.outlineText}>⌖  {t('Mi ubicación', 'My location')}</Text></Pressable></View></View>
             <View style={styles.nearbySection}><View style={styles.rowBetween}><Text style={styles.fieldLabel}>{t('Distancia máxima', 'Maximum distance')}</Text><Text style={styles.rangeValue}>{shortDistance(radius, language)}</Text></View><Range label={t('Distancia máxima', 'Maximum distance')} value={radius} min={500} max={5000} step={500} valueText={shortDistance(radius, language)} onChange={setRadius} /><View style={styles.rowBetween}><Text style={styles.scale}>500 m</Text><Text style={styles.scale}>5 km</Text></View></View>
-            <View style={styles.nearbySection}><View style={styles.rowBetween}><Text style={styles.fieldLabel}>{t('Hora de inicio', 'Start time')}</Text><Text style={styles.rangeValue}>{formatTime(minutes)}</Text></View><Range label={t('Hora inicial de búsqueda', 'Search start time')} value={minutes} min={TIME_START} max={TIME_END} step={15} valueText={formatTime(minutes)} onChange={changeTime} /><TimeScale />
+            <View style={styles.nearbySection}><View style={styles.rowBetween}><Text style={styles.fieldLabel}>{t('Hora de inicio', 'Start time')}</Text><Text style={styles.rangeValue}>{formatTime(minutes)}</Text></View><Range label={t('Hora inicial de búsqueda', 'Search start time')} value={minutes} min={PLAYBACK_START} max={PLAYBACK_END} step={15} valueText={formatTime(minutes)} onChange={changeTime} /><View style={styles.timeTrackInset}><TimeScale /></View>
               <View style={styles.nearbyDays}><Text style={styles.fieldLabel}>{t('Día', 'Day')}</Text><View style={styles.daySwitch}><Pressable accessibilityRole="button" accessibilityState={{ selected: dayOffset === 0 }} onPress={() => chooseDay(0)} style={[styles.dayButton, dayOffset === 0 && styles.dayButtonSelected]}><Text style={[styles.dayButtonText, dayOffset === 0 && styles.dayButtonTextSelected]}>{t('Hoy', 'Today')}</Text></Pressable><Pressable accessibilityRole="button" accessibilityState={{ selected: dayOffset === 1 }} onPress={() => chooseDay(1)} style={[styles.dayButton, dayOffset === 1 && styles.dayButtonSelected]}><Text style={[styles.dayButtonText, dayOffset === 1 && styles.dayButtonTextSelected]}>{t('Mañana', 'Tomorrow')}</Text></Pressable></View></View>
               <Pressable accessibilityRole="checkbox" accessibilityState={{ checked: endEnabled }} onPress={() => { setEndEnabled(!endEnabled); setEndMinutes((previous) => Math.max(previous, minutes + 15)); }} style={styles.rangeToggle}><Text style={styles.rangeToggleText}>{endEnabled ? '☑' : '☐'}  {t('Buscar durante una franja', 'Search over a time range')}</Text></Pressable>
               {endEnabled && <><View style={styles.rowBetween}><Text style={styles.fieldLabel}>{t('Hasta', 'Until')}</Text><Text style={styles.rangeValue}>{clockTime(endMinutes)}</Text></View><Range label={t('Hora final de búsqueda', 'Search end time')} value={endMinutes} min={minutes + 15} max={1440} step={15} valueText={clockTime(endMinutes)} onChange={setEndMinutes} /></>}
@@ -952,6 +1001,20 @@ function Main() {
             <Text style={styles.small}>{t('La ubicación solo se usa si la eliges. Consultamos OpenStreetMap y los datos municipales disponibles.', 'Your location is only used if you choose it. We consult OpenStreetMap and available city data.')}</Text>
           </>}
         </ScrollView>}
+        {!sheetMinimized && mode === 'place' && <View style={styles.fixedTimeControls}>
+            <View style={styles.timelineBlock}>{daylight}</View>
+            <View style={styles.timeTitleRow}><View style={styles.daySwitch}><Pressable accessibilityRole="button" accessibilityState={{ selected: dayOffset === 0 }} onPress={() => chooseDay(0)} style={[styles.dayButton, dayOffset === 0 && styles.dayButtonSelected]}><Text style={[styles.dayButtonText, dayOffset === 0 && styles.dayButtonTextSelected]}>{t('Hoy', 'Today')}</Text></Pressable><Pressable accessibilityRole="button" accessibilityState={{ selected: dayOffset === 1 }} onPress={() => chooseDay(1)} style={[styles.dayButton, dayOffset === 1 && styles.dayButtonSelected]}><Text style={[styles.dayButtonText, dayOffset === 1 && styles.dayButtonTextSelected]}>{t('Mañana', 'Tomorrow')}</Text></Pressable></View><Text style={styles.clock}>{formatTime(minutes)}</Text></View>
+            <View style={styles.playbackRow}>
+              <View style={styles.playbackSlider}>
+                <Range label={t('Hora para consultar el sol', 'Time to check sunlight')} value={minutes} min={PLAYBACK_START} max={PLAYBACK_END} step={15} valueText={formatTime(minutes)} onChange={changeTime} />
+                <View style={styles.timeTrackInset}><TimeScale /></View>
+              </View>
+              <Pressable accessibilityRole="button" accessibilityLabel={playingDay ? t('Pausar reproducción del día', 'Pause day playback') : t('Reproducir el día', 'Play the day')} accessibilityHint={t('Recorre las horas entre las 6 y las 22 en bucle.', 'Loops through the hours between 6 am and 10 pm.')} accessibilityState={{ pressed: playingDay }} onPress={toggleDayPlayback} style={({ pressed }) => [styles.playbackButton, pressed && styles.pressed]}>
+                {playingDay ? <View style={styles.pauseIcon}><View style={styles.pauseBar} /><View style={styles.pauseBar} /></View> : <View style={styles.playIcon} />}
+              </Pressable>
+            </View>
+            {!instant && <Text accessibilityRole="alert" style={styles.alertText}>{t('Esta hora no existe por el cambio horario. Elige otra.', 'This time does not exist due to the clock change. Choose another time.')}</Text>}
+        </View>}
         <View style={[styles.nav, { paddingBottom: Math.max(insets.bottom, 6) }]}>
           <Pressable accessibilityRole="tab" accessibilityLabel={t('Explorar', 'Explore')} accessibilityState={{ selected: mode === 'place' }} onPress={() => setView('place')} style={styles.navItem}><Text style={[styles.navIcon, mode === 'place' && styles.navSelected]}>⌾</Text><Text style={[styles.navText, mode === 'place' && styles.navSelected]}>{t('Explorar', 'Explore')}</Text><View style={[styles.navIndicator, mode === 'place' && styles.navIndicatorSelected]} /></Pressable>
           <Pressable accessibilityRole="tab" accessibilityLabel={t('Buscar sol', 'Find sun')} accessibilityState={{ selected: mode === 'nearby' }} onPress={() => setView('nearby')} style={styles.navItem}><Text style={[styles.navIcon, mode === 'nearby' && styles.navSelected]}>☼</Text><Text style={[styles.navText, mode === 'nearby' && styles.navSelected]}>{t('Buscar sol', 'Find sun')}</Text><View style={[styles.navIndicator, mode === 'nearby' && styles.navIndicatorSelected]} /></Pressable>
@@ -979,10 +1042,11 @@ const styles = StyleSheet.create({
   topControls: { position: 'absolute', top: 0, left: 0, right: 0, paddingHorizontal: 16, paddingTop: 6 }, brandRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }, brandBadge: { backgroundColor: '#fffcf5', borderRadius: 18, paddingHorizontal: 11, paddingVertical: 7 }, brand: { color: '#263f32', fontFamily: Platform.OS === 'ios' ? 'Georgia' : 'serif', fontSize: 20, fontWeight: '700', letterSpacing: -0.7 }, brandSun: { color: '#cb8d24', fontFamily: 'System' }, accent: { color: '#c66e4e' },
   languageControl: { flexDirection: 'row', backgroundColor: '#fcfaf3', borderRadius: 22, overflow: 'hidden', elevation: 2 }, languageOption: { minWidth: 44, minHeight: 44, alignItems: 'center', justifyContent: 'center' }, languageSelected: { backgroundColor: '#304a3a' }, languageText: { color: '#617266', fontSize: 10, fontWeight: '800' }, languageSelectedText: { color: '#fffdf7' },
   searchBarRow: { flexDirection: 'row', gap: 7 }, searchBar: { flex: 1, minWidth: 0, minHeight: 50, backgroundColor: '#fffdf8', borderRadius: 15, flexDirection: 'row', alignItems: 'center', paddingHorizontal: 14, gap: 10, elevation: 4, shadowColor: '#263f32', shadowOpacity: 0.16, shadowRadius: 8, shadowOffset: { width: 0, height: 3 } }, searchIcon: { fontSize: 28, color: '#304a3a', lineHeight: 32 }, searchPlaceholder: { color: '#79867b', fontSize: 14, flex: 1 }, locationButton: { width: 46, minHeight: 50, borderRadius: 15, backgroundColor: '#fffdf8', alignItems: 'center', justifyContent: 'center', elevation: 4, shadowColor: '#263f32', shadowOpacity: 0.16, shadowRadius: 8, shadowOffset: { width: 0, height: 3 } }, locationIcon: { color: '#304a3a', fontSize: 27 }, mapModeText: { color: '#304a3a', fontSize: 13, fontWeight: '800' }, mapFallback: { position: 'absolute', top: 115, alignSelf: 'center', maxWidth: '90%', textAlign: 'center', backgroundColor: '#fffcf5', color: '#526b5b', paddingHorizontal: 10, paddingVertical: 6, borderRadius: 9, fontSize: 11 }, mapAttribution: { position: 'absolute', bottom: 4, right: 6, backgroundColor: '#fffcf5', color: '#304a3a', fontSize: 10, paddingHorizontal: 4, paddingVertical: 2 },
-  sheet: { position: 'absolute', left: 0, right: 0, bottom: 0, backgroundColor: '#fffcf5', borderTopLeftRadius: 25, borderTopRightRadius: 25, overflow: 'hidden', elevation: 10, shadowColor: '#25372d', shadowOpacity: 0.16, shadowRadius: 14, shadowOffset: { width: 0, height: -4 } }, handleArea: { height: 25, alignItems: 'center' }, handleAreaMinimized: { height: 44 }, handleButton: { width: 90, height: 25, alignItems: 'center', justifyContent: 'center' }, handleButtonMinimized: { height: 44 }, handle: { width: 42, height: 4, borderRadius: 3, backgroundColor: '#d8c6a5' }, sheetScroll: { flex: 1 }, sheetContent: { paddingHorizontal: 20, paddingBottom: 14 },
+  sheet: { position: 'absolute', left: 0, right: 0, bottom: 0, backgroundColor: '#fffcf5', borderTopLeftRadius: 25, borderTopRightRadius: 25, overflow: 'hidden', elevation: 10, shadowColor: '#25372d', shadowOpacity: 0.16, shadowRadius: 14, shadowOffset: { width: 0, height: -4 } }, handleArea: { height: 25, alignItems: 'center' }, handleAreaMinimized: { height: 44 }, handleButton: { width: 90, height: 25, alignItems: 'center', justifyContent: 'center' }, handleButtonMinimized: { height: 44 }, handle: { width: 42, height: 4, borderRadius: 3, backgroundColor: '#d8c6a5' }, sheetScroll: { flex: 1, minHeight: 0 }, fixedTimeControls: { paddingHorizontal: 20, paddingBottom: 8 }, sheetContent: { paddingHorizontal: 20, paddingBottom: 14 },
   rowBetween: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', gap: 8 }, titleWrap: { flex: 1, minWidth: 0 }, miniHeading: { color: '#7b897b', fontSize: 10, fontWeight: '800', letterSpacing: 1, marginBottom: 4 }, placeTitle: { color: '#263e31', fontFamily: Platform.OS === 'ios' ? 'Georgia' : 'serif', fontWeight: '700', fontSize: 23, letterSpacing: -0.5 }, largeSun: { color: '#e3a52f', fontSize: 36, lineHeight: 42, marginLeft: 8 }, placeStatus: { color: '#657568', fontSize: 13, lineHeight: 19, marginTop: 3, fontWeight: '600' }, businessHint: { color: '#805d48', fontSize: 11, lineHeight: 16, marginTop: 4 },
   timelineBlock: { marginTop: 10 }, inlineDetails: { minHeight: 30, justifyContent: 'center', paddingHorizontal: 2 }, daylightTrack: { height: 11, borderRadius: 6, overflow: 'hidden', flexDirection: 'row', backgroundColor: '#dfdfd5', marginTop: 3, marginBottom: 5 }, scale: { color: '#7b897b', fontSize: 10 }, subtle: { color: '#79877b', fontSize: 11 },
   playbackRow: { flexDirection: 'row', alignItems: 'flex-start', gap: 4 }, playbackSlider: { flex: 1, minWidth: 0 }, playbackButton: { width: 44, height: 44, alignItems: 'center', justifyContent: 'center' }, playIcon: { width: 0, height: 0, marginLeft: 3, borderTopWidth: 8, borderBottomWidth: 8, borderLeftWidth: 13, borderTopColor: 'transparent', borderBottomColor: 'transparent', borderLeftColor: '#30463a' }, pauseIcon: { flexDirection: 'row', gap: 4 }, pauseBar: { width: 4, height: 16, borderRadius: 1, backgroundColor: '#30463a' },
+  timeTrackInset: { marginHorizontal: 14 },
   timeTitleRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginTop: 6 }, daySwitch: { flexDirection: 'row', backgroundColor: '#f0eee4', borderRadius: 18, padding: 2 }, dayButton: { minHeight: 36, paddingHorizontal: 12, borderRadius: 16, justifyContent: 'center', alignItems: 'center' }, dayButtonSelected: { backgroundColor: '#304b3b' }, dayButtonText: { color: '#617266', fontWeight: '700', fontSize: 11 }, dayButtonTextSelected: { color: '#fffdf7' }, clock: { color: '#ba6849', fontFamily: Platform.OS === 'ios' ? 'Georgia' : 'serif', fontSize: 25, fontWeight: '700' }, slider: { width: '100%', height: 38 }, timeScale: { height: 15, position: 'relative' }, timeScaleFirst: { position: 'absolute', left: 0 }, timeScaleLast: { position: 'absolute', right: 0 }, timeScaleTick: { position: 'absolute', width: 44, marginLeft: -22, textAlign: 'center' },
   nav: { flexDirection: 'row', borderTopWidth: 1, borderTopColor: '#ece6da', paddingTop: 3, backgroundColor: '#fffcf5' }, navItem: { flex: 1, minHeight: 49, alignItems: 'center', justifyContent: 'center' }, navIcon: { color: '#8b958a', fontSize: 22, lineHeight: 24 }, navText: { color: '#8b958a', fontSize: 11, fontWeight: '700', marginTop: 1 }, navSelected: { color: '#304b3b' }, navIndicator: { height: 3, width: 38, borderRadius: 2, marginTop: 3 }, navIndicatorSelected: { backgroundColor: '#e6ab3a' },
   sectionTitle: { color: '#30483a', fontFamily: Platform.OS === 'ios' ? 'Georgia' : 'serif', fontWeight: '700', fontSize: 18 }, body: { color: '#687a6c', fontSize: 13, lineHeight: 19, marginTop: 5 }, small: { color: '#7b897c', fontSize: 11, lineHeight: 17, marginTop: 12 }, link: { textDecorationLine: 'underline' }, legend: { flexDirection: 'row', flexWrap: 'wrap', gap: 12, marginTop: 12 }, legendItem: { flexDirection: 'row', alignItems: 'center', gap: 5 }, legendSwatch: { width: 9, height: 9, borderRadius: 3 }, windows: { marginTop: 14, borderTopWidth: 1, borderColor: '#eee8dc' }, windowRow: { flexDirection: 'row', justifyContent: 'space-between', paddingVertical: 9, borderBottomWidth: 1, borderColor: '#eee8dc', gap: 8 }, windowStatus: { fontSize: 12, fontWeight: '700', flex: 1 }, windowTime: { color: '#566d5d', fontSize: 12, fontWeight: '700' }, choices: { marginTop: 18 }, outdoorChoice: { paddingVertical: 12, borderBottomWidth: 1, borderColor: '#eee8dc', minHeight: 50 }, direction: { color: '#536d5d', backgroundColor: '#edf0e8', fontSize: 12, lineHeight: 18, padding: 12, borderRadius: 10, marginTop: 14 },

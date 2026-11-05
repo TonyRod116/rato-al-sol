@@ -10,10 +10,16 @@ export function prepareScene(point, buildings, radius = 400) {
   for (const b of buildings) {
     if (!Array.isArray(b.footprint) || b.footprint.length < 4 || !b.footprint.every(validCoordinate)) return null;
     const footprint = b.footprint.map((p) => [(p.longitude - point.longitude) * east, (point.latitude - p.latitude) * METRES_PER_DEGREE]);
-    const xs = footprint.map((p) => p[0]), ys = footprint.map((p) => p[1]);
-    // Keep large footprints that surround the point even if their vertices are far away.
-    const encompasses = Math.min(...xs) <= 0 && Math.max(...xs) >= 0 && Math.min(...ys) <= 0 && Math.max(...ys) >= 0;
-    if (!encompasses && !footprint.some(([x, y]) => x * x + y * y < (radius + 30) ** 2)) continue;
+    let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+    for (const [x, y] of footprint) {
+      minX = Math.min(minX, x); maxX = Math.max(maxX, x);
+      minY = Math.min(minY, y); maxY = Math.max(maxY, y);
+    }
+    // A long edge can cross the covered area while every vertex lies outside.
+    // A bounding box may keep extra buildings, but never discards such edges.
+    const x = Math.max(minX, Math.min(0, maxX));
+    const y = Math.max(minY, Math.min(0, maxY));
+    if (x * x + y * y > (radius + 30) ** 2) continue;
     scene.push({ footprint, height: b.height, heightSource: b.heightSource });
   }
   return scene.length ? { point, buildings: scene, radius } : null;
