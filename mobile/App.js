@@ -36,9 +36,10 @@ import { playbackFrameReady, shadowFrameMatches } from './src/shadow-frame.mjs';
 import { createPlaybackFrameCache } from './src/playback-frame-cache.mjs';
 import { scenesFromMadridViewport } from './src/madrid-viewport-scenes.mjs';
 import { createZoomPrefetch } from './src/zoom-prefetch.mjs';
-import { swipeSheet, tapSheet } from './src/sheet-position.mjs';
+import { measuredSheetHeight, normalSheetHeight, swipeSheet, tapSheet } from './src/sheet-position.mjs';
 import { geometrySignature, localFrameDay, millisecondsUntilNextDay, renderedShadowKey } from './src/shadow-cache-key.mjs';
 import { shadowCacheProbePending, startShadowCacheProbe } from './src/shadow-cache-probe.mjs';
+import { mapLoadError } from './src/map-load-error.mjs';
 
 const msg = (es, en) => ({ es, en });
 const cachedServices = createCachedServices({ scenes: getScenes, sceneCache, searchCache, generation: cacheGeneration });
@@ -107,6 +108,12 @@ function Main() {
   const [sheetPosition, setSheetPosition] = useState('normal');
   const sheetExpanded = sheetPosition === 'expanded', sheetMinimized = sheetPosition === 'minimized';
   const setSheetExpanded = (expanded) => setSheetPosition(expanded ? 'expanded' : 'normal');
+  const [sheetMeasurements, setSheetMeasurements] = useState({});
+  const measureSheetPart = (part, value) => {
+    if (!Number.isFinite(value) || value <= 0) return;
+    const rounded = Math.ceil(value);
+    setSheetMeasurements((previous) => previous[part] === rounded ? previous : { ...previous, [part]: rounded });
+  };
   const sheetScroll = useRef(null);
   const jumpToResults = useRef(false);
   const sheetGesture = useRef(PanResponder.create({
@@ -144,6 +151,7 @@ function Main() {
   const [showAllResults, setShowAllResults] = useState(false);
   const [mapBounds, setMapBounds] = useState(null), [mapBuildings, setMapBuildings] = useState(null);
   const [visibleBounds, setVisibleBounds] = useState(null);
+  const unroundedMapBounds = useRef(null);
   const [mapStatus, setMapStatus] = useState(''), [mapIssue, setMapIssue] = useState(false);
   const [mapFailed, setMapFailed] = useState(false), [mapRetry, setMapRetry] = useState(0);
   const [mapStale, setMapStale] = useState(false), [cacheNotice, setCacheNotice] = useState('');
@@ -254,7 +262,7 @@ function Main() {
             setMapStatus(zoomRequired
               ? msg('Acerca el mapa para cargar las sombras.', 'Zoom in to load shadows.')
               : previous ? msg('No se ha podido actualizar; los edificios guardados tienen más de 30 días. Toca para reintentar.', 'Could not update; saved buildings are over 30 days old. Tap to retry.')
-                : msg('No se han podido cargar los edificios. Toca para reintentar.', 'Could not load buildings. Tap to retry.'));
+                : mapLoadError(error));
           }
         });
     };
@@ -819,13 +827,9 @@ function Main() {
   }
 
   const timezone = Intl.DateTimeFormat().resolvedOptions().timeZone || t('hora del teléfono', 'phone time');
-  // Keep the daylight and time controls outside the scrolling details, with
-  // enough space for them even when the selected name wraps or text is larger.
-  const normalSheetHeight = Math.min(
-    Math.max(0, height - insets.top - 42),
-    Math.min(550, Math.max(390 + Math.max(0, fontScale - 1) * 120, height * 0.48))
-  );
-  const sheetHeight = sheetMinimized ? 97 + Math.max(insets.bottom, 6) : sheetExpanded ? Math.max(0, Math.min(height - insets.top - 42, 690)) : normalSheetHeight;
+  const normalHeight = normalSheetHeight(height, insets.top, fontScale, mode, selected?.kind === 'business');
+  const compactHeight = mode === 'place' ? measuredSheetHeight(normalHeight, sheetMeasurements) : normalHeight;
+  const sheetHeight = sheetMinimized ? 97 + Math.max(insets.bottom, 6) : sheetExpanded ? Math.max(0, Math.min(height - insets.top - 42, 690)) : compactHeight;
   const choosePoint = (point) => {
     jumpToResults.current = false;
     setSearchOpen(false); setMode('place'); setSheetExpanded(false); selectPoint(point);
@@ -879,7 +883,7 @@ function Main() {
       : mapFailed ? (mapStale ? updateSavedMap : () => setMapRetry((value) => value + 1))
         : !shadowPending && mapStale ? updateSavedMap : undefined;
   const daylight = <>
-    <View style={styles.rowBetween}><Text style={styles.miniHeading}>{t('SOL Y SOMBRA · 06–22 H', 'SUN AND SHADE · 06–22 H')}</Text>{!sheetExpanded && <Pressable accessibilityRole="button" hitSlop={8} onPress={() => setSheetExpanded(true)} style={styles.inlineDetails}><Text style={styles.textActionLabel}>{choices.length ? t('Punto exterior ↑', 'Outdoor point ↑') : t('Ver detalle ↑', 'See details ↑')}</Text></Pressable>}</View>
+    <View style={styles.rowBetween}><Text style={styles.miniHeading}>{t('SOL Y SOMBRA · 06–22 H', 'SUN AND SHADE · 06–22 H')}</Text></View>
     <View style={styles.playbackRow}>
       <View style={styles.playbackSlider}>
         <View style={styles.timeTrackInset}>
@@ -889,7 +893,7 @@ function Main() {
           <TimeScale />
         </View>
       </View>
-      <View style={styles.playbackButton} />
+      <View style={styles.playbackSpacer} />
     </View>
   </>;
   const results = resultsAreForMode && <View style={styles.results} onLayout={(event) => {
@@ -920,7 +924,10 @@ function Main() {
             nearbySearchOrigin.current = null; request.current++; setBusy(''); setPlaces([]); setResultsType(null);
             setNotice(msg('El mapa se ha movido. Vuelve a buscar en esta zona.', 'The map has moved. Search again in this area.'));
           }
-          const bounds = viewportBounds(point.bounds);
+          // Stabilize native jitter before rounding to cells. A tiny oscillation
+          // across a cell boundary otherwise triggers an entire extra download.
+          unroundedMapBounds.current = stableMapBounds(unroundedMapBounds.current, point.bounds || null);
+          const bounds = viewportBounds(unroundedMapBounds.current);
           if (bounds?.join(',') !== mapBounds?.join(',') || stableMapBounds(visibleBounds, point.visibleBounds || null) !== visibleBounds) zoomPrefetch.current.cancel();
           const pausedView = cachePauseViewport.current, oldArea = pausedView?.visibleBounds, newArea = point.visibleBounds;
           const zoomChanged = oldArea && newArea && Math.abs((newArea[2] - newArea[0]) / (oldArea[2] - oldArea[0]) - 1) > .1;
@@ -960,14 +967,14 @@ function Main() {
         </View>
       </View>
       <View style={[styles.sheet, { height: sheetHeight }]}>
-        <View {...sheetGesture.panHandlers} style={[styles.handleArea, sheetMinimized && styles.handleAreaMinimized]}>
+        <View {...sheetGesture.panHandlers} onLayout={(event) => { if (!sheetMinimized) measureSheetPart('handle', event.nativeEvent.layout.height); }} style={[styles.handleArea, sheetMinimized && styles.handleAreaMinimized]}>
           <Pressable accessibilityRole="button" accessibilityLabel={sheetMinimized ? t('Mostrar panel', 'Show panel') : sheetExpanded ? t('Reducir panel', 'Collapse panel') : t('Ver mapa a pantalla completa', 'Show full map')} accessibilityHint={t('Desliza hacia arriba o abajo para cambiar el tamaño del panel.', 'Swipe up or down to resize the panel.')} accessibilityState={{ expanded: !sheetMinimized }} hitSlop={10} onPress={() => setSheetPosition((current) => tapSheet(current))} style={[styles.handleButton, sheetMinimized && styles.handleButtonMinimized]}><View style={styles.handle} /></Pressable>
         </View>
-        {!sheetMinimized && <ScrollView ref={sheetScroll} style={styles.sheetScroll} contentContainerStyle={styles.sheetContent} keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={sheetExpanded}>
+        {!sheetMinimized && <ScrollView ref={sheetScroll} style={styles.sheetScroll} onContentSizeChange={(_, contentHeight) => { if (!sheetExpanded && mode === 'place') measureSheetPart('summary', contentHeight); }} contentContainerStyle={[styles.sheetContent, !sheetExpanded && mode === 'place' && styles.sheetContentCompact]} keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator>
           {mode === 'place' ? <>
             <View style={styles.rowBetween}>
-              <View style={styles.titleWrap}><Text style={styles.miniHeading}>{selected ? t('TU LUGAR', 'YOUR PLACE') : t('ENCUENTRA TU RATO AL SOL', 'FIND YOUR PLACE IN THE SUN')}</Text><Text style={styles.placeTitle} numberOfLines={2}>{selected ? pointName(selected) : t('¿Dónde te sentarías?', 'Where would you sit?')}</Text></View>
-              <Text accessible={false} style={styles.largeSun}>{state === 'night' ? '☾' : state === 'shade' ? '◒' : '☼'}</Text>
+              <View style={styles.titleWrap}>{sheetExpanded && <Text style={styles.miniHeading}>{selected ? t('TU LUGAR', 'YOUR PLACE') : t('ENCUENTRA TU RATO AL SOL', 'FIND YOUR PLACE IN THE SUN')}</Text>}<Text style={[styles.placeTitle, !sheetExpanded && styles.compactPlaceTitle]} numberOfLines={sheetExpanded ? 2 : 1}>{selected ? pointName(selected) : t('¿Dónde te sentarías?', 'Where would you sit?')}</Text></View>
+              <Text accessible={false} style={[styles.largeSun, !sheetExpanded && styles.compactSun]}>{state === 'night' ? '☾' : state === 'shade' ? '◒' : '☼'}</Text>
             </View>
             <Text style={[styles.placeStatus, selected && { color: statusColor[state] }]}>{!selected ? t('Toca el mapa para consultar un punto.', 'Tap the map to check a point.') : busy ? localized(busy) : scene && sceneInsideBuilding(scene) ? t('Elige un punto exterior', 'Choose an outdoor point') : statusText[state]}</Text>
             {selected?.kind === 'business' && <Text style={styles.businessHint}>{t('La marca puede ser la entrada. Toca las mesas en el mapa.', 'The marker may be the entrance. Tap the tables on the map.')}</Text>}
@@ -1001,13 +1008,13 @@ function Main() {
             <Text style={styles.small}>{t('La ubicación solo se usa si la eliges. Consultamos OpenStreetMap y los datos municipales disponibles.', 'Your location is only used if you choose it. We consult OpenStreetMap and available city data.')}</Text>
           </>}
         </ScrollView>}
-        {!sheetMinimized && mode === 'place' && <View style={styles.fixedTimeControls}>
-            <View style={styles.timelineBlock}>{daylight}</View>
-            <View style={styles.timeTitleRow}><View style={styles.daySwitch}><Pressable accessibilityRole="button" accessibilityState={{ selected: dayOffset === 0 }} onPress={() => chooseDay(0)} style={[styles.dayButton, dayOffset === 0 && styles.dayButtonSelected]}><Text style={[styles.dayButtonText, dayOffset === 0 && styles.dayButtonTextSelected]}>{t('Hoy', 'Today')}</Text></Pressable><Pressable accessibilityRole="button" accessibilityState={{ selected: dayOffset === 1 }} onPress={() => chooseDay(1)} style={[styles.dayButton, dayOffset === 1 && styles.dayButtonSelected]}><Text style={[styles.dayButtonText, dayOffset === 1 && styles.dayButtonTextSelected]}>{t('Mañana', 'Tomorrow')}</Text></Pressable></View><Text style={styles.clock}>{formatTime(minutes)}</Text></View>
+        {!sheetMinimized && mode === 'place' && <View onLayout={(event) => { if (!sheetExpanded) measureSheetPart('controls', event.nativeEvent.layout.height); }} style={styles.fixedTimeControls}>
+            <View style={[styles.timelineBlock, !sheetExpanded && styles.compactTimeline]}>{daylight}</View>
+            <View style={styles.timeTitleRow}><View style={styles.daySwitch}><Pressable accessibilityRole="button" accessibilityState={{ selected: dayOffset === 0 }} onPress={() => chooseDay(0)} style={[styles.dayButton, dayOffset === 0 && styles.dayButtonSelected]}><Text style={[styles.dayButtonText, dayOffset === 0 && styles.dayButtonTextSelected]}>{t('Hoy', 'Today')}</Text></Pressable><Pressable accessibilityRole="button" accessibilityState={{ selected: dayOffset === 1 }} onPress={() => chooseDay(1)} style={[styles.dayButton, dayOffset === 1 && styles.dayButtonSelected]}><Text style={[styles.dayButtonText, dayOffset === 1 && styles.dayButtonTextSelected]}>{t('Mañana', 'Tomorrow')}</Text></Pressable></View><Text style={styles.clock}>{formatTime(minutes)}</Text>{!sheetExpanded && <Pressable accessibilityRole="button" accessibilityLabel={choices.length ? t('Ver puntos exteriores', 'See outdoor points') : t('Ver detalle', 'See details')} onPress={() => setSheetExpanded(true)} style={styles.compactDetails}><Text style={styles.textActionLabel}>{t('Detalle ↑', 'Details ↑')}</Text></Pressable>}</View>
             <View style={styles.playbackRow}>
               <View style={styles.playbackSlider}>
                 <Range label={t('Hora para consultar el sol', 'Time to check sunlight')} value={minutes} min={PLAYBACK_START} max={PLAYBACK_END} step={15} valueText={formatTime(minutes)} onChange={changeTime} />
-                <View style={styles.timeTrackInset}><TimeScale /></View>
+                {sheetExpanded && <View style={styles.timeTrackInset}><TimeScale /></View>}
               </View>
               <Pressable accessibilityRole="button" accessibilityLabel={playingDay ? t('Pausar reproducción del día', 'Pause day playback') : t('Reproducir el día', 'Play the day')} accessibilityHint={t('Recorre las horas entre las 6 y las 22 en bucle.', 'Loops through the hours between 6 am and 10 pm.')} accessibilityState={{ pressed: playingDay }} onPress={toggleDayPlayback} style={({ pressed }) => [styles.playbackButton, pressed && styles.pressed]}>
                 {playingDay ? <View style={styles.pauseIcon}><View style={styles.pauseBar} /><View style={styles.pauseBar} /></View> : <View style={styles.playIcon} />}
@@ -1015,7 +1022,7 @@ function Main() {
             </View>
             {!instant && <Text accessibilityRole="alert" style={styles.alertText}>{t('Esta hora no existe por el cambio horario. Elige otra.', 'This time does not exist due to the clock change. Choose another time.')}</Text>}
         </View>}
-        <View style={[styles.nav, { paddingBottom: Math.max(insets.bottom, 6) }]}>
+        <View onLayout={(event) => measureSheetPart('navigation', event.nativeEvent.layout.height)} style={[styles.nav, { paddingBottom: Math.max(insets.bottom, 6) }]}>
           <Pressable accessibilityRole="tab" accessibilityLabel={t('Explorar', 'Explore')} accessibilityState={{ selected: mode === 'place' }} onPress={() => setView('place')} style={styles.navItem}><Text style={[styles.navIcon, mode === 'place' && styles.navSelected]}>⌾</Text><Text style={[styles.navText, mode === 'place' && styles.navSelected]}>{t('Explorar', 'Explore')}</Text><View style={[styles.navIndicator, mode === 'place' && styles.navIndicatorSelected]} /></Pressable>
           <Pressable accessibilityRole="tab" accessibilityLabel={t('Buscar sol', 'Find sun')} accessibilityState={{ selected: mode === 'nearby' }} onPress={() => setView('nearby')} style={styles.navItem}><Text style={[styles.navIcon, mode === 'nearby' && styles.navSelected]}>☼</Text><Text style={[styles.navText, mode === 'nearby' && styles.navSelected]}>{t('Buscar sol', 'Find sun')}</Text><View style={[styles.navIndicator, mode === 'nearby' && styles.navIndicatorSelected]} /></Pressable>
         </View>
@@ -1043,11 +1050,12 @@ const styles = StyleSheet.create({
   languageControl: { flexDirection: 'row', backgroundColor: '#fcfaf3', borderRadius: 22, overflow: 'hidden', elevation: 2 }, languageOption: { minWidth: 44, minHeight: 44, alignItems: 'center', justifyContent: 'center' }, languageSelected: { backgroundColor: '#304a3a' }, languageText: { color: '#617266', fontSize: 10, fontWeight: '800' }, languageSelectedText: { color: '#fffdf7' },
   searchBarRow: { flexDirection: 'row', gap: 7 }, searchBar: { flex: 1, minWidth: 0, minHeight: 50, backgroundColor: '#fffdf8', borderRadius: 15, flexDirection: 'row', alignItems: 'center', paddingHorizontal: 14, gap: 10, elevation: 4, shadowColor: '#263f32', shadowOpacity: 0.16, shadowRadius: 8, shadowOffset: { width: 0, height: 3 } }, searchIcon: { fontSize: 28, color: '#304a3a', lineHeight: 32 }, searchPlaceholder: { color: '#79867b', fontSize: 14, flex: 1 }, locationButton: { width: 46, minHeight: 50, borderRadius: 15, backgroundColor: '#fffdf8', alignItems: 'center', justifyContent: 'center', elevation: 4, shadowColor: '#263f32', shadowOpacity: 0.16, shadowRadius: 8, shadowOffset: { width: 0, height: 3 } }, locationIcon: { color: '#304a3a', fontSize: 27 }, mapModeText: { color: '#304a3a', fontSize: 13, fontWeight: '800' }, mapFallback: { position: 'absolute', top: 115, alignSelf: 'center', maxWidth: '90%', textAlign: 'center', backgroundColor: '#fffcf5', color: '#526b5b', paddingHorizontal: 10, paddingVertical: 6, borderRadius: 9, fontSize: 11 }, mapAttribution: { position: 'absolute', bottom: 4, right: 6, backgroundColor: '#fffcf5', color: '#304a3a', fontSize: 10, paddingHorizontal: 4, paddingVertical: 2 },
   sheet: { position: 'absolute', left: 0, right: 0, bottom: 0, backgroundColor: '#fffcf5', borderTopLeftRadius: 25, borderTopRightRadius: 25, overflow: 'hidden', elevation: 10, shadowColor: '#25372d', shadowOpacity: 0.16, shadowRadius: 14, shadowOffset: { width: 0, height: -4 } }, handleArea: { height: 25, alignItems: 'center' }, handleAreaMinimized: { height: 44 }, handleButton: { width: 90, height: 25, alignItems: 'center', justifyContent: 'center' }, handleButtonMinimized: { height: 44 }, handle: { width: 42, height: 4, borderRadius: 3, backgroundColor: '#d8c6a5' }, sheetScroll: { flex: 1, minHeight: 0 }, fixedTimeControls: { paddingHorizontal: 20, paddingBottom: 8 }, sheetContent: { paddingHorizontal: 20, paddingBottom: 14 },
+  sheetContentCompact: { paddingBottom: 2 }, compactPlaceTitle: { fontSize: 18 }, compactSun: { fontSize: 25, lineHeight: 30 }, compactTimeline: { marginTop: 3 }, compactDetails: { minWidth: 44, minHeight: 44, justifyContent: 'center', alignItems: 'flex-end' }, playbackSpacer: { width: 44 },
   rowBetween: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', gap: 8 }, titleWrap: { flex: 1, minWidth: 0 }, miniHeading: { color: '#7b897b', fontSize: 10, fontWeight: '800', letterSpacing: 1, marginBottom: 4 }, placeTitle: { color: '#263e31', fontFamily: Platform.OS === 'ios' ? 'Georgia' : 'serif', fontWeight: '700', fontSize: 23, letterSpacing: -0.5 }, largeSun: { color: '#e3a52f', fontSize: 36, lineHeight: 42, marginLeft: 8 }, placeStatus: { color: '#657568', fontSize: 13, lineHeight: 19, marginTop: 3, fontWeight: '600' }, businessHint: { color: '#805d48', fontSize: 11, lineHeight: 16, marginTop: 4 },
-  timelineBlock: { marginTop: 10 }, inlineDetails: { minHeight: 30, justifyContent: 'center', paddingHorizontal: 2 }, daylightTrack: { height: 11, borderRadius: 6, overflow: 'hidden', flexDirection: 'row', backgroundColor: '#dfdfd5', marginTop: 3, marginBottom: 5 }, scale: { color: '#7b897b', fontSize: 10 }, subtle: { color: '#79877b', fontSize: 11 },
+  timelineBlock: { marginTop: 10 }, daylightTrack: { height: 11, borderRadius: 6, overflow: 'hidden', flexDirection: 'row', backgroundColor: '#dfdfd5', marginTop: 3, marginBottom: 5 }, scale: { color: '#7b897b', fontSize: 10 }, subtle: { color: '#79877b', fontSize: 11 },
   playbackRow: { flexDirection: 'row', alignItems: 'flex-start', gap: 4 }, playbackSlider: { flex: 1, minWidth: 0 }, playbackButton: { width: 44, height: 44, alignItems: 'center', justifyContent: 'center' }, playIcon: { width: 0, height: 0, marginLeft: 3, borderTopWidth: 8, borderBottomWidth: 8, borderLeftWidth: 13, borderTopColor: 'transparent', borderBottomColor: 'transparent', borderLeftColor: '#30463a' }, pauseIcon: { flexDirection: 'row', gap: 4 }, pauseBar: { width: 4, height: 16, borderRadius: 1, backgroundColor: '#30463a' },
   timeTrackInset: { marginHorizontal: 14 },
-  timeTitleRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginTop: 6 }, daySwitch: { flexDirection: 'row', backgroundColor: '#f0eee4', borderRadius: 18, padding: 2 }, dayButton: { minHeight: 36, paddingHorizontal: 12, borderRadius: 16, justifyContent: 'center', alignItems: 'center' }, dayButtonSelected: { backgroundColor: '#304b3b' }, dayButtonText: { color: '#617266', fontWeight: '700', fontSize: 11 }, dayButtonTextSelected: { color: '#fffdf7' }, clock: { color: '#ba6849', fontFamily: Platform.OS === 'ios' ? 'Georgia' : 'serif', fontSize: 25, fontWeight: '700' }, slider: { width: '100%', height: 38 }, timeScale: { height: 15, position: 'relative' }, timeScaleFirst: { position: 'absolute', left: 0 }, timeScaleLast: { position: 'absolute', right: 0 }, timeScaleTick: { position: 'absolute', width: 44, marginLeft: -22, textAlign: 'center' },
+  timeTitleRow: { flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', justifyContent: 'space-between', gap: 4, marginTop: 2 }, daySwitch: { flexDirection: 'row', backgroundColor: '#f0eee4', borderRadius: 18, padding: 2 }, dayButton: { minHeight: 44, minWidth: 44, paddingHorizontal: 12, borderRadius: 16, justifyContent: 'center', alignItems: 'center' }, dayButtonSelected: { backgroundColor: '#304b3b' }, dayButtonText: { color: '#617266', fontWeight: '700', fontSize: 11 }, dayButtonTextSelected: { color: '#fffdf7' }, clock: { color: '#ba6849', fontFamily: Platform.OS === 'ios' ? 'Georgia' : 'serif', fontSize: 25, fontWeight: '700' }, slider: { width: '100%', height: 38 }, timeScale: { height: 15, position: 'relative' }, timeScaleFirst: { position: 'absolute', left: 0 }, timeScaleLast: { position: 'absolute', right: 0 }, timeScaleTick: { position: 'absolute', width: 44, marginLeft: -22, textAlign: 'center' },
   nav: { flexDirection: 'row', borderTopWidth: 1, borderTopColor: '#ece6da', paddingTop: 3, backgroundColor: '#fffcf5' }, navItem: { flex: 1, minHeight: 49, alignItems: 'center', justifyContent: 'center' }, navIcon: { color: '#8b958a', fontSize: 22, lineHeight: 24 }, navText: { color: '#8b958a', fontSize: 11, fontWeight: '700', marginTop: 1 }, navSelected: { color: '#304b3b' }, navIndicator: { height: 3, width: 38, borderRadius: 2, marginTop: 3 }, navIndicatorSelected: { backgroundColor: '#e6ab3a' },
   sectionTitle: { color: '#30483a', fontFamily: Platform.OS === 'ios' ? 'Georgia' : 'serif', fontWeight: '700', fontSize: 18 }, body: { color: '#687a6c', fontSize: 13, lineHeight: 19, marginTop: 5 }, small: { color: '#7b897c', fontSize: 11, lineHeight: 17, marginTop: 12 }, link: { textDecorationLine: 'underline' }, legend: { flexDirection: 'row', flexWrap: 'wrap', gap: 12, marginTop: 12 }, legendItem: { flexDirection: 'row', alignItems: 'center', gap: 5 }, legendSwatch: { width: 9, height: 9, borderRadius: 3 }, windows: { marginTop: 14, borderTopWidth: 1, borderColor: '#eee8dc' }, windowRow: { flexDirection: 'row', justifyContent: 'space-between', paddingVertical: 9, borderBottomWidth: 1, borderColor: '#eee8dc', gap: 8 }, windowStatus: { fontSize: 12, fontWeight: '700', flex: 1 }, windowTime: { color: '#566d5d', fontSize: 12, fontWeight: '700' }, choices: { marginTop: 18 }, outdoorChoice: { paddingVertical: 12, borderBottomWidth: 1, borderColor: '#eee8dc', minHeight: 50 }, direction: { color: '#536d5d', backgroundColor: '#edf0e8', fontSize: 12, lineHeight: 18, padding: 12, borderRadius: 10, marginTop: 14 },
   nearbySection: { marginTop: 18 }, fieldLabel: { color: '#536b5b', fontSize: 12, fontWeight: '700' }, fieldValue: { color: '#2f4739', fontSize: 14, fontWeight: '700', marginTop: 3 }, rangeValue: { color: '#ba6849', fontFamily: Platform.OS === 'ios' ? 'Georgia' : 'serif', fontSize: 20, fontWeight: '700' }, outlineButton: { minHeight: 44, borderWidth: 1, borderColor: '#d8ddcf', borderRadius: 11, paddingHorizontal: 12, justifyContent: 'center' }, outlineText: { color: '#405b49', fontSize: 12, fontWeight: '700' }, nearbyDays: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginTop: 12 }, rangeToggle: { minHeight: 48, justifyContent: 'center', marginTop: 6 }, rangeToggleText: { color: '#435b4a', fontSize: 13, fontWeight: '700' }, nearbyAction: { marginTop: 18 },
