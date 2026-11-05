@@ -1,0 +1,17 @@
+name: Check included Actions usage
+
+on:
+  push:
+    branches:
+      - codex/ios-budget-check
+
+permissions: {}
+
+jobs:
+  check:
+    if: github.repository == 'TonyRod116/rato-al-sol' && github.event.repository.private
+    runs-on: ubuntu-latest
+    timeout-minutes: 2
+    steps:
+      - name: Confirm a runner can start
+        run: printf '%s\n' 'The private repository can run a basic job.'
