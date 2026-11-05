@@ -7,20 +7,6 @@ private enum ShadowRasterError: Error {
   case invalidInput, invalidPath, cancelled, complexity, storage, unavailable
 }
 
-// Determine how a bitmap context maps y=0 into the first encoded scanline.
-// The supplied paths use a top-left origin (north at the top of the image).
-private let topRowIsYZero: Bool = {
-  var bytes = [UInt8](repeating: 0, count: 32)
-  return bytes.withUnsafeMutableBytes { buffer in
-    guard let context = CGContext(data: buffer.baseAddress, width: 1, height: 2,
-      bitsPerComponent: 8, bytesPerRow: 16, space: CGColorSpaceCreateDeviceGray(),
-      bitmapInfo: CGImageAlphaInfo.none.rawValue) else { return true }
-    context.setFillColor(gray: 1, alpha: 1)
-    context.fill(CGRect(x: 0, y: 0, width: 1, height: 1))
-    return buffer[0] != 0
-  }
-}()
-
 public final class RatoShadowRasterModule: Module {
   private let jobsLock = NSLock()
   private var jobs: [String: Bool] = [:] // Present while the unique job is active.
@@ -64,39 +50,17 @@ public final class RatoShadowRasterModule: Module {
         let roofPaths = try self.parsePaths(roof, id: id, deadline: deadline)
         try self.checkActive(id, deadline: deadline)
 
-        // Drawing one huge path forces Core Graphics to resolve intersections
-        // between thousands of long shadows at once. Draw complete polygons
-        // into an opaque mask instead: polygons are unioned, their holes remain
-        // part of each path, and the colour/opacity is applied only once.
+        // Scan-convert each polygon into the opaque mask. Unlike a native
+        // vector fill, every row is bounded and can check cancellation; long,
+        // overlapping sunrise shadows cannot trap a single drawing call.
         let scale = 2
         let pixelWidth = width * scale, pixelHeight = height * scale
         let maskStride = (pixelWidth + 15) & ~15
         var mask = [UInt8](repeating: 0, count: maskStride * pixelHeight)
-        try mask.withUnsafeMutableBytes { buffer in
-          guard let context = CGContext(data: buffer.baseAddress, width: pixelWidth, height: pixelHeight,
-            bitsPerComponent: 8, bytesPerRow: maskStride, space: CGColorSpaceCreateDeviceGray(),
-            bitmapInfo: CGImageAlphaInfo.none.rawValue) else { throw ShadowRasterError.unavailable }
-          if topRowIsYZero {
-            context.scaleBy(x: CGFloat(scale), y: CGFloat(scale))
-          } else {
-            context.translateBy(x: 0, y: CGFloat(pixelHeight))
-            context.scaleBy(x: CGFloat(scale), y: -CGFloat(scale))
-          }
-          context.setAllowsAntialiasing(true)
-          context.setShouldAntialias(true)
-          let visible = CGRect(x: -1, y: -1, width: CGFloat(width + 2), height: CGFloat(height + 2))
-          func draw(_ paths: [CGPath], gray: CGFloat) throws {
-            context.setFillColor(gray: gray, alpha: 1)
-            for (index, path) in paths.enumerated() {
-              if index % 16 == 0 { try self.checkActive(id, deadline: deadline) }
-              if !path.boundingBoxOfPath.intersects(visible) { continue }
-              context.addPath(path)
-              context.drawPath(using: .fill)
-            }
-          }
-          try draw(shadowPaths, gray: 1)
-          try draw(roofPaths, gray: 0)
-        }
+        try scanShadowPolygons(shadowPaths, into: &mask, width: pixelWidth, height: pixelHeight,
+          stride: maskStride, scale: scale, value: 255) { try self.checkActive(id, deadline: deadline) }
+        try scanShadowPolygons(roofPaths, into: &mask, width: pixelWidth, height: pixelHeight,
+          stride: maskStride, scale: scale, value: 0) { try self.checkActive(id, deadline: deadline) }
         try self.checkActive(id, deadline: deadline)
         var rgba = [UInt8](repeating: 0, count: pixelWidth * pixelHeight * 4)
         for row in 0..<pixelHeight {
@@ -163,10 +127,16 @@ public final class RatoShadowRasterModule: Module {
 
   // Each | separates complete polygons; holes remain in their parent path.
   // Never evaluate arbitrary SVG. Parsing also checks cancellation regularly.
-  private func parsePaths(_ input: String, id: String, deadline: TimeInterval) throws -> [CGPath] {
+  private func parsePaths(_ input: String, id: String, deadline: TimeInterval) throws -> [ShadowPolygon] {
     let bytes = Array(input.utf8)
-    var paths: [CGPath] = [], path = CGMutablePath()
-    var index = 0, count = 0, open = false, points = 0, rings = 0, groupCommands = 0
+    var paths: [ShadowPolygon] = [], rings: [[ShadowPoint]] = [], points: [ShadowPoint] = []
+    var index = 0, count = 0, open = false, groupCommands = 0
+    var minX = Double.infinity, minY = Double.infinity, maxX = -Double.infinity, maxY = -Double.infinity
+    func appendPolygon() {
+      paths.append(ShadowPolygon(rings: rings, minX: minX, minY: minY, maxX: maxX, maxY: maxY))
+      rings = []
+      minX = .infinity; minY = .infinity; maxX = -.infinity; maxY = -.infinity
+    }
     func number(untilComma: Bool) throws -> Double {
       let start = index
       while index < bytes.count {
@@ -193,11 +163,11 @@ public final class RatoShadowRasterModule: Module {
         guard groupCommands <= 1_024 else { throw ShadowRasterError.complexity }
       }
       if command == 90 {
-        guard open, points >= 3 else { throw ShadowRasterError.invalidPath }
-        path.closeSubpath(); open = false; points = 0; rings += 1
+        guard open, points.count >= 3 else { throw ShadowRasterError.invalidPath }
+        rings.append(points); points = []; open = false
       } else if command == 124 {
-        guard !open, rings > 0, index < bytes.count else { throw ShadowRasterError.invalidPath }
-        paths.append(path); path = CGMutablePath(); rings = 0; groupCommands = 0
+        guard !open, !rings.isEmpty, index < bytes.count else { throw ShadowRasterError.invalidPath }
+        appendPolygon(); groupCommands = 0
       } else if command == 77 || command == 76 {
         if command == 77 { guard !open else { throw ShadowRasterError.invalidPath } }
         else { guard open else { throw ShadowRasterError.invalidPath } }
@@ -205,12 +175,13 @@ public final class RatoShadowRasterModule: Module {
         guard index < bytes.count, bytes[index] == 44 else { throw ShadowRasterError.invalidPath }
         index += 1
         let y = try number(untilComma: false)
-        if command == 77 { path.move(to: CGPoint(x: CGFloat(x), y: CGFloat(y))); open = true; points = 1 }
-        else { path.addLine(to: CGPoint(x: CGFloat(x), y: CGFloat(y))); points += 1 }
+        points.append(ShadowPoint(x: x, y: y))
+        minX = min(minX, x); minY = min(minY, y); maxX = max(maxX, x); maxY = max(maxY, y)
+        if command == 77 { open = true }
       } else { throw ShadowRasterError.invalidPath }
     }
     guard !open else { throw ShadowRasterError.invalidPath }
-    if rings > 0 { paths.append(path) }
+    if !rings.isEmpty { appendPolygon() }
     return paths
   }
 }

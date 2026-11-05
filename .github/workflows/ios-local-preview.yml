@@ -25,6 +25,11 @@ jobs:
         with:
           persist-credentials: false
 
+      - name: Test native shadow rasterizer
+        run: |
+          swiftc -O mobile/modules/rato-shadow-raster/ios/ShadowScanline.swift tests/shadow-scanline.swift -o "$RUNNER_TEMP/rato-shadow-test"
+          "$RUNNER_TEMP/rato-shadow-test"
+
       - name: Set up Node
         uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
         with:
