@@ -21,11 +21,11 @@
     "ios": {
       "supportsTablet": true,
       "bundleIdentifier": "com.ratoalsol.app",
-      "buildNumber": "18"
+      "buildNumber": "19"
     },
     "android": {
       "package": "com.ratoalsol.app",
-      "versionCode": 1,
+      "versionCode": 19,
       "blockedPermissions": [
         "android.permission.READ_EXTERNAL_STORAGE",
         "android.permission.WRITE_EXTERNAL_STORAGE",
