@@ -316,6 +316,7 @@ function Main() {
   const [lastShadowImage, setLastShadowImage] = useState(null);
   const [futureShadow, setFutureShadow] = useState(null);
   const [futureJob, setFutureJob] = useState(null);
+  const [prefetchBlocked, setPrefetchBlocked] = useState(false);
   const [playbackDwellFrame, setPlaybackDwellFrame] = useState(null);
   const [shadowGeometrySignature, setShadowGeometrySignature] = useState(null);
   const activeGeometrySignature = shadowGeometrySignature?.buildings === mapBuildings ? shadowGeometrySignature.value : null;
@@ -390,6 +391,14 @@ function Main() {
   function failFutureShadow(result) {
     const current = futureContext.current;
     if (current && result.source === current.source && result.area === current.area && result.retryToken === current.retryToken) {
+      if (['complexity', 'timeout', 'geometry', 'busy'].includes(result.reason)) {
+        setPrefetchBlocked(true); setFutureJob(null); setFutureShadow(null);
+        if (playingDay) {
+          setPlayingDay(false);
+          setNotice(msg('La reproducción se ha pausado porque esta zona necesita demasiado cálculo. Acerca el mapa o prueba otra hora.', 'Playback paused because this area needs too much processing. Zoom in or try another time.'));
+        }
+        return;
+      }
       // Fall back to the ordinary foreground renderer at this instant.
       setFutureShadow({ ...current, failed: true });
     }
@@ -414,9 +423,10 @@ function Main() {
   }, [currentShadowResult, futureShadow, appActive, cacheEnabled]);
   const prefetchMinutes = !playingDay && !playbackStarted.current ? PLAYBACK_START : nextPlaybackTime(minutes);
   const allowPrefetch = appActive && (cacheEnabled || playingDay);
+  useEffect(() => { setPrefetchBlocked(false); }, [mapBuildings, shadowArea, day, shadowTimeKey, mapRetry]);
   useEffect(() => {
     setFutureJob(null); setFutureShadow(null);
-    if (Platform.OS === 'web' || !allowPrefetch || mode !== 'place' || searchOpen || mapFailed || shadowFailed ||
+    if (Platform.OS === 'web' || !allowPrefetch || prefetchBlocked || mode !== 'place' || searchOpen || mapFailed || shadowFailed ||
         shadowPending || shadows.limitExceeded || !mapBuildings || !shadowArea) return;
     const nextInstant = atMinutes(day, prefetchMinutes);
     if (!nextInstant) { setPlayingDay(false); return; }
@@ -435,7 +445,7 @@ function Main() {
       }, () => setFutureShadow({ ...context, source: emptyShadows, failed: true }));
     });
     return () => { cancelled = true; stop(); };
-  }, [prefetchMinutes, day, shadowAnchor.latitude, shadowAnchor.longitude, mapBuildings, shadowArea, mapRetry, mode, searchOpen, mapFailed, shadowFailed, shadowPending, shadows.limitExceeded, allowPrefetch]);
+  }, [prefetchMinutes, day, shadowAnchor.latitude, shadowAnchor.longitude, mapBuildings, shadowArea, mapRetry, mode, searchOpen, mapFailed, shadowFailed, shadowPending, shadows.limitExceeded, allowPrefetch, prefetchBlocked]);
   useEffect(() => {
     setShadowGeometrySignature(null);
     if (Platform.OS === 'web' || playingDay || !appActive || !cacheEnabled || !mapBuildings) return;
@@ -750,6 +760,7 @@ function Main() {
   const toggleDayPlayback = () => {
     setCacheEnabled(true);
     if (playingDay) { setPlayingDay(false); return; }
+    if (prefetchBlocked) { setPrefetchBlocked(false); setNotice(''); }
     if (!playbackStarted.current) {
       const firstInstant = atMinutes(day, PLAYBACK_START);
       if (futureShadow && !futureShadow.failed && shadowFrameMatches(futureShadow, { ...frameContext, timeKey: firstInstant?.getTime() })) {

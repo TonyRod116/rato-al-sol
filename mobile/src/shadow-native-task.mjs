@@ -32,7 +32,7 @@ export function startNativeShadowTask({ shadows, bounds, retryToken = 0, uri, na
     return () => { cancelled = true; remove(); };
   }
   try {
-    builder = createShadowRasterPath(shadows, bounds, { longestSide: 256 });
+    builder = createShadowRasterPath(shadows, bounds, { longestSide: 256, nativeGroups: true });
   } catch {
     fail('geometry');
     return () => { cancelled = true; remove(); };
@@ -43,7 +43,9 @@ export function startNativeShadowTask({ shadows, bounds, retryToken = 0, uri, na
     // registration is pending must cancel once registration completes too.
     deadline = schedule(() => fail('timeout'), timeout);
     Promise.resolve().then(() => native.register(id)).then((accepted) => {
-      if (accepted !== true) { fail('native'); return null; }
+      // A full native queue is a resource limit, not an invitation to start
+      // an additional expensive bitmap job on the JavaScript thread.
+      if (accepted !== true) { fail('busy'); return null; }
       registered = true;
       if (cancelled || abandoned) { cancelNative(); remove(); return null; }
       rendering = true;
@@ -53,6 +55,8 @@ export function startNativeShadowTask({ shadows, bounds, retryToken = 0, uri, na
       rendering = false;
       unschedule(deadline);
       if (cancelled || abandoned) { remove(); return; }
+      if (result === 'rato-shadow-complexity') { registered = false; remove(); fail('complexity'); return; }
+      if (result === 'rato-shadow-geometry') { registered = false; remove(); fail('geometry'); return; }
       if (typeof result !== 'string' || !result) { remove(); fail('native'); return; }
       registered = false;
       delivered = true;

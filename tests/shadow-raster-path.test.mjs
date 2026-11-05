@@ -101,3 +101,25 @@ test('the separate rooftop mask covers overlapping roofs and preserves open cour
   assert.notEqual(windingAt(result, .85, 0), 0, 'the shadow itself is still present on the street');
   assert.ok(result.roofVertices > 0);
 });
+
+test('native polygon groups preserve the SVG union, holes and roof cutouts', () => {
+  const first = feature([rectangle(-.85, -.8, .6, .8), rectangle(-.5, -.4, .3, .4)]);
+  const second = feature([rectangle(-.15, -.55, .9, .55), rectangle(.4, -.2, .6, .2)]);
+  const shadow = feature([rectangle(-.95, -.95, .95, .95)]);
+  const builder = createShadowRasterPath({ features: [first, second], roofs: [first, second, shadow] }, bounds, { nativeGroups: true });
+  const original = createShadowRasterPath({ features: [first, second], roofs: [first, second, shadow] }, bounds);
+  while (!builder.step(1)) {}
+  while (!original.step(1)) {}
+  const result = builder.result(), svg = original.result();
+  assert.equal(result.d.replaceAll('|', ''), svg.d);
+  assert.equal(result.roofD.replaceAll('|', ''), svg.roofD);
+  assert.equal(result.d.split('|').length, 2);
+  assert.equal((result.d.split('|')[0].match(/M/g) || []).length, 2, 'a courtyard remains in its polygon');
+  for (const [flat, grouped] of [[svg.d, result.d], [svg.roofD, result.roofD]]) {
+    for (let y = -.93; y < .94; y += .071) for (let x = -.93; x < .94; x += .069) {
+      const combined = windingAt({ ...result, d: flat }, x, y) !== 0;
+      const union = grouped.split('|').some((d) => windingAt({ ...result, d }, x, y) !== 0);
+      assert.equal(union, combined, `coverage mismatch at ${x}, ${y}`);
+    }
+  }
+});

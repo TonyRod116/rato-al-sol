@@ -20,7 +20,12 @@ export function ShadowNative({ fallback: Fallback, shadows, bounds, retryToken =
     const uri = `${FileSystem.cacheDirectory}rato-native-shadow-${Date.now()}-${nextFile++}.png`;
     return startNativeShadowTask({ shadows, bounds, retryToken, uri, native, retire: retireShadowFile,
       onReady: (result) => callbacks.current.onReady?.(result),
-      onError: () => setFailed({ source: shadows, area: bounds, retryToken }) });
+      // A deliberately bounded or timed-out job must not immediately start
+      // another expensive renderer for the same scene.
+      onError: (failure) => {
+        if (failure.reason === 'native') setFailed({ source: shadows, area: bounds, retryToken });
+        else callbacks.current.onError?.(failure);
+      } });
   }, [shadows, bounds, retryToken, useFallback]);
   return useFallback ? <Fallback shadows={shadows} bounds={bounds} retryToken={retryToken} onReady={onReady} onError={onError} /> : null;
 }

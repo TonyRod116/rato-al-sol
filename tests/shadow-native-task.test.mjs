@@ -89,7 +89,6 @@ test('a registration that finishes after timeout is cancelled without rendering'
 test('native registration and rendering errors report failure for fallback', async () => {
   for (const native of [
     { register: async () => { throw Error('registration'); }, render: async () => {}, cancel: () => {} },
-    { register: async () => false, render: async () => assert.fail('unregistered jobs must not render'), cancel: () => {} },
     { register: async () => true, render: async () => '', cancel: () => {} },
     { register: async () => true, render: async () => { throw Error('drawing'); }, cancel: () => {} },
   ]) {
@@ -97,6 +96,13 @@ test('native registration and rendering errors report failure for fallback', asy
     assert.equal(f.errors[0].reason, 'native'); assert.equal(f.errors[0].source, shadows);
     assert.deepEqual(f.removed, [f.args.uri]); assert.deepEqual(f.ready, []); assert.equal(f.timers.timers.size, 0);
   }
+});
+
+test('a full native queue reports busy without starting another renderer', async () => {
+  const f = fixture({ register: async () => false, render: async () => assert.fail('must not render'), cancel: () => {} });
+  startNativeShadowTask(f.args); f.timers.tick(); await settle();
+  assert.equal(f.errors[0].reason, 'busy');
+  assert.deepEqual(f.ready, []); assert.deepEqual(f.removed, [f.args.uri]);
 });
 
 test('a bridge rejection after registration cancels the registered token', async () => {
@@ -107,5 +113,25 @@ test('a bridge rejection after registration cancels the registered token', async
   assert.equal(f.errors[0].reason, 'native');
   assert.equal(cancelled.length, 1);
   stop(); assert.equal(cancelled.length, 1, 'already-cancelled token is not cancelled twice');
+  assert.deepEqual(f.removed, [f.args.uri]);
+});
+
+test('a native complexity limit reports a controlled failure and does not publish an image', async () => {
+  const f = fixture({ register: async () => true, render: async () => 'rato-shadow-complexity', cancel: () => {} });
+  const stop = startNativeShadowTask(f.args);
+  f.timers.tick(); await settle();
+  assert.deepEqual(f.ready, []);
+  assert.equal(f.errors.length, 1);
+  assert.equal(f.errors[0].reason, 'complexity');
+  assert.deepEqual(f.removed, [f.args.uri]);
+  stop();
+  assert.equal(f.errors.length, 1);
+});
+
+test('invalid native geometry reports a controlled failure without publishing', async () => {
+  const f = fixture({ register: async () => true, render: async () => 'rato-shadow-geometry', cancel: () => {} });
+  startNativeShadowTask(f.args); f.timers.tick(); await settle();
+  assert.deepEqual(f.ready, []);
+  assert.equal(f.errors[0].reason, 'geometry');
   assert.deepEqual(f.removed, [f.args.uri]);
 });

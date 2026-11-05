@@ -17,7 +17,7 @@ export function advanceShadowRasterPath(builder, now = Date.now) {
   return false;
 }
 
-export function createShadowRasterPath(collection, bounds, { longestSide = 384, maxVertices = 120000 } = {}) {
+export function createShadowRasterPath(collection, bounds, { longestSide = 384, maxVertices = 120000, nativeGroups = false } = {}) {
   if (!Array.isArray(bounds) || bounds.length !== 4 || !bounds.every(Number.isFinite)) throw new Error('Invalid shadow bounds');
   const [west, south, east, north] = bounds;
   if (west >= east || south >= north || south < -MERCATOR_LIMIT || north > MERCATOR_LIMIT) throw new Error('Invalid shadow bounds');
@@ -30,6 +30,7 @@ export function createShadowRasterPath(collection, bounds, { longestSide = 384, 
   let featureIndex = 0, polygonIndex = 0, vertices = 0, roofVertices = 0, pieces = 0;
   function addPolygon(polygon, roof) {
     if (!Array.isArray(polygon) || !polygon.length) throw new Error('Invalid shadow polygon');
+    const polygonPaths = [];
     for (let ringIndex = 0; ringIndex < polygon.length; ringIndex++) {
       const ring = polygon[ringIndex];
       if (!Array.isArray(ring) || ring.length < 4) throw new Error('Invalid shadow ring');
@@ -51,8 +52,9 @@ export function createShadowRasterPath(collection, bounds, { longestSide = 384, 
       // Z already closes the ring; omitting a repeated closing coordinate
       // makes the native SVG path smaller without changing its silhouette.
       if (points[0][0] === points[points.length - 1][0] && points[0][1] === points[points.length - 1][1]) points.pop();
-      (roof ? roofPaths : paths).push(`M${points.map(([x, y]) => `${x},${y}`).join('L')}Z`);
+      polygonPaths.push(`M${points.map(([x, y]) => `${x},${y}`).join('L')}Z`);
     }
+    if (polygonPaths.length) (roof ? roofPaths : paths).push(polygonPaths.join(''));
     pieces++;
   }
   function step(maxPieces = 100) {
@@ -69,7 +71,11 @@ export function createShadowRasterPath(collection, bounds, { longestSide = 384, 
   }
   function result() {
     if (featureIndex < features.length) throw new Error('Shadow path is incomplete');
-    return { d: paths.join(''), roofD: roofPaths.join(''), width, height, bounds: [[north, east], [south, west]], vertices, roofVertices, pieces };
+    // Native drawing can render one complete polygon (including its holes)
+    // at a time. SVG consumers continue to receive the original single path.
+    const separator = nativeGroups ? '|' : '';
+    return { d: paths.join(separator), roofD: roofPaths.join(separator), width, height,
+      bounds: [[north, east], [south, west]], vertices, roofVertices, pieces };
   }
   return { step, result };
 }
