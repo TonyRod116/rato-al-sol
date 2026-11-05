@@ -22,10 +22,18 @@ test('a saved mask key changes with provider geometry, height, time or viewport'
 
 test('abandoned geometry hashing yields and never saves a partial signature', async () => {
   const data = { features: Array.from({ length: 50 }, (_, i) => building(i + 1)) };
-  let cancelled = false, yields = 0;
-  assert.equal(await geometrySignature(data, () => cancelled, async () => { yields++; cancelled = true; }), null);
+  let cancelled = false, yields = 0, time = 0;
+  assert.equal(await geometrySignature(data, () => cancelled, async () => { yields++; cancelled = true; }, () => { time += 10; return time; }), null);
   assert.equal(yields, 1);
   assert.ok(await geometrySignature(data));
+});
+
+test('cheap groups of buildings do not force unnecessary timer yields', async () => {
+  const data = { features: Array.from({ length: 200 }, (_, i) => building(i + 1)) };
+  let yields = 0;
+  const signature = await geometrySignature(data, () => false, async () => { yields++; }, () => 0);
+  assert.ok(signature);
+  assert.equal(yields, 0);
 });
 
 test('local cache day is a local calendar day', () => {

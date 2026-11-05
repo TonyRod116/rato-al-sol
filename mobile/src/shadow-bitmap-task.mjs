@@ -15,7 +15,10 @@ export function startShadowBitmapTask({ shadows, bounds, retryToken, uri, write,
     if (cancelled) return;
     try {
       const deadline = now() + 6;
-      for (let batch = 0; batch < 100; batch++) {
+      // Many small polygons need only one or two rows. The time budget,
+      // rather than an arbitrary small batch count, controls responsiveness;
+      // otherwise dense scenes schedule hundreds of extra timers per frame.
+      for (let batch = 0; batch < 10000; batch++) {
         if (builder.step(stage === 'bitmap' ? 5 : 2048)) {
           if (stage === 'bitmap') {
             bitmap = builder.result();

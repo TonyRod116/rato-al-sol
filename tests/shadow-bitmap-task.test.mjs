@@ -34,6 +34,20 @@ test('bitmap rendering yields and publishes only after the image is written', as
   cancel(); assert.deepEqual(removed, ['file://mask.png']);
 });
 
+test('many tiny polygons share a timer when the time budget has not elapsed', async () => {
+  const timers = clock(), ready = [];
+  // A stopped fake clock represents many cheap batches within one time budget.
+  timers.now = () => 0;
+  const tiny = { geometry: { type: 'Polygon', coordinates: [[[-.5, -.5], [-.49, -.5], [-.49, -.49], [-.5, -.49], [-.5, -.5]]] } };
+  const scene = { features: Array.from({ length: 1500 }, () => tiny) };
+  const cancel = startShadowBitmapTask({ shadows: scene, bounds, retryToken: 0, uri: 'file://many.png', ...timers,
+    write: async () => {}, retire: () => {}, onReady: (result) => ready.push(result), onError: assert.fail });
+  assert.ok(drain(timers) < 4, 'cheap batches should not require hundreds of timer yields');
+  await new Promise((resolve) => setImmediate(resolve));
+  assert.equal(ready.length, 1);
+  cancel();
+});
+
 test('cancelled rendering does not write or publish stale work', async () => {
   const timers = clock(), removed = [];
   const cancel = startShadowBitmapTask({ shadows, bounds, retryToken: 0, uri: 'file://cancel.png', ...timers,

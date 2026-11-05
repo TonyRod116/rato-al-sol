@@ -21,7 +21,7 @@
     "ios": {
       "supportsTablet": true,
       "bundleIdentifier": "com.ratoalsol.app",
-      "buildNumber": "13"
+      "buildNumber": "14"
     },
     "android": {
       "package": "com.ratoalsol.app",

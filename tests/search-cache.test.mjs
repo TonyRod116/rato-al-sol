@@ -12,6 +12,18 @@ const barcelona = { source: 'barcelona-terraces', query: '', center: { latitude:
 const place = { id: 'way/12', name: 'Lugar sintético', latitude: 40.42, longitude: -3.69,
   distance: 20, kind: 'public', unusedPrivateField: 'must not be cached' };
 
+test('Madrid European nearby searches do not reuse an older empty worldwide result', async () => {
+  const cache = createSearchCache(memoryStore());
+  const older = { ...madrid, source: 'osm-nearby', query: '', radius: 500 };
+  const european = { ...older, source: 'osm-nearby-eu' };
+  assert.equal(await cache.save(older, [], { complete: true }), true);
+  assert.equal(await cache.find(european), null);
+  assert.equal(await cache.save(european, [place], { complete: true }), true);
+  assert.equal((await cache.find(european)).places.length, 1);
+  assert.equal(await cache.save({ ...european, query: 'abc' }, [place], { complete: true }), false);
+  assert.equal(await cache.save({ ...european, center: barcelona.center }, [place], { complete: true }), false);
+});
+
 test('a successful provider result survives restart for the same query and radius', async () => {
   const store = memoryStore();
   let now = 1000;

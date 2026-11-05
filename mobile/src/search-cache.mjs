@@ -10,7 +10,7 @@ const INDEX = 'index';
 const DEFAULT_MAX_BYTES = 2 * 1024 * 1024;
 const DEFAULT_MAX_ENTRY_BYTES = 256 * 1024;
 const DEFAULT_FRESH_MS = 24 * 60 * 60 * 1000;
-const PROVIDERS = new Set(['osm-search', 'osm-nearby', 'madrid-terraces', 'madrid-parks', 'barcelona-terraces']);
+const PROVIDERS = new Set(['osm-search', 'osm-nearby', 'osm-nearby-eu', 'madrid-terraces', 'madrid-parks', 'barcelona-terraces']);
 
 function validateSpec(input) {
   if (!input || !PROVIDERS.has(input.source) || typeof input.query !== 'string' || input.query.length > 80 ||
@@ -22,7 +22,8 @@ function validateSpec(input) {
   if (input.source.startsWith('madrid-') && !madrid) return null;
   if (input.source === 'barcelona-terraces' && !barcelona) return null;
   if (input.source === 'osm-search' && input.query.trim().length < 2) return null;
-  if (input.source === 'osm-nearby' && input.query !== '') return null;
+  if (['osm-nearby', 'osm-nearby-eu'].includes(input.source) && input.query !== '') return null;
+  if (input.source === 'osm-nearby-eu' && !madrid) return null;
   return { source: input.source, query: input.query, center: { latitude: center.latitude, longitude: center.longitude }, radius: input.radius };
 }
 

@@ -59,9 +59,14 @@ export async function geometrySignature(buildings, cancelled = () => false, yiel
       }
     }
     if (++sinceYield >= 50) {
-      await yieldWork();
-      if (cancelled()) return null;
-      sinceYield = 0; batchStart = now();
+      // Fifty small buildings can take far less than one frame budget.
+      // Avoid a timer for every fifty if there is still time to do useful work.
+      sinceYield = 0;
+      if (now() - batchStart >= 6) {
+        await yieldWork();
+        if (cancelled()) return null;
+        batchStart = now();
+      }
     }
   }
   if (cancelled()) return null;

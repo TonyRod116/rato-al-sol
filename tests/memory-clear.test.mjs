@@ -92,10 +92,11 @@ test('a Barcelona catalogue started before clear cannot repopulate its cache', a
 
 test('clearing results does not disable Overpass rate-limit backoff', async (t) => {
   clearPlacesMemoryCache();
-  let calls = 0;
-  useFetch(t, async () => { calls++; return { ok: false, status: 429 }; });
+  const calls = [];
+  useFetch(t, async (url) => { calls.push(url); return { ok: false, status: 429 }; });
   await assert.rejects(searchPlaces('parque', barcelona, 1000));
+  assert.deepEqual(calls, ['https://ovp.dresel.systems/api/interpreter', 'https://overpass-api.de/api/interpreter']);
   clearPlacesMemoryCache();
   await assert.rejects(searchPlaces('parque', barcelona, 1000));
-  assert.equal(calls, 1, 'the provider is not hit again during backoff');
+  assert.equal(calls.length, 2, 'neither rate-limited provider is hit again during backoff');
 });

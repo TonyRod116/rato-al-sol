@@ -64,6 +64,15 @@ test('bounded cache evicts old images, rejects invalid or oversized inputs and p
   assert.equal(await cache.put('x', '2026-11-04', 'cache/../../private.png'), false);
 });
 
+test('a native render may be saved only with a recognized temporary filename', async () => {
+  const fs = memoryFs(), native = `cache/rato-native-shadow-${day(4)}-1.png`;
+  fs.seed(native); fs.seed('cache/rato-native-shadow-personal-notes.png');
+  const cache = createShadowCache(fs, { now: () => day(4) });
+  assert.equal(await cache.put('native', '2026-11-04', native), true);
+  assert.ok(await cache.get('native', '2026-11-04'));
+  assert.equal(await cache.put('bad', '2026-11-04', 'cache/rato-native-shadow-personal-notes.png'), false);
+});
+
 test('clearing while a write is in flight prevents it from returning after the clear', async () => {
   const fs = memoryFs(); fs.seed('cache/rato-shadow-1-1.png');
   let generation = 0, begin, resume;
@@ -90,13 +99,27 @@ test('cleanup removes abandoned temporary hits on startup but preserves unrelate
   fs.seed('cache/rato-shadow-cache-hit-old-1.png'); fs.seed('cache/other.png');
   const old = `cache/rato-shadow-${day(3)}-0.png`, today = `cache/rato-shadow-${day(4)}-1.png`;
   const previousRunToday = `cache/rato-shadow-${day(4) - 1000}-2.png`;
+  const previousBitmap = `cache/rato-shadow-bitmap-${day(4) - 1000}-3.png`;
+  const currentBitmap = `cache/rato-shadow-bitmap-${day(4)}-4.png`;
+  const unrelatedBitmap = `cache/rato-shadow-bitmap-not-a-timestamp-2.png`;
+  const previousNative = `cache/rato-native-shadow-${day(4) - 1000}-5.png`;
+  const currentNative = `cache/rato-native-shadow-${day(4)}-6.png`;
+  const unrelatedNative = 'cache/rato-native-shadow-personal-notes.png';
   fs.seed(old); fs.seed(today); fs.seed(previousRunToday);
+  fs.seed(previousBitmap); fs.seed(currentBitmap); fs.seed(unrelatedBitmap);
+  fs.seed(previousNative); fs.seed(currentNative); fs.seed(unrelatedNative);
   const cache = createShadowCache(fs, { now: () => day(4) });
   assert.equal(await cache.prune(), true);
   assert.equal(fs.data.has('cache/rato-shadow-cache-hit-old-1.png'), false);
   assert.equal(fs.data.has(old), false);
   assert.equal(fs.data.has(previousRunToday), false, 'today\'s abandoned source came from a previous run');
   assert.equal(fs.data.has(today), true, 'a current source may already be displayed');
+  assert.equal(fs.data.has(previousBitmap), false, 'bitmap source from an old run is abandoned');
+  assert.equal(fs.data.has(currentBitmap), true, 'bitmap source from this run may be displayed');
+  assert.equal(fs.data.has(unrelatedBitmap), true, 'unrecognized filenames are not deleted');
+  assert.equal(fs.data.has(previousNative), false, 'native source from an old run is abandoned');
+  assert.equal(fs.data.has(currentNative), true, 'native source from this run may be displayed');
+  assert.equal(fs.data.has(unrelatedNative), true, 'unrecognized native filenames are not deleted');
   assert.equal(fs.data.has('cache/other.png'), true);
 });
 

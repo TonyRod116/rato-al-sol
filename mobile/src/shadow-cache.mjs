@@ -3,8 +3,8 @@
 const MAX_BYTES = 8 * 1024 * 1024, MAX_ENTRY_BYTES = 1024 * 1024, MAX_ENTRIES = 128;
 const NAME = /^shadow-(\d{4}-\d{2}-\d{2})-([a-zA-Z0-9_-]{1,128})\.png$/;
 const TEMP = /^rato-shadow-cache-hit-[a-z0-9-]+\.png$/;
-const SOURCE = /^rato-shadow-[a-z0-9-]+\.png$/;
-const ABANDONED = /^rato-shadow-(\d{12,16})-\d+\.png$/;
+const SOURCE = /^(?:rato-shadow-[a-z0-9-]+|rato-native-shadow-\d{12,16}-\d+)\.png$/;
+const ABANDONED = /^rato-(?:shadow-(?:bitmap-)?|native-shadow-)(\d{12,16})-\d+\.png$/;
 const pad = (n) => String(n).padStart(2, '0');
 export function localShadowDay(date) {
   return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}`;

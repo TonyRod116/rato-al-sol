@@ -29,7 +29,7 @@ test('place search sends literal bounded input in POST, never in the URL', async
   const result = await searchPlaces('parque.*";out;', madrid, 1000, fetch);
   assert.equal(result.length, 1);
   assert.equal(sent.method, 'POST');
-  assert.equal(sent.url, 'https://overpass-api.de/api/interpreter');
+  assert.equal(sent.url, 'https://ovp.dresel.systems/api/interpreter');
   assert.ok(!sent.url.includes(String(madrid.latitude)));
   const query = decodeURIComponent(sent.body.slice(5));
   assert.ok(query.includes('parque\\\\.\\\\*\\";out;'));
@@ -37,12 +37,13 @@ test('place search sends literal bounded input in POST, never in the URL', async
   await assert.rejects(() => searchPlaces('parque', madrid, 100000, fetch));
 });
 
-test('Barcelona uses the European building source without applying its limited coverage elsewhere', async () => {
+test('Madrid and Barcelona use the European source without applying its limited coverage elsewhere', async () => {
   const endpoints = [];
   const fetch = async (url) => { endpoints.push(url); return { ok: true, json: async () => ({ elements: [] }) }; };
   await searchPlaces('parque', { latitude: 41.39172, longitude: 2.16495 }, 1000, fetch);
+  await searchPlaces('parque', { latitude: 40.4169, longitude: -3.7035 }, 1000, fetch);
   await searchPlaces('parque', { latitude: 40.7128, longitude: -74.006 }, 1000, fetch);
-  assert.deepEqual(endpoints, ['https://ovp.dresel.systems/api/interpreter', 'https://overpass-api.de/api/interpreter']);
+  assert.deepEqual(endpoints, ['https://ovp.dresel.systems/api/interpreter', 'https://ovp.dresel.systems/api/interpreter', 'https://overpass-api.de/api/interpreter']);
 });
 
 test('a misspelled category finds nearby restaurants by type, not only by their names', async () => {

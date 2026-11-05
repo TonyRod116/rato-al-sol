@@ -1,8 +1,8 @@
 // Public OpenStreetMap pilot: queries are explicit, bounded and sent in the POST body.
 const ENDPOINT = 'https://overpass-api.de/api/interpreter';
-// The public Europe extract is used for the Barcelona pilot; elsewhere retain
-// the worldwide endpoint so an empty regional extract is not treated as data.
-const BARCELONA_ENDPOINT = 'https://ovp.dresel.systems/api/interpreter';
+// The European extract includes Madrid and Barcelona. Elsewhere use the
+// worldwide endpoint so an empty regional extract is never mistaken for data.
+const EUROPE_ENDPOINT = 'https://ovp.dresel.systems/api/interpreter';
 const EARTH_RADIUS = 6371000;
 const MAX_PLACES = 80;
 const MAX_BUILDINGS = 4000;
@@ -12,9 +12,15 @@ let memoryGeneration = 0;
 // Keep provider backoff intact while allowing the user to refresh local data.
 export function clearPlacesMemoryCache() { memoryGeneration++; recent.clear(); }
 
+function inMadridOverpassRegion(point) {
+  return point.latitude >= 40.28 && point.latitude <= 40.62 && point.longitude >= -3.94 && point.longitude <= -3.50;
+}
+
 function endpointFor(points) {
-  return points.every((point) => point.latitude >= 41.1 && point.latitude <= 41.65 && point.longitude >= 1.75 && point.longitude <= 2.5)
-    ? BARCELONA_ENDPOINT : ENDPOINT;
+  return points.every((point) =>
+    (point.latitude >= 41.1 && point.latitude <= 41.65 && point.longitude >= 1.75 && point.longitude <= 2.5) ||
+    inMadridOverpassRegion(point))
+    ? EUROPE_ENDPOINT : ENDPOINT;
 }
 
 const fold = (text) => text.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLocaleLowerCase('es').trim();
@@ -88,7 +94,7 @@ function around(point, radius) {
   return `${radius},${point.latitude.toFixed(6)},${point.longitude.toFixed(6)}`;
 }
 
-async function queryOverpass(query, fetchFn = fetch, endpoint = ENDPOINT) {
+async function queryOverpassEndpoint(query, fetchFn, endpoint, { timeoutMs = 27000, serverTimeout = 20 } = {}) {
   const live = fetchFn === globalThis.fetch;
   const generation = memoryGeneration;
   const now = Date.now();
@@ -97,13 +103,13 @@ async function queryOverpass(query, fetchFn = fetch, endpoint = ENDPOINT) {
   if (cached && cached.until > now) return cached.elements;
   if (live && now < (pauseUntil.get(endpoint) || 0)) throw new Error('El servicio de lugares está ocupado. Espera unos segundos y vuelve a probar.');
   const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), 27000);
+  const timeout = setTimeout(() => controller.abort(), timeoutMs);
   try {
     const headers = { 'Content-Type': 'application/x-www-form-urlencoded;charset=UTF-8' };
     if (typeof navigator !== 'undefined' && navigator.product === 'ReactNative') headers['User-Agent'] = 'RatoAlSol/1.0 (https://tony-r.com/rato-al-sol)';
     const response = await fetchFn(endpoint, {
       method: 'POST', headers,
-      body: `data=${encodeURIComponent(`[out:json][timeout:20];${query}`)}`, signal: controller.signal,
+      body: `data=${encodeURIComponent(`[out:json][timeout:${serverTimeout}];${query}`)}`, signal: controller.signal,
     });
     if (response.status === 406 || response.status === 429 || response.status >= 500) {
       if (live) pauseUntil.set(endpoint, Date.now() + 30000);
@@ -118,6 +124,16 @@ async function queryOverpass(query, fetchFn = fetch, endpoint = ENDPOINT) {
     }
     return data.elements;
   } finally { clearTimeout(timeout); }
+}
+
+// Try the established worldwide instance only when the regional server fails.
+// A successful empty result is meaningful and must never trigger another query.
+async function queryOverpass(query, fetchFn = fetch, endpoint = ENDPOINT, options) {
+  try { return await queryOverpassEndpoint(query, fetchFn, endpoint, options); }
+  catch (error) {
+    if (endpoint !== EUROPE_ENDPOINT) throw error;
+    return queryOverpassEndpoint(query, fetchFn, ENDPOINT, options);
+  }
 }
 
 function kindFor(tags) {
@@ -160,7 +176,11 @@ export async function searchNearby(center, radius, fetchFn = fetch) {
     `nwr(around:${a})["place"="square"]["name"];` +
     `nwr(around:${a})["amenity"~"^(restaurant|cafe|bar|pub|ice_cream)$"]["outdoor_seating"="yes"]["name"];` +
     `);out center tags ${MAX_PLACES};`;
-  const elements = await queryOverpass(query, fetchFn, endpointFor([center]));
+  // Nearby searches must not wait nearly a minute when both public instances
+  // are unresponsive. Each Madrid source gets six seconds server-side and a
+  // seven-second client deadline; all other queries retain their old budget.
+  const options = inMadridOverpassRegion(center) ? { timeoutMs: 7000, serverTimeout: 6 } : undefined;
+  const elements = await queryOverpass(query, fetchFn, endpointFor([center]), options);
   return normalizePlaces(elements, center).filter((place) => place.distance <= radius);
 }
 
