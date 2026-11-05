@@ -15,10 +15,11 @@ import { inMadridArea } from '../frontend/shared/madrid-scene.mjs';
 import { atMinutes, formatTime, lightAt, lightForInterval, nearbyOutdoorScenes, prepareScene, sceneInsideBuilding, solarWindows } from '../frontend/shared/estimate.mjs';
 import { sunPosition } from '../frontend/solar.mjs';
 import { buildingShadows, shadowDirection } from '../frontend/map-shadows.mjs';
-import { startShadowGeometry } from './src/shadow-geometry-task.mjs';
+import { startShadowGeometry, startShadowGeometryWithFallback } from './src/shadow-geometry-task.mjs';
+import { startLightAtTask } from './src/light-at-task.mjs';
 import { clearViewportBuildingMemoryCache, getViewportBuildings, viewportBounds } from '../frontend/viewport-buildings.mjs';
 import { DEFAULT_LOCATION } from '../frontend/shared/default-location.mjs';
-import { createViewportLoader, expandedMadridViewport, stableShadowViewport } from './src/viewport.mjs';
+import { createViewportLoader, expandedMadridViewport, stableMapBounds, stableMapCenter, stableShadowViewport } from './src/viewport.mjs';
 import { ShadowRasterizer, retainShadowFile, releaseShadowFile, retireShadowFile } from './src/ShadowOverlay';
 import { ShadowBitmap } from './src/ShadowBitmap';
 import { ShadowNative } from './src/ShadowNative';
@@ -118,6 +119,8 @@ function Main() {
   const [dayOffset, setDayOffset] = useState(0);
   const [minutes, setMinutes] = useState(() => { const now = new Date(); return initialSelectedTime(now.getHours() * 60 + now.getMinutes(), 15); });
   const [playingDay, setPlayingDay] = useState(false);
+  const playingDayRef = useRef(false);
+  playingDayRef.current = playingDay;
   const [cacheEnabled, setCacheEnabled] = useState(true);
   const cacheEnabledRef = useRef(true);
   cacheEnabledRef.current = cacheEnabled;
@@ -288,7 +291,16 @@ function Main() {
     const distance = area ? distanceMetres(area, selected) : 0;
     return area ? prepareScene(selected, buildings, area.radius - (distance < .001 ? 0 : Math.ceil(distance + 2))) : null;
   }, [selected, buildings, coverage]);
-  const state = useMemo(() => scene ? lightAt(scene, instant) : 'unknown', [scene, instant]);
+  const [calculatedLight, setCalculatedLight] = useState(null);
+  const webLight = useMemo(() => Platform.OS === 'web' && scene ? lightAt(scene, instant) : 'unknown', [scene, instant]);
+  useEffect(() => {
+    if (Platform.OS === 'web' || !scene || !instant) return;
+    return startLightAtTask(scene, instant,
+      (value) => setCalculatedLight({ scene, instant, value }),
+      () => setCalculatedLight({ scene, instant, value: 'unknown' }));
+  }, [scene, instant]);
+  const state = Platform.OS === 'web' ? webLight
+    : calculatedLight?.scene === scene && calculatedLight?.instant === instant ? calculatedLight.value : 'unknown';
   const windows = useMemo(() => scene ? solarWindows(scene, day) : [], [scene, day]);
   const mapSun = useMemo(() => {
     return sunPosition(instant, center.latitude, center.longitude);
@@ -374,6 +386,12 @@ function Main() {
   const groundShadow = currentShadowResult?.uri ? currentShadowResult : retainedShadow(lastShadowImage,
     { timeKey: shadowTimeKey, visibleBounds, retryToken: mapRetry, sunStatus });
   const partialShadow = Boolean(groundShadow && groundShadow !== currentShadowResult);
+  const overlayPresent = Boolean(groundShadow?.uri);
+  const hadOverlay = useRef(false), overlaySettlesAt = useRef(0);
+  useEffect(() => {
+    if (overlayPresent && !hadOverlay.current) overlaySettlesAt.current = Date.now() + 800;
+    hadOverlay.current = overlayPresent;
+  }, [overlayPresent]);
   useEffect(() => {
     playbackCacheEpoch.current++;
     playbackFrames.current.keepScene(mapBuildings && shadowArea ? frameContext : null);
@@ -388,19 +406,18 @@ function Main() {
       setFutureShadow({ ...current, ...result });
     }
   }
+  function pauseForShadow() {
+    setPrefetchBlocked(true); setFutureJob(null); setFutureShadow(null);
+    if (playingDayRef.current) {
+      setPlayingDay(false);
+      setNotice(msg('La reproducción se ha pausado porque esta zona necesita demasiado cálculo. Acerca el mapa o prueba otra hora.', 'Playback paused because this area needs too much processing. Zoom in or try another time.'));
+    }
+  }
   function failFutureShadow(result) {
     const current = futureContext.current;
     if (current && result.source === current.source && result.area === current.area && result.retryToken === current.retryToken) {
-      if (['complexity', 'timeout', 'geometry', 'busy'].includes(result.reason)) {
-        setPrefetchBlocked(true); setFutureJob(null); setFutureShadow(null);
-        if (playingDay) {
-          setPlayingDay(false);
-          setNotice(msg('La reproducción se ha pausado porque esta zona necesita demasiado cálculo. Acerca el mapa o prueba otra hora.', 'Playback paused because this area needs too much processing. Zoom in or try another time.'));
-        }
-        return;
-      }
-      // Fall back to the ordinary foreground renderer at this instant.
-      setFutureShadow({ ...current, failed: true });
+      // A failed image cannot be shown as the next instant.
+      pauseForShadow();
     }
   }
   useEffect(() => {
@@ -434,18 +451,27 @@ function Main() {
     const context = { area: shadowArea, buildings: mapBuildings, retryToken: mapRetry,
       timeKey: nextInstant.getTime(), latitude: shadowAnchor.latitude, longitude: shadowAnchor.longitude,
       geometrySource: mapBuildings?.source, generation: cacheGeneration() };
-    let cancelled = false, stop = () => {};
+    let cancelled = false, timer, stop = () => {};
     playbackFrames.current.get(context, emptyShadows).then((hit) => {
       if (cancelled) return;
       if (hit) { setFutureShadow(hit); return; }
-      stop = startShadowGeometry(mapBuildings, nextSun, shadowArea, (nextShadows) => {
-        const frame = { ...context, source: nextShadows };
-        setFutureJob(frame);
-        if (!nextShadows.features.length) setFutureShadow({ ...frame, failed: Boolean(nextShadows.limitExceeded) });
-      }, () => setFutureShadow({ ...context, source: emptyShadows, failed: true }));
+      const begin = () => {
+        if (cancelled) return;
+        stop = startShadowGeometryWithFallback({ buildings: mapBuildings, sun: nextSun, area: shadowArea,
+          getVisibleBounds: () => latestVisibleBounds.current,
+          onReady: ({ source, area, fallback, requestArea }) => {
+            if (source.limitExceeded) { pauseForShadow(); return; }
+            const frame = { ...context, source, area, fallback, requestArea };
+            setFutureJob(frame);
+            if (!source.features.length) setFutureShadow(frame);
+          }, onError: pauseForShadow });
+      };
+      // Give the first image time to attach to MapKit before preparing the next.
+      const delay = playingDayRef.current ? Math.max(0, overlaySettlesAt.current - Date.now()) : 0;
+      if (delay) timer = setTimeout(begin, delay); else begin();
     });
-    return () => { cancelled = true; stop(); };
-  }, [prefetchMinutes, day, shadowAnchor.latitude, shadowAnchor.longitude, mapBuildings, shadowArea, mapRetry, mode, searchOpen, mapFailed, shadowFailed, shadowPending, shadows.limitExceeded, allowPrefetch, prefetchBlocked]);
+    return () => { cancelled = true; clearTimeout(timer); stop(); };
+  }, [prefetchMinutes, day, shadowAnchor.latitude, shadowAnchor.longitude, mapBuildings, shadowArea, visibleBounds, mapRetry, mode, searchOpen, mapFailed, shadowFailed, shadowPending, shadows.limitExceeded, allowPrefetch, prefetchBlocked]);
   useEffect(() => {
     setShadowGeometrySignature(null);
     if (Platform.OS === 'web' || playingDay || !appActive || !cacheEnabled || !mapBuildings) return;
@@ -523,19 +549,19 @@ function Main() {
         !mapBuildings || !visibleBounds || shadowPending) return;
     const next = nextPlaybackTime(minutes), nextInstant = atMinutes(day, next);
     const nextTimeKey = nextInstant?.getTime() ?? null;
-    if (!playbackFrameReady(frameContext, playbackDwellFrame, futureShadow, nextTimeKey, Platform.OS !== 'web')) return;
+    if (!playbackFrameReady(frameContext, playbackDwellFrame, futureShadow, nextTimeKey, Platform.OS !== 'web', visibleBounds)) return;
     if (Platform.OS !== 'web' && futureShadow && !futureShadow.failed) {
       setNativeShadowResult(futureShadow);
       if (futureShadow.uri) setLastShadowImage(futureShadow);
     }
     setMinutes(next);
     setEndMinutes((previous) => Math.max(previous, next + 15));
-  }, [playingDay, minutes, day, mode, searchOpen, mapFailed, shadowFailed, shadows.limitExceeded, mapBuildings, shadowArea, shadowPending, playbackDwellFrame, futureShadow, shadowAnchor.latitude, shadowAnchor.longitude, mapRetry]);
+  }, [playingDay, minutes, day, mode, searchOpen, mapFailed, shadowFailed, shadows.limitExceeded, mapBuildings, shadowArea, visibleBounds, shadowPending, playbackDwellFrame, futureShadow, shadowAnchor.latitude, shadowAnchor.longitude, mapRetry]);
   const direction = useMemo(() => shadowDirection(mapSun), [mapSun]);
   const choices = useMemo(() => selected && scene ? nearbyOutdoorScenes(scene, buildings).map((choice) => ({ ...choice, windows: solarWindows(choice.scene, day) })) : [], [selected, scene, buildings, day]);
   const nearbyScenes = useMemo(() => {
     const scenes = {};
-    if (resultsType !== 'nearby') return scenes;
+    if (resultsType !== 'nearby' || mode !== 'nearby') return scenes;
     for (const place of places) if (place.kind === 'public') {
       const area = coverage.find((point) => distanceMetres(point, place) < 5);
       if (area) {
@@ -544,7 +570,7 @@ function Main() {
       }
     }
     return scenes;
-  }, [places, buildings, coverage, resultsType]);
+  }, [places, buildings, coverage, resultsType, mode]);
   const nearbyStates = useMemo(() => Object.fromEntries(Object.entries(nearbyScenes).map(([id, item]) => {
     return [id, lightForInterval(item, day, minutes, endEnabled ? endMinutes : minutes)];
   })), [nearbyScenes, day, endEnabled, endMinutes, minutes]);
@@ -834,7 +860,7 @@ function Main() {
             setNotice(msg('El mapa se ha movido. Vuelve a buscar en esta zona.', 'The map has moved. Search again in this area.'));
           }
           const bounds = viewportBounds(point.bounds);
-          if (bounds?.join(',') !== mapBounds?.join(',') || point.visibleBounds?.join(',') !== visibleBounds?.join(',')) zoomPrefetch.current.cancel();
+          if (bounds?.join(',') !== mapBounds?.join(',') || stableMapBounds(visibleBounds, point.visibleBounds || null) !== visibleBounds) zoomPrefetch.current.cancel();
           const pausedView = cachePauseViewport.current, oldArea = pausedView?.visibleBounds, newArea = point.visibleBounds;
           const zoomChanged = oldArea && newArea && Math.abs((newArea[2] - newArea[0]) / (oldArea[2] - oldArea[0]) - 1) > .1;
           if (!cacheEnabled && pausedView && (distanceMetres(pausedView.center, point) > 15 || zoomChanged)) {
@@ -846,9 +872,9 @@ function Main() {
             setMapFailed(false);
             setMapStatus(msg('Acerca el mapa para cargar las sombras.', 'Zoom in to load shadows.'));
           }
-          setCenter({ latitude: point.latitude, longitude: point.longitude });
+          setCenter((previous) => stableMapCenter(previous, point));
           setMapBounds((previous) => bounds?.join(',') === previous?.join(',') ? previous : bounds);
-          setVisibleBounds((previous) => point.visibleBounds?.join(',') === previous?.join(',') ? previous : point.visibleBounds);
+          setVisibleBounds((previous) => stableMapBounds(previous, point.visibleBounds || null));
           setOriginLabel(myLocation.current && distanceMetres(myLocation.current, point) < 25 ? 'Tu ubicación' : 'Zona del mapa');
         }} onPick={choosePoint} onPlace={choosePoint} />
         {(mapBuildings?.source === 'osm' || groundShadow?.geometrySource === 'osm') && <Text accessibilityRole="link" onPress={() => Linking.openURL('https://www.openstreetmap.org/copyright')} style={styles.mapAttribution}>Datos © OpenStreetMap</Text>}

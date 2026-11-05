@@ -19,29 +19,50 @@ export function prepareScene(point, buildings, radius = 400) {
   return scene.length ? { point, buildings: scene, radius } : null;
 }
 
+// Keep one classification algorithm for synchronous callers and interruptible
+// mobile work. A shadow cannot be returned until every footprint is checked:
+// an invalid or containing footprint still makes the result unknown.
+export function createLightAtBuilder(scene, instant) {
+  const sun = scene && sunPosition(instant, scene.point.latitude, scene.point.longitude);
+  let output = !sun ? 'unknown' : sun.altitude < -1 ? 'night' : sun.altitude < 5 || !Array.isArray(scene.buildings) ? 'unknown' : null;
+  let index = 0, knownShade = false, uncertainShade = false;
+  const buildings = scene?.buildings || [];
+  return {
+    step(maxBuildings = 50) {
+      if (!Number.isSafeInteger(maxBuildings) || maxBuildings < 1) throw new RangeError('Invalid light batch size');
+      if (output !== null) return true;
+      const known = [], uncertain = [], end = Math.min(buildings.length, index + maxBuildings);
+      while (index < end) {
+        const building = buildings[index++];
+        if (Number.isFinite(building.height) && building.height > 0) known.push(building);
+        else uncertain.push({ ...building, height: 10000 });
+      }
+      const args = { sun, point: [0, 0], coverage: true };
+      const actual = known.length ? classifyLight({ ...args, buildings: known }) : 'sun';
+      const missing = uncertain.length ? classifyLight({ ...args, buildings: uncertain }) : 'sun';
+      if (actual === 'unknown' || missing === 'unknown') { output = 'unknown'; return true; }
+      knownShade ||= actual === 'shade';
+      uncertainShade ||= missing === 'shade';
+      if (index < buildings.length) return false;
+      // A known obstruction establishes shade even if coverage is incomplete.
+      if (knownShade) output = 'shade';
+      else {
+        const assumedMaximum = Math.max(100, ...buildings.map((building) => building.height || 0));
+        output = assumedMaximum / Math.tan(sun.altitude * Math.PI / 180) > (scene.radius ?? 400) - 50 || uncertainShade ? 'unknown' : 'sun';
+      }
+      return true;
+    },
+    result() {
+      if (output === null) throw new Error('Light calculation incomplete');
+      return output;
+    },
+  };
+}
+
 export function lightAt(scene, instant) {
-  if (!scene) return 'unknown';
-  const sun = sunPosition(instant, scene.point.latitude, scene.point.longitude);
-  if (!sun) return 'unknown';
-  if (sun.altitude < -1) return 'night';
-  if (sun.altitude < 5) return 'unknown';
-  const known = [], uncertain = [];
-  for (const building of scene.buildings) {
-    if (Number.isFinite(building.height) && building.height > 0) known.push(building);
-    else uncertain.push({ ...building, height: 10000 });
-  }
-  const args = { sun, point: [0, 0], coverage: true };
-  const actual = classifyLight({ ...args, buildings: known });
-  const missing = classifyLight({ ...args, buildings: uncertain });
-  if (actual === 'unknown' || missing === 'unknown') return 'unknown';
-  // A known obstruction establishes shade even if the sun is low and there
-  // might be additional buildings beyond the area that was retrieved.
-  if (actual === 'shade') return 'shade';
-  // Sunshine still needs enough surrounding coverage for a 100 m building,
-  // plus a margin; a farther obstruction could otherwise be missed.
-  const assumedMaximum = Math.max(100, ...scene.buildings.map((building) => building.height || 0));
-  if (assumedMaximum / Math.tan(sun.altitude * Math.PI / 180) > (scene.radius ?? 400) - 50) return 'unknown';
-  return missing === 'shade' ? 'unknown' : 'sun';
+  const builder = createLightAtBuilder(scene, instant);
+  while (!builder.step(500)) {}
+  return builder.result();
 }
 
 export function sceneInsideBuilding(scene) {
@@ -115,12 +136,17 @@ export function lightForInterval(scene, day, from, to = from, instantAt = atMinu
   if (!scene || !Number.isInteger(from) || !Number.isInteger(to) ||
       from < 0 || from >= 1440 || to < from || to > 1440) return 'unknown';
   if (from === to) return lightAt(scene, instantAt(day, from));
-  const windows = solarWindows(scene, day, instantAt);
+  // Only the half-hour samples intersecting this interval can change its
+  // answer. Computing every hour of the day blocks the UI for nearby places.
+  let sunny = true, obstructed = false;
+  for (let minute = Math.floor(from / 30) * 30; minute < to; minute += 30) {
+    const state = lightAt(scene, instantAt(day, minute));
+    if (state !== 'sun') sunny = false;
+    if (state === 'shade' || state === 'night') obstructed = true;
+  }
   const edges = [from, to - 1].map((minute) => lightAt(scene, instantAt(day, minute)));
-  if (sunnyInRange(windows, from, to) && edges.every((state) => state === 'sun')) return 'sun';
-  const relevant = windows.filter((window) => window.from < to && window.to > from);
-  return relevant.some((window) => window.state === 'shade' || window.state === 'night') ||
-    edges.some((state) => state === 'shade' || state === 'night') ? 'shade' : 'unknown';
+  if (sunny && edges.every((state) => state === 'sun')) return 'sun';
+  return obstructed || edges.some((state) => state === 'shade' || state === 'night') ? 'shade' : 'unknown';
 }
 
 export function formatTime(minutes) {

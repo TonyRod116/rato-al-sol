@@ -1,6 +1,21 @@
 import { inMadridArea } from '../../frontend/shared/madrid-scene.mjs';
 import { inBarcelonaArea } from '../../frontend/shared/barcelona-terraces.mjs';
 
+// Ignore sub-centimetre coordinate noise from repeated native map events.
+const MAP_JITTER = 1e-7;
+export function stableMapCenter(previous, point) {
+  if (!Number.isFinite(point?.latitude) || !Number.isFinite(point?.longitude)) return previous;
+  if (Number.isFinite(previous?.latitude) && Number.isFinite(previous?.longitude) &&
+      Math.abs(previous.latitude - point.latitude) <= MAP_JITTER && Math.abs(previous.longitude - point.longitude) <= MAP_JITTER) return previous;
+  return { latitude: point.latitude, longitude: point.longitude };
+}
+
+export function stableMapBounds(previous, next) {
+  if (previous === next) return previous;
+  if (!Array.isArray(previous) || !Array.isArray(next) || previous.length !== 4 || next.length !== 4) return next;
+  return previous.every((value, i) => Number.isFinite(value) && Number.isFinite(next[i]) && Math.abs(value - next[i]) <= MAP_JITTER) ? previous : next;
+}
+
 // Include a margin so shadows from buildings just outside the map can reach it.
 export function paddedViewport(bounds) {
   if (!Array.isArray(bounds) || bounds.length !== 4 || !bounds.every(Number.isFinite)) return null;

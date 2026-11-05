@@ -20,3 +20,30 @@ export function startShadowGeometry(buildings, sun, area, onComplete, onError) {
   } catch (error) { onError(error); }
   return () => { cancelled = true; clearTimeout(timer); };
 }
+
+// An expanded frame may exceed the limit even when the visible view fits.
+// Compute that smaller view once before advancing the playback clock.
+export function startShadowGeometryWithFallback({ buildings, sun, area, getVisibleBounds, onReady, onError,
+  start = startShadowGeometry }) {
+  let cancelled = false, serial = 0, stop = () => {};
+  function launch(bounds, fallback) {
+    const id = ++serial;
+    const cancel = start(buildings, sun, bounds, (source) => {
+      if (cancelled || id !== serial) return;
+      const visible = getVisibleBounds();
+      if (!fallback && source.limitExceeded && visible && visible !== bounds) {
+        launch(visible, true);
+      } else if (fallback && visible && visible !== bounds) {
+        launch(visible, true);
+      } else if (fallback && !visible) {
+        onError(new Error('Visible area unavailable'));
+      } else {
+        onReady({ source, area: bounds, fallback, requestArea: area });
+      }
+    }, (error) => { if (!cancelled && id === serial) onError(error); });
+    if (cancelled || serial !== id) cancel();
+    else stop = cancel;
+  }
+  launch(area, false);
+  return () => { cancelled = true; serial++; stop(); };
+}
