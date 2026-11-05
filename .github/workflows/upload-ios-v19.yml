@@ -24,6 +24,9 @@ jobs:
           github-token: ${{ github.token }}
           run-id: 42088449500
       - run: npm install --global eas-cli@27.4.0
+      - name: Install project dependencies
+        working-directory: mobile
+        run: npm ci --no-audit --no-fund
       - name: Upload iPhone build to Expo
         working-directory: mobile
         shell: bash
