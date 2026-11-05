@@ -1,0 +1,47 @@
+name: Verify private iPhone artifacts
+on:
+  push:
+    branches: [codex/check-ios-v19]
+permissions:
+  actions: read
+jobs:
+  inspect:
+    if: github.repository == 'TonyRod116/rato-al-sol' && github.event.repository.private
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - name: Download version 19 artifact
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        with:
+          name: rato-iphone-preview
+          path: ${{ runner.temp }}/v19
+          github-token: ${{ github.token }}
+          run-id: 42088449500
+      - name: Download previous artifact for comparison
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        with:
+          name: rato-iphone-preview
+          path: ${{ runner.temp }}/v18
+          github-token: ${{ github.token }}
+          run-id: 42065489079
+      - name: Inspect build identity and bundled labels
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          import glob, hashlib, os, plistlib, zipfile
+          for label in ('v19', 'v18'):
+              files = glob.glob(os.path.join(os.environ['RUNNER_TEMP'], label, '*.ipa'))
+              if len(files) != 1:
+                  raise SystemExit(f'{label}: expected exactly one IPA')
+              with zipfile.ZipFile(files[0]) as ipa:
+                  names = ipa.namelist()
+                  plists = [p for p in names if p.startswith('Payload/') and p.endswith('.app/Info.plist') and p.count('/') == 2]
+                  bundles = [p for p in names if p.startswith('Payload/') and p.endswith('.app/main.jsbundle')]
+                  if len(plists) != 1 or len(bundles) != 1:
+                      raise SystemExit(f'{label}: expected one app and JS bundle')
+                  info = plistlib.loads(ipa.read(plists[0]))
+                  data = ipa.read(bundles[0])
+                  print(label, 'bundle_id=', info.get('CFBundleIdentifier'), 'version=', info.get('CFBundleShortVersionString'), 'build=', info.get('CFBundleVersion'), 'js_sha256=', hashlib.sha256(data).hexdigest())
+                  for token in ('06:00','12:00','18:00','22:00','23:00','24:00','clipDaylightWindows'):
+                      print(label, 'label', token, 'utf8=', token.encode('utf8') in data, 'utf16=', token.encode('utf-16le') in data)
+          PY
