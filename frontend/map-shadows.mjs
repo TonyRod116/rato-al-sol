@@ -62,61 +62,83 @@ function sweepRuns(ring, facing) {
 
 // Sweep each boundary, including courtyard boundaries, and the translated roof.
 // Geometry remains a visual estimate; it is not used to classify a terrace.
-export function buildingShadows(buildings, sun, view = null, { maxVertices = Infinity, excludeRoofs = false } = {}) {
+export function createBuildingShadowBuilder(buildings, sun, view = null, { maxVertices = Infinity, excludeRoofs = false } = {}) {
   if (maxVertices !== Infinity && (!Number.isSafeInteger(maxVertices) || maxVertices < 0)) {
     throw new RangeError('Invalid shadow vertex limit');
   }
   const features = [], roofs = [];
-  let vertices = 0;
-  for (const building of buildings?.features ?? []) {
-    if (excludeRoofs) {
-      const [west, south, east, north] = footprintBounds(building);
-      if (!Array.isArray(view) || view.length !== 4 || !view.every(Number.isFinite) ||
-          (west <= view[2] && east >= view[0] && south <= view[3] && north >= view[1])) roofs.push(building);
-    }
-    const offset = shadowOffset(sun, building.properties.height);
-    if (!offset) continue;
-    const buildingBounds = footprintBounds(building);
-    const east = METRES_PER_DEGREE * Math.cos((buildingBounds[1] + buildingBounds[3]) / 2 * Math.PI / 180);
-    if (!mayReachView(building, offset, view, east)) continue;
-    const polygons = building.geometry.type === 'Polygon' ? [building.geometry.coordinates] : building.geometry.coordinates;
-    const runs = polygons.map((polygon) => polygon.map((ring, index) => sweepRuns(ring,
-      facingSweepEdges(ring, index > 0, offset[0] / east, -offset[1] / METRES_PER_DEGREE))));
-    if (maxVertices !== Infinity) {
-      // Count the translated rings and each five-vertex swept edge before
-      // allocating them. If the next building would cross the budget, return
-      // no shapes at all: a partial shadow mask could imply false sunshine.
-      for (let p = 0; p < polygons.length; p++) for (let r = 0; r < polygons[p].length; r++) {
-        const ring = polygons[p][r];
-        vertices += ring.length;
-        if (vertices > maxVertices) return { type: 'FeatureCollection', features: [], limitExceeded: true };
-        for (const [first, last] of runs[p][r]) {
-          const a = ring[first], b = ring[last + 1];
-          if (a[0] === b[0] && a[1] === b[1]) continue;
-          vertices += 2 * (last - first + 1) + 3;
-          if (vertices > maxVertices) return { type: 'FeatureCollection', features: [], limitExceeded: true };
+  let vertices = 0, index = 0, completed = false, output = null;
+  const input = buildings?.features ?? [];
+  function step(maxBuildings = 50) {
+    if (!Number.isSafeInteger(maxBuildings) || maxBuildings < 1) throw new RangeError('Invalid shadow batch size');
+    if (completed) return true;
+    const end = Math.min(input.length, index + maxBuildings);
+    while (index < end) {
+      const building = input[index++];
+      if (excludeRoofs) {
+        const [west, south, east, north] = footprintBounds(building);
+        if (!Array.isArray(view) || view.length !== 4 || !view.every(Number.isFinite) ||
+            (west <= view[2] && east >= view[0] && south <= view[3] && north >= view[1])) roofs.push(building);
+      }
+      const offset = shadowOffset(sun, building.properties.height);
+      if (!offset) continue;
+      const buildingBounds = footprintBounds(building);
+      const east = METRES_PER_DEGREE * Math.cos((buildingBounds[1] + buildingBounds[3]) / 2 * Math.PI / 180);
+      if (!mayReachView(building, offset, view, east)) continue;
+      const polygons = building.geometry.type === 'Polygon' ? [building.geometry.coordinates] : building.geometry.coordinates;
+      const runs = polygons.map((polygon) => polygon.map((ring, index) => sweepRuns(ring,
+        facingSweepEdges(ring, index > 0, offset[0] / east, -offset[1] / METRES_PER_DEGREE))));
+      if (maxVertices !== Infinity) {
+        // Count the translated rings and each five-vertex swept edge before
+        // allocating them. If the next building would cross the budget, return
+        // no shapes at all: a partial shadow mask could imply false sunshine.
+        for (let p = 0; p < polygons.length; p++) for (let r = 0; r < polygons[p].length; r++) {
+          const ring = polygons[p][r];
+          vertices += ring.length;
+          if (vertices > maxVertices) { output = { type: 'FeatureCollection', features: [], limitExceeded: true }; completed = true; return true; }
+          for (const [first, last] of runs[p][r]) {
+            const a = ring[first], b = ring[last + 1];
+            if (a[0] === b[0] && a[1] === b[1]) continue;
+            vertices += 2 * (last - first + 1) + 3;
+            if (vertices > maxVertices) { output = { type: 'FeatureCollection', features: [], limitExceeded: true }; completed = true; return true; }
+          }
         }
       }
-    }
-    const shapes = [];
-    for (let p = 0; p < polygons.length; p++) {
-      const polygon = polygons[p];
-      const shifted = polygon.map((ring) => ring.map((point) => shift(point, ...offset, east)));
-      shapes.push(shifted);
-      for (let r = 0; r < polygon.length; r++) {
-        const ring = polygon[r];
-        for (const [first, last] of runs[p][r]) {
-          const a = ring[first], b = ring[last + 1];
-          if (a[0] === b[0] && a[1] === b[1]) continue;
-          const boundary = ring.slice(first, last + 2);
-          const translated = shifted[r].slice(first, last + 2).reverse();
-          shapes.push([[...boundary, ...translated, a]]);
+      const shapes = [];
+      for (let p = 0; p < polygons.length; p++) {
+        const polygon = polygons[p];
+        const shifted = polygon.map((ring) => ring.map((point) => shift(point, ...offset, east)));
+        shapes.push(shifted);
+        for (let r = 0; r < polygon.length; r++) {
+          const ring = polygon[r];
+          for (const [first, last] of runs[p][r]) {
+            const a = ring[first], b = ring[last + 1];
+            if (a[0] === b[0] && a[1] === b[1]) continue;
+            const boundary = ring.slice(first, last + 2);
+            const translated = shifted[r].slice(first, last + 2).reverse();
+            shapes.push([[...boundary, ...translated, a]]);
+          }
         }
       }
+      if (shapes.length) features.push({ type: 'Feature', properties: {}, geometry: { type: 'MultiPolygon', coordinates: shapes } });
     }
-    if (shapes.length) features.push({ type: 'Feature', properties: {}, geometry: { type: 'MultiPolygon', coordinates: shapes } });
+    if (index < input.length) return false;
+    output = excludeRoofs ? { type: 'FeatureCollection', features, roofs } : { type: 'FeatureCollection', features };
+    completed = true;
+    return true;
   }
-  return excludeRoofs ? { type: 'FeatureCollection', features, roofs } : { type: 'FeatureCollection', features };
+  function result() {
+    if (!completed) throw new Error('Shadow geometry is incomplete');
+    return output;
+  }
+  return { step, result };
+}
+
+// Keep the synchronous API for the web and callers that need an immediate result.
+export function buildingShadows(buildings, sun, view = null, options = {}) {
+  const builder = createBuildingShadowBuilder(buildings, sun, view, options);
+  while (!builder.step(500)) {}
+  return builder.result();
 }
 
 const DIRECTIONS = ['norte', 'noreste', 'este', 'sureste', 'sur', 'suroeste', 'oeste', 'noroeste'];

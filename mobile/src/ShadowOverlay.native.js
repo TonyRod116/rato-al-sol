@@ -5,6 +5,7 @@ import * as FileSystem from 'expo-file-system/legacy';
 import { advanceShadowRasterPath, createShadowRasterPath } from './shadow-raster-path.mjs';
 import { captureShadow } from './shadow-capture.mjs';
 import { createShadowFileLifetime } from './shadow-file-lifetime.mjs';
+import { readyShadowOverlayUri, shadowOverlayBoundsKey } from './shadow-overlay-image.mjs';
 
 let nextFile = 0, nextJob = 0;
 const files = createShadowFileLifetime((uri) => { FileSystem.deleteAsync(uri, { idempotent: true }).catch(() => {}); });
@@ -89,7 +90,9 @@ export function ShadowRasterizer({ shadows, bounds, retryToken = 0, onReady, onE
 // Maps the renderer is created when the image loads, so this reduces its race.
 // Render the Overlay itself as a direct MapView child, not a wrapper component.
 export function useGroundShadowImage(image) {
-  const [readyUri, setReadyUri] = useState(null);
+  const [ready, setReady] = useState(null);
+  const boundsKey = shadowOverlayBoundsKey(image);
+  const readyUri = readyShadowOverlayUri(ready, image);
   useEffect(() => {
     const uri = image?.uri;
     if (!uri) return;
@@ -97,9 +100,14 @@ export function useGroundShadowImage(image) {
     return () => files.release(uri);
   }, [image?.uri]);
   useEffect(() => {
-    if (!image?.uri) return;
-    const timer = setTimeout(() => setReadyUri(image.uri), 100);
+    if (!image?.uri || !boundsKey) { setReady(null); return; }
+    const timer = setTimeout(() => setReady({ uri: image.uri, boundsKey }), 100);
     return () => clearTimeout(timer);
-  }, [image]);
-  return image?.uri && readyUri === image.uri ? { uri: image.uri } : undefined;
+  }, [image?.uri, boundsKey]);
+  useEffect(() => {
+    if (!readyUri) return;
+    files.retain(readyUri);
+    return () => files.release(readyUri);
+  }, [readyUri]);
+  return readyUri ? { uri: readyUri } : undefined;
 }

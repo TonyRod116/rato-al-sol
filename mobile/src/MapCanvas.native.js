@@ -6,6 +6,7 @@ import { DEFAULT_LOCATION } from '../../frontend/shared/default-location.mjs';
 import { translate } from '../../frontend/shared/i18n.mjs';
 import { nativeVisibleViewport, paddedViewport } from './viewport.mjs';
 import { useGroundShadowImage } from './ShadowOverlay';
+import { shadowOverlayBoundsKey } from './shadow-overlay-image.mjs';
 
 // Android's map colour-scheme prop is only applied at creation by this version
 // of react-native-maps, so a map style lets it follow the time slider live.
@@ -41,7 +42,7 @@ export default function MapCanvas({ camera, places, selected, language, groundSh
       customMapStyle={Platform.OS === 'android' ? atmosphere.isNight ? nightMap : defaultMap : undefined}
       onRegionChangeComplete={move}
       onPress={(event) => onPick(event.nativeEvent.coordinate)} accessibilityLabel={translate(language, 'Mapa. Toca para elegir un punto exterior.', 'Map. Tap to choose an outdoor point.')}>
-      {groundShadow?.uri && <Overlay key={groundShadow.uri} bounds={groundShadow.bounds} image={shadowImage} />}
+      {groundShadow?.uri && <Overlay key={shadowOverlayBoundsKey(groundShadow)} bounds={groundShadow.bounds} image={shadowImage} />}
       {places.slice(0, 30).map((place) => <Marker key={place.id} coordinate={place} title={place.name} pinColor="#cf7554"
         onPress={(event) => { event.stopPropagation(); onPlace(place); }} />)}
       {selected && <Marker coordinate={selected} title={selected.name} pinColor="#273e33" />}

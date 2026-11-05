@@ -14,6 +14,7 @@ import { inMadridArea } from '../frontend/shared/madrid-scene.mjs';
 import { atMinutes, formatTime, lightAt, lightForInterval, nearbyOutdoorScenes, prepareScene, sceneInsideBuilding, solarWindows } from '../frontend/shared/estimate.mjs';
 import { sunPosition } from '../frontend/solar.mjs';
 import { buildingShadows, shadowDirection } from '../frontend/map-shadows.mjs';
+import { startShadowGeometry } from './src/shadow-geometry-task.mjs';
 import { clearViewportBuildingMemoryCache, getViewportBuildings, viewportBounds } from '../frontend/viewport-buildings.mjs';
 import { DEFAULT_LOCATION } from '../frontend/shared/default-location.mjs';
 import { createViewportLoader, expandedMadridViewport, stableShadowViewport } from './src/viewport.mjs';
@@ -308,18 +309,40 @@ function Main() {
   const activeGeometrySignature = shadowGeometrySignature?.buildings === mapBuildings ? shadowGeometrySignature.value : null;
   const baseContext = { timeKey: shadowTimeKey, area: candidateArea, buildings: mapBuildings, retryToken: mapRetry,
     latitude: shadowAnchor.latitude, longitude: shadowAnchor.longitude, generation: cacheGeneration() };
-  const candidateAdopted = shadowFrameMatches(nativeShadowResult, baseContext) ? nativeShadowResult : null;
-  const candidateShadows = useMemo(() => candidateAdopted?.source || (mapBuildings && candidateArea ? buildingShadows(mapBuildings, shadowSun, candidateArea,
-    Platform.OS === 'web' ? undefined : { maxVertices: 120000, excludeRoofs: true }) : emptyShadows), [candidateAdopted?.source, mapBuildings, shadowSun, candidateArea]);
-  // Dense areas may fit at the visible size but not the expanded size.
-  // Fall back to the visible screen rather than losing its shadows.
-  const useVisibleOnly = Boolean(candidateShadows.limitExceeded && candidateArea !== visibleBounds);
-  const shadowArea = useVisibleOnly ? visibleBounds : candidateArea;
+  const [preparedGeometry, setPreparedGeometry] = useState(null);
+  const adopted = shadowFrameMatches(nativeShadowResult, baseContext) ? nativeShadowResult
+    : shadowFrameMatches(nativeShadowResult, { ...baseContext, area: visibleBounds }) ? nativeShadowResult : null;
+  const prepared = shadowFrameMatches(preparedGeometry, baseContext) &&
+    (!preparedGeometry.fallback || preparedGeometry.renderArea === visibleBounds) ? preparedGeometry : null;
+  const latestVisibleBounds = useRef(visibleBounds);
+  latestVisibleBounds.current = visibleBounds;
+  const webShadows = useMemo(() => Platform.OS === 'web' && mapBuildings && candidateArea
+    ? buildingShadows(mapBuildings, shadowSun, candidateArea) : emptyShadows, [mapBuildings, shadowSun, candidateArea]);
+  useEffect(() => {
+    if (Platform.OS === 'web' || !mapBuildings || !candidateArea || adopted || prepared) return;
+    let cancelled = false, stop = () => {};
+    const complete = (source, renderArea, fallback) => {
+      if (!cancelled) setPreparedGeometry({ ...baseContext, source, renderArea, fallback });
+    };
+    const fail = () => { if (!cancelled) setPreparedGeometry({ ...baseContext, source: emptyShadows, renderArea: candidateArea, failed: true }); };
+    stop = startShadowGeometry(mapBuildings, shadowSun, candidateArea, (source) => {
+      // Dense areas may fit on the screen even when the wider frame does not.
+      if (source.limitExceeded && candidateArea !== latestVisibleBounds.current && latestVisibleBounds.current) {
+        const calculateVisible = () => {
+          const bounds = latestVisibleBounds.current;
+          stop = startShadowGeometry(mapBuildings, shadowSun, bounds, (visibleSource) => {
+            if (bounds !== latestVisibleBounds.current) calculateVisible();
+            else complete(visibleSource, bounds, true);
+          }, fail);
+        };
+        calculateVisible();
+      } else complete(source, candidateArea, false);
+    }, fail);
+    return () => { cancelled = true; stop(); };
+  }, [mapBuildings, candidateArea, shadowSun, shadowTimeKey, mapRetry, shadowAnchor.latitude, shadowAnchor.longitude, adopted, prepared]);
+  const shadowArea = Platform.OS === 'web' ? candidateArea : adopted?.area || prepared?.renderArea || candidateArea;
   const frameContext = { ...baseContext, area: shadowArea };
-  const adopted = shadowFrameMatches(nativeShadowResult, frameContext) ? nativeShadowResult : null;
-  const shadows = useMemo(() => adopted?.source || (useVisibleOnly && mapBuildings && shadowArea
-    ? buildingShadows(mapBuildings, shadowSun, shadowArea, { maxVertices: 120000, excludeRoofs: true })
-    : candidateShadows), [adopted?.source, useVisibleOnly, mapBuildings, shadowSun, shadowArea, candidateShadows]);
+  const shadows = Platform.OS === 'web' ? webShadows : adopted?.source || prepared?.source || emptyShadows;
   const shadowContext = useRef(null);
   shadowContext.current = { ...frameContext, source: shadows, geometrySource: mapBuildings?.source };
   function acceptShadowResult(result) {
@@ -330,10 +353,11 @@ function Main() {
       if (tagged.uri) setLastShadowImage(tagged);
     }
   }
-  const currentShadowResult = nativeShadowResult?.source === shadows && nativeShadowResult?.area === shadowArea && nativeShadowResult?.retryToken === mapRetry ? nativeShadowResult : null;
+  const currentShadowResult = adopted?.source === shadows ? adopted : null;
   shadowContext.current.hasReady = Boolean(currentShadowResult);
-  const shadowPending = Platform.OS !== 'web' && shadows.features.length > 0 && !currentShadowResult;
-  const shadowFailed = Platform.OS !== 'web' && currentShadowResult?.failed;
+  const shadowPending = Platform.OS !== 'web' && Boolean(mapBuildings && shadowArea && !prepared?.failed &&
+    ((!prepared && !adopted) || (shadows.features.length > 0 && !currentShadowResult)));
+  const shadowFailed = Platform.OS !== 'web' && Boolean(prepared?.failed || currentShadowResult?.failed);
   const groundShadow = currentShadowResult?.uri ? currentShadowResult : retainedShadow(lastShadowImage,
     { timeKey: shadowTimeKey, visibleBounds, retryToken: mapRetry, sunStatus });
   const partialShadow = Boolean(groundShadow && groundShadow !== currentShadowResult);
@@ -362,21 +386,17 @@ function Main() {
     setFutureJob(null); setFutureShadow(null);
     if (Platform.OS === 'web' || !playingDay || mode !== 'place' || searchOpen || mapFailed || shadowFailed ||
         shadowPending || shadows.limitExceeded || !mapBuildings || !shadowArea) return;
-    let cancelled = false;
-    const timer = setTimeout(() => {
-      if (cancelled) return;
-      const next = nextPlaybackTime(minutes), nextInstant = atMinutes(day, next);
-      if (!nextInstant) { setPlayingDay(false); return; }
-      const nextSun = sunPosition(nextInstant, shadowAnchor.latitude, shadowAnchor.longitude);
-      const nextShadows = buildingShadows(mapBuildings, nextSun, shadowArea, { maxVertices: 120000, excludeRoofs: true });
-      if (cancelled) return;
-      const frame = { source: nextShadows, area: shadowArea, buildings: mapBuildings, retryToken: mapRetry,
-        timeKey: nextInstant.getTime(), latitude: shadowAnchor.latitude, longitude: shadowAnchor.longitude,
-        geometrySource: mapBuildings?.source, generation: cacheGeneration() };
+    const next = nextPlaybackTime(minutes), nextInstant = atMinutes(day, next);
+    if (!nextInstant) { setPlayingDay(false); return; }
+    const nextSun = sunPosition(nextInstant, shadowAnchor.latitude, shadowAnchor.longitude);
+    const context = { area: shadowArea, buildings: mapBuildings, retryToken: mapRetry,
+      timeKey: nextInstant.getTime(), latitude: shadowAnchor.latitude, longitude: shadowAnchor.longitude,
+      geometrySource: mapBuildings?.source, generation: cacheGeneration() };
+    return startShadowGeometry(mapBuildings, nextSun, shadowArea, (nextShadows) => {
+      const frame = { ...context, source: nextShadows };
       setFutureJob(frame);
       if (!nextShadows.features.length) setFutureShadow({ ...frame, failed: Boolean(nextShadows.limitExceeded) });
-    }, 100);
-    return () => { cancelled = true; clearTimeout(timer); };
+    }, () => setFutureShadow({ ...context, source: emptyShadows, failed: true }));
   }, [playingDay, minutes, day, shadowAnchor.latitude, shadowAnchor.longitude, mapBuildings, shadowArea, mapRetry, mode, searchOpen, mapFailed, shadowFailed, shadowPending, shadows.limitExceeded]);
   useEffect(() => {
     setShadowGeometrySignature(null);
@@ -761,7 +781,7 @@ function Main() {
         }} onPick={choosePoint} onPlace={choosePoint} />
         {(mapBuildings?.source === 'osm' || groundShadow?.geometrySource === 'osm') && <Text accessibilityRole="link" onPress={() => Linking.openURL('https://www.openstreetmap.org/copyright')} style={styles.mapAttribution}>Datos © OpenStreetMap</Text>}
         {!map3DAvailable && <Text style={styles.mapFallback}>{t('3D no disponible · mapa en 2D', '3D unavailable · showing 2D map')}</Text>}
-        {(mapIssue || shadows.limitExceeded || shadowPending || shadowFailed || sunStatus || partialShadow) && <Text accessibilityRole={mapAction ? 'button' : undefined} onPress={mapAction} style={[styles.mapFallback, { top: map3DAvailable ? 115 : 150 }]}>{shadows.limitExceeded ? t('Acerca el mapa para ver las sombras.', 'Zoom in to see the shadows.') : shadowFailed ? t('No se han podido dibujar las sombras. Toca para reintentar.', 'Could not draw shadows. Tap to retry.') : mapFailed ? localized(mapStatus) : partialShadow ? t('Actualizando sombras; solo se muestra la zona anterior.', 'Updating shadows; only the previous area is shown.') : shadowPending ? t('Calculando sombras de la zona…', 'Calculating shadows in this area…') : mapStale || (mapIssue && !mapBuildings) ? localized(mapStatus) : sunStatus === 'night' ? t('Es de noche a esta hora. Cambia la hora para ver sombras.', 'It is night at this time. Change the time to see shadows.') : sunStatus === 'low' ? t('El sol está muy bajo. Cambia la hora para ver sombras.', 'The sun is too low. Change the time to see shadows.') : localized(mapStatus)}</Text>}
+        {(mapIssue || shadows.limitExceeded || shadowPending || shadowFailed || sunStatus || partialShadow) && <Text accessibilityRole={mapAction ? 'button' : undefined} onPress={mapAction} style={[styles.mapFallback, { top: map3DAvailable ? 115 : 150 }]}>{shadows.limitExceeded ? t('Acerca el mapa para ver las sombras.', 'Zoom in to see the shadows.') : shadowFailed ? t('No se han podido dibujar las sombras. Toca para reintentar.', 'Could not draw shadows. Tap to retry.') : mapFailed ? localized(mapStatus) : partialShadow ? t('Actualizando sombras.', 'Updating shadows.') : shadowPending ? t('Calculando sombras de la zona…', 'Calculating shadows in this area…') : mapStale || (mapIssue && !mapBuildings) ? localized(mapStatus) : sunStatus === 'night' ? t('Es de noche a esta hora. Cambia la hora para ver sombras.', 'It is night at this time. Change the time to see shadows.') : sunStatus === 'low' ? t('El sol está muy bajo. Cambia la hora para ver sombras.', 'The sun is too low. Change the time to see shadows.') : localized(mapStatus)}</Text>}
       </View>
       {Platform.OS !== 'web' && <ShadowRasterizer shadows={currentShadowResult?.uri ? emptyShadows : shadows} bounds={shadowArea} retryToken={mapRetry} onReady={acceptShadowResult} onError={(failure) => acceptShadowResult({ ...failure, failed: true })} />}
       {Platform.OS !== 'web' && playingDay && futureJob?.source?.features?.length > 0 && !futureShadow && <ShadowRasterizer shadows={futureJob.source} bounds={futureJob.area} retryToken={futureJob.retryToken} onReady={acceptFutureShadow} onError={failFutureShadow} />}
