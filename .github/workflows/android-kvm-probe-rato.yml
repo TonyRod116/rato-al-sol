@@ -1,0 +1,36 @@
+name: Check Android emulator acceleration for Rato
+
+on:
+  push:
+    branches:
+      - codex/android-kvm-probe-rato
+
+permissions:
+  contents: read
+
+jobs:
+  probe:
+    if: github.repository == 'TonyRod116/rato-al-sol' && github.event.repository.private
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+    steps:
+      - name: Check KVM availability without changing the host
+        shell: bash
+        run: |
+          set -euo pipefail
+          echo "Runner architecture: $(uname -m)"
+          if [ -e /dev/kvm ]; then
+            ls -l /dev/kvm
+            if [ -r /dev/kvm ] && [ -w /dev/kvm ]; then
+              echo "KVM_READ_WRITE=yes"
+            else
+              echo "KVM_READ_WRITE=no"
+            fi
+          else
+            echo "KVM_AVAILABLE=no"
+          fi
+          if command -v emulator >/dev/null 2>&1; then
+            echo "ANDROID_EMULATOR=available"
+          else
+            echo "ANDROID_EMULATOR=not_on_path"
+          fi
