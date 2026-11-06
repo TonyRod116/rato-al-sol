@@ -58,4 +58,11 @@ with zipfile.ZipFile(io.BytesIO(bundle_bytes)) as bundle:
     print("packaged_native_library_names:", ", ".join(libs))
     indicators = ["AES", "AES/GCM/NoPadding", "AES/CBC/PKCS5Padding", "RSA", "SHA-256", "TLS", "TLSv1.2", "TLSv1.3", "ChaCha20", "X25519"]
     print("exact_algorithm_string_literals:", ", ".join(s for s in indicators if s in literals) or "(none)")
+    relevant_types = sorted(x for x in referenced if x.startswith(("Ljavax/crypto/", "Ljavax/net/ssl/", "Lorg/conscrypt/", "Lorg/bouncycastle/")))
+    print("specific_security_reference_types:", ", ".join(relevant_types))
+    libfiles = [x for x in names if x.startswith("base/lib/arm64-v8a/") and x.endswith(".so")]
+    indicators_native = [b"OPENSSL", b"BoringSSL", b"libssl", b"EVP_Encrypt", b"mbedtls"]
+    for indicator in indicators_native:
+        matches = [os.path.basename(n) for n in libfiles if indicator in bundle.read(n)]
+        print("native_literal_" + indicator.decode("ascii") + ":", ", ".join(matches) or "(none)")
     print("Note: defined classes, references, and strings establish static presence only, not execution or final legal classification.")
