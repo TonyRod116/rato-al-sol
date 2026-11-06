@@ -1,0 +1,93 @@
+name: Rato Android 23 APK with safe verification diagnostics
+
+on:
+  push:
+    branches:
+      - codex/rato-apk-0fff-diagnostic
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    if: github.repository == 'TonyRod116/rato-al-sol' && github.event.repository.private
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    steps:
+      - name: Check out exact approved source
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          ref: 0fff1ca477d088c83be9aab57b9f2ac9ff2f83d7
+          persist-credentials: false
+
+      - name: Set up Node
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: '22'
+
+      - name: Check source, release and tools before spending build time
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = '0fff1ca477d088c83be9aab57b9f2ac9ff2f83d7' || { echo 'Unexpected source commit'; exit 1; }
+          test -z "$(git status --porcelain)" || { echo 'Source checkout is not clean'; git status --short; exit 1; }
+          node -e 'const c=require("./mobile/app.json").expo, e=require("./mobile/eas.json"); if(c.android.package!=="com.ratoalsol.app" || c.android.versionCode!==23 || e.cli.appVersionSource!=="local" || e.build.preview.android.buildType!=="apk" || e.build.preview.distribution!=="internal") process.exit(1)'
+          test -n "${ANDROID_HOME:-}" || { echo 'ANDROID_HOME is missing'; exit 1; }
+          test -x "$ANDROID_HOME/build-tools/36.0.0/apksigner" || { echo 'Android 36 apksigner is missing'; exit 1; }
+          test -x "$ANDROID_HOME/cmdline-tools/latest/bin/apkanalyzer" || { echo 'Android apkanalyzer is missing'; exit 1; }
+          test -n "${JAVA_HOME_17_X64:-}" || { echo 'Java 17 is missing'; exit 1; }
+          echo "JAVA_HOME=$JAVA_HOME_17_X64" >> "$GITHUB_ENV"
+          npm install --global eas-cli@27.4.0
+
+      - name: Install application dependencies
+        working-directory: mobile
+        run: npm ci --no-audit --no-fund
+
+      - name: Build only the internal test APK with existing Rato credentials
+        working-directory: mobile
+        shell: bash
+        env:
+          EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
+        run: |
+          set -euo pipefail
+          test -n "$EXPO_TOKEN" || { echo 'Temporary Expo access is missing'; exit 1; }
+          eas env:exec production 'test -n "${RATO_ANDROID_MAPS_API_KEY:-}" && printf "::add-mask::%s\n" "$RATO_ANDROID_MAPS_API_KEY" && eas build --platform android --profile preview --local --non-interactive --freeze-credentials --output "$RUNNER_TEMP/rato-android-preview-0fff.apk"' --non-interactive
+
+      - name: Verify APK signature and manifest with safe diagnostics
+        shell: bash
+        run: |
+          set -euo pipefail
+          export LC_ALL=C
+          apk="$RUNNER_TEMP/rato-android-preview-0fff.apk"
+          tmp="$(mktemp -d "$RUNNER_TEMP/rato-apk-verify.XXXXXX")"
+          trap 'rm -rf "$tmp"' EXIT
+          test -s "$apk" || { echo 'APK is missing or empty'; exit 1; }
+          echo 'Checking APK cryptographic signature'
+          if ! "$ANDROID_HOME/build-tools/36.0.0/apksigner" verify --verbose --print-certs "$apk" > "$tmp/signature.txt" 2> "$tmp/signature-error.txt"; then
+            echo 'APK signature verification command failed'; exit 1
+          fi
+          echo 'APK cryptographic signature verified'
+          count="$(grep -c '^Signer #[0-9]* certificate SHA-256 digest:' "$tmp/signature.txt" || true)"
+          if [ "$count" != 1 ]; then echo "Unexpected signer count: $count"; exit 1; fi
+          digest="$(sed -n 's/^Signer #1 certificate SHA-256 digest: //p' "$tmp/signature.txt" | tr -d ':' | tr '[:upper:]' '[:lower:]')"
+          if [ "$digest" != '347878355437a1cc16cd04a47abec2748341682dddca8224f684ab29ef01e895' ]; then
+            echo "Certificate SHA-256 mismatch: $digest"; exit 1
+          fi
+          echo 'APK signer matches the existing Rato signing certificate'
+          echo 'Decoding manifest without exposing its Maps key'
+          if ! "$ANDROID_HOME/cmdline-tools/latest/bin/apkanalyzer" manifest print "$apk" > "$tmp/manifest.xml" 2> "$tmp/analyzer-error.txt"; then
+            echo 'Android manifest decoding failed'; exit 1
+          fi
+          echo 'Manifest decoded; checking package, version, target, permissions and Maps metadata'
+          python3 .github/scripts/verify_android_manifest.py "$tmp/manifest.xml" mobile/app.json
+          echo 'APK verification completed successfully'
+
+      - name: Save the verified APK only
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: rato-android-preview-v23-0fff
+          path: ${{ runner.temp }}/rato-android-preview-0fff.apk
+          if-no-files-found: error
+          retention-days: 1
+          compression-level: 0
+
