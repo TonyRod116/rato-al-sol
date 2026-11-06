@@ -1,0 +1,28 @@
+name: Rato iOS 24 crypto audit
+on:
+  push:
+    branches:
+      - codex/rato-ios24-crypto-audit
+permissions:
+  actions: read
+  contents: read
+jobs:
+  audit:
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          persist-credentials: false
+      - name: Inspect exact IPA without signing credentials
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          umask 077
+          audit_dir="$(mktemp -d "$RUNNER_TEMP/rato-ios24-audit.XXXXXX")"
+          trap 'rm -rf "$audit_dir"' EXIT
+          gh api 'repos/TonyRod116/rato-al-sol/actions/artifacts/13510214491/zip' > "$audit_dir/artifact.zip"
+          printf '%s  %s\n' 'f9db532a1f061b6e1838ad82a41f72a115c68276dc3f210f80963d125d625949' "$audit_dir/artifact.zip" | sha256sum --check --status
+          python3 .github/scripts/inspect-rato-ios24-crypto.py "$audit_dir/artifact.zip"
