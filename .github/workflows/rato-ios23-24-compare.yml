@@ -1,0 +1,31 @@
+name: Rato iOS 23 versus 24 comparison
+on:
+  push:
+    branches:
+      - codex/rato-ios23-24-compare
+permissions:
+  actions: read
+  contents: read
+jobs:
+  compare:
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          persist-credentials: false
+      - name: Compare exact IPA components without signing credentials
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          umask 077
+          audit_dir="$(mktemp -d "$RUNNER_TEMP/rato-ios-compare.XXXXXX")"
+          trap 'rm -rf "$audit_dir"' EXIT
+          gh api 'repos/TonyRod116/rato-al-sol/actions/artifacts/13502681593/zip' > "$audit_dir/ios23.zip"
+          gh api 'repos/TonyRod116/rato-al-sol/actions/artifacts/13510214491/zip' > "$audit_dir/ios24.zip"
+          printf '%s  %s\n' '55d82b936973ca590aeaf9fdcaf669b0a063b65f15443a221f36c5a9f6c25b2a' "$audit_dir/ios23.zip" | sha256sum --check --status
+          printf '%s  %s\n' 'f9db532a1f061b6e1838ad82a41f72a115c68276dc3f210f80963d125d625949' "$audit_dir/ios24.zip" | sha256sum --check --status
+          python3 .github/scripts/compare-ios23-24.py "$audit_dir/ios23.zip" "$audit_dir/ios24.zip"
+          python3 .github/scripts/inspect-rato-ios24-crypto.py "$audit_dir/ios23.zip"
