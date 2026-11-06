@@ -1,0 +1,28 @@
+name: Inspect Rato Android cryptography (read-only)
+on:
+  push:
+    branches: [codex/rato-v22-crypto-audit]
+permissions:
+  contents: read
+  actions: read
+jobs:
+  inspect:
+    if: github.repository == 'TonyRod116/rato-al-sol' && github.event.repository.private
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          persist-credentials: false
+      - name: Verify preserved Android archive and inspect crypto indicators
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          umask 077
+          audit_dir="$(mktemp -d "$RUNNER_TEMP/rato-crypto-audit.XXXXXX")"
+          trap 'rm -rf "$audit_dir"' EXIT
+          gh api 'repos/TonyRod116/rato-al-sol/actions/artifacts/13497323377/zip' > "$audit_dir/artifact.zip"
+          printf '%s  %s\n' 'fdb52437b62e1cee1b119c9e6f0510c51e02a1894855b402f9552d37832097ef' "$audit_dir/artifact.zip" | sha256sum --check --status
+          python3 .github/scripts/inspect-rato-crypto.py "$audit_dir/artifact.zip"
