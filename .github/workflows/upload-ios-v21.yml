@@ -1,0 +1,39 @@
+name: Upload iPhone test build
+on:
+  push:
+    branches: [codex/rato-ios-upload-v21]
+permissions:
+  contents: read
+  actions: read
+jobs:
+  upload:
+    if: github.repository == 'TonyRod116/rato-al-sol' && github.event.repository.private
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with:
+          node-version: '22'
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        with:
+          name: rato-iphone-preview
+          path: ${{ runner.temp }}/rato-ios
+          github-token: ${{ github.token }}
+          run-id: 42187563172
+      - run: npm install --global eas-cli@27.4.0
+      - name: Install project dependencies
+        working-directory: mobile
+        run: npm ci --no-audit --no-fund
+      - name: Upload iPhone build to Expo
+        working-directory: mobile
+        shell: bash
+        env:
+          EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
+        run: |
+          set -euo pipefail
+          test -n "$EXPO_TOKEN"
+          eas upload -p ios --build-path "$RUNNER_TEMP/rato-ios/rato-preview.ipa" --json --non-interactive > "$RUNNER_TEMP/ios-upload.json"
+          node -e 'const x=require(process.argv[1]); if (!/^https:\/\/expo\.dev\//.test(x.url)) process.exit(1); console.log("iPhone: " + x.url)' "$RUNNER_TEMP/ios-upload.json"
