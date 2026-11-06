@@ -68,7 +68,8 @@ with zipfile.ZipFile(p) as artifact:
         for off,endian in paths:global_deps.update(deps(data,off,endian))
         for label,needle in markers.items():
             if needle.lower() in data.lower():hits[label].append(display)
-    print('packaged_license_notice_paths:', [n[len(app_root):] for n in names if n.startswith(app_root) and any(w in n.lower() for w in ('license','licence','notice'))][:100])\n    print('macho_binaries:',len(binaries))
+    print('packaged_license_notice_paths:', [n[len(app_root):] for n in names if n.startswith(app_root) and any(w in n.lower() for w in ('license','licence','notice'))][:100])
+    print('macho_binaries:',len(binaries))
     for n in sorted(binaries):print('BINARY',n)
     print('linked_library_count:',len(global_deps))
     for n in sorted(global_deps):print('LOAD',n)
