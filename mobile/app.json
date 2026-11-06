@@ -9,19 +9,21 @@
     "locales": {
       "es": {
         "ios": {
-          "NSLocationWhenInUseUsageDescription": "Rato al Sol usa tu ubicación para encontrar lugares cerca de ti cuando tú lo pides."
+          "NSLocationWhenInUseUsageDescription": "Rato al Sol usa tu ubicación para encontrar lugares cerca de ti cuando tú lo pides.",
+          "NSMotionUsageDescription": "Rato al Sol no utiliza datos de movimiento; una biblioteca de ubicación incluye esta capacidad."
         }
       },
       "en": {
         "ios": {
-          "NSLocationWhenInUseUsageDescription": "Rato al Sol uses your location to find nearby places when you ask."
+          "NSLocationWhenInUseUsageDescription": "Rato al Sol uses your location to find nearby places when you ask.",
+          "NSMotionUsageDescription": "Rato al Sol does not use motion data; a location library includes this capability."
         }
       }
     },
     "ios": {
       "supportsTablet": true,
       "bundleIdentifier": "com.ratoalsol.app",
-      "buildNumber": "22"
+      "buildNumber": "23"
     },
     "android": {
       "package": "com.ratoalsol.app",
@@ -45,7 +47,7 @@
           "locationWhenInUsePermission": "Rato al Sol usa tu ubicación para encontrar lugares cerca de ti cuando tú lo pides.",
           "locationAlwaysAndWhenInUsePermission": false,
           "locationAlwaysPermission": false,
-          "motionUsagePermission": false
+          "motionUsagePermission": "Rato al Sol no utiliza datos de movimiento; una biblioteca de ubicación incluye esta capacidad."
         }
       ],
       [
