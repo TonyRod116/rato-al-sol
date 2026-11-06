@@ -37,6 +37,11 @@ with zipfile.ZipFile(io.BytesIO(bundle_bytes)) as bundle:
         defined.update(tt[u32(classes_off + i * 32)] for i in range(classes_n))
         literals.update(ss)
     patterns = {
+        "commons_codec": ("Lorg/apache/commons/codec/",),
+        "fresco": ("Lcom/facebook/imagepipeline/", "Lcom/facebook/drawee/", "Lcom/facebook/imageutils/"),
+        "kotlin": ("Lkotlin/",),
+        "hermes": ("Lcom/facebook/hermes/",),
+        "androidx": ("Landroidx/",),
         "okhttp": ("Lokhttp3/",),
         "okio": ("Lokio/",),
         "conscrypt": ("Lorg/conscrypt/", "Lcom/android/org/conscrypt/", "Lcom/google/android/gms/org/conscrypt/"),
@@ -54,6 +59,8 @@ with zipfile.ZipFile(io.BytesIO(bundle_bytes)) as bundle:
         a = sum(x.startswith(prefixes) for x in defined)
         b = sum(x.startswith(prefixes) for x in referenced)
         print(label + ": defined=" + str(a) + " referenced_types=" + str(b))
+    metadata = sorted(x for x in names if ("META-INF/" in x and any(word in x.lower() for word in ("codec", "okhttp", "okio", "fresco", "kotlin", "notice", "license", "publicsuffix"))))
+    print("packaged_notice_or_dependency_metadata:", ", ".join(metadata[:100]) or "(none)")
     libs = sorted(set(os.path.basename(x) for x in names if x.startswith("base/lib/") and x.endswith(".so")))
     print("packaged_native_library_names:", ", ".join(libs))
     indicators = ["AES", "AES/GCM/NoPadding", "AES/CBC/PKCS5Padding", "RSA", "SHA-256", "TLS", "TLSv1.2", "TLSv1.3", "ChaCha20", "X25519"]
