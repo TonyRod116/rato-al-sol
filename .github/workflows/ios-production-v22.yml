@@ -1,0 +1,69 @@
+name: iOS production build (draft)
+
+on:
+  push:
+    branches:
+      - codex/ios-production-v22
+
+permissions:
+  contents: read
+
+concurrency:
+  group: rato-ios-production-draft
+  cancel-in-progress: false
+
+jobs:
+  build:
+    if: github.repository == 'TonyRod116/rato-al-sol' && github.event.repository.private
+    runs-on: macos-26
+    timeout-minutes: 45
+    env:
+      DEVELOPER_DIR: /Applications/Xcode_26.6.app/Contents/Developer
+    steps:
+      - name: Check out the private project
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          persist-credentials: false
+
+      - name: Test native shadow rasterizer
+        run: |
+          swiftc -O mobile/modules/rato-shadow-raster/ios/ShadowScanline.swift tests/shadow-scanline.swift -o "$RUNNER_TEMP/rato-shadow-test"
+          "$RUNNER_TEMP/rato-shadow-test"
+
+      - name: Set up Node
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: '22'
+
+      - name: Check build tools and install the EAS CLI
+        run: |
+          command -v pod
+          command -v fastlane
+          xcodebuild -version
+          npm install --global eas-cli@27.4.0
+
+      - name: Install project dependencies
+        working-directory: mobile
+        run: npm ci --no-audit --no-fund
+
+      - name: Build an iPhone App Store candidate using existing distribution credentials
+        working-directory: mobile
+        env:
+          EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
+        run: |
+          test -n "$EXPO_TOKEN"
+          eas build --platform ios --profile production --local --non-interactive --freeze-credentials --output "$RUNNER_TEMP/rato-production.ipa"
+
+      - name: Verify App Store signature, profile and SDK
+        run: |
+          set -euo pipefail
+          python3 .github/scripts/verify_ios_production.py "$RUNNER_TEMP/rato-production.ipa" mobile/app.json
+
+      - name: Store the signed candidate as a private artifact
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: rato-iphone-production
+          path: ${{ runner.temp }}/rato-production.ipa
+          if-no-files-found: error
+          retention-days: 1
+          compression-level: 0
