@@ -1,4 +1,29 @@
-import hashlib,io,plistlib,re,sys,zipfile
+import hashlib,io,plistlib,re,struct,sys,zipfile
+def signature_normalized(data):
+    out=bytearray(data)
+    def thin(off):
+        magic=data[off:off+4]
+        if magic in (b'\xcf\xfa\xed\xfe',b'\xce\xfa\xed\xfe'): endian='<'
+        elif magic in (b'\xfe\xed\xfa\xcf',b'\xfe\xed\xfa\xce'):endian='>'
+        else:raise ValueError('Unknown Mach-O')
+        is64=magic in (b'\xcf\xfa\xed\xfe',b'\xfe\xed\xfa\xcf')
+        count=struct.unpack_from(endian+'I',data,off+16)[0]
+        pos=off+(32 if is64 else 28)
+        for _ in range(count):
+            cmd,size=struct.unpack_from(endian+'II',data,pos)
+            if cmd==0x1d:
+                sigoff,sigsize=struct.unpack_from(endian+'II',data,pos+8)
+                if off+sigoff+sigsize>len(data):raise ValueError('Bad signature bounds')
+                out[off+sigoff:off+sigoff+sigsize]=b'\0'*sigsize
+            pos+=size
+    magics={b'\xca\xfe\xba\xbe':('>',False),b'\xbe\xba\xfe\xca':('<',False),b'\xca\xfe\xba\xbf':('>',True),b'\xbf\xba\xfe\xca':('<',True)}
+    if data[:4] in magics:
+        endian,is64=magics[data[:4]];count=struct.unpack_from(endian+'I',data,4)[0]
+        for i in range(count):
+            offset=struct.unpack_from(endian+('Q' if is64 else 'I'),data,8+i*(32 if is64 else 20)+8)[0]
+            thin(offset)
+    else:thin(0)
+    return hashlib.sha256(out).hexdigest()
 def inspect(path):
     with zipfile.ZipFile(path) as z:
         files=[x for x in z.infolist() if not x.is_dir() and x.filename.endswith('.ipa')]
@@ -19,7 +44,7 @@ def inspect(path):
             if not (is_macho or is_bundle):continue
             data=ipa.read(name)
             short=name[len(root):]
-            found[short]=(len(data),hashlib.sha256(data).hexdigest(),is_macho)
+            found[short]=(len(data),hashlib.sha256(data).hexdigest(),is_macho,signature_normalized(data) if is_macho else None)
             if is_bundle:
                 terms=['node-forge','crypto-js','crypto-browserify','tweetnacl','libsodium','noble-curves','sjcl','createCipheriv','EVP_Encrypt','AES-GCM','AES-CBC']
                 markers[short]=[t for t in terms if t.encode('ascii').lower() in data.lower()]
@@ -30,7 +55,7 @@ for k in sorted(set(old)|set(new)):
     if k not in old: print('ADDED',k)
     elif k not in new: print('REMOVED',k)
     else:
-        print('EQUAL' if old[k][1]==new[k][1] else 'DIFFERENT',k,'native_macho' if old[k][2] else 'JS_BUNDLE',old[k][0],new[k][0])
+        print('EQUAL' if old[k][1]==new[k][1] else 'DIFFERENT',k,'native_macho' if old[k][2] else 'JS_BUNDLE',old[k][0],new[k][0], 'same_without_signature='+str(old[k][3]==new[k][3]) if old[k][2] else '')
 print('js_crypto_markers_v23:',om)
 print('js_crypto_markers_v24:',nm)
 print('LIMIT: identical native binary bytes prove only that binaries match; different JS and literal checks do not establish functional or legal equivalence.')
