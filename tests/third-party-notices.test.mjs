@@ -68,6 +68,8 @@ test('the native notices preserve complete provider text and the bundled Public 
   for (const [name, files] of [
     ['OkHttp · Apache 2.0', ['okhttp-license.txt']], ['Okio · Apache 2.0', ['okio-license.txt']],
     ['Fresco · MIT', ['fresco-license.txt']], ['Folly · Apache 2.0', ['folly-license.txt']],
+    ['fmt · MIT', ['fmt-license.txt']], ['DoubleConversion · BSD 3-Clause', ['double-conversion-license.txt']],
+    ['glog · BSD 3-Clause', ['glog-license.txt']], ['Boost · Boost Software License 1.0', ['boost-license.txt']],
     ['Hermes · MIT', ['hermes-license.txt']], ['Kotlin · Apache 2.0', ['kotlin-license.txt']],
     ['Apache Commons Codec · Apache 2.0', ['codec-notice.txt', 'codec-license.txt']],
     ['Public Suffix List · MPL 2.0', ['public-suffix-notice.txt', 'mpl-2.0.txt']],
@@ -83,4 +85,18 @@ test('Codec notice retains the Beider-Morse attribution without asserting a bund
   assert.ok(codec);
   assert.match(codec.text, /Copyright \(c\) 2008 Alexander Beider & Stephen P\. Morse\./);
   assert.doesNotMatch(codec.name, /1\.10/);
+});
+
+test('native component notices retain original copyright without unverified binary versions', () => {
+  for (const [name, copyright] of [
+    ['fmt · MIT', /Victor Zverovich/],
+    ['DoubleConversion · BSD 3-Clause', /V8 project authors/],
+    ['glog · BSD 3-Clause', /Google Inc\./],
+    ['Boost · Boost Software License 1.0', /Boost Software License/],
+  ]) {
+    const notice = NATIVE_NOTICES.find((item) => item.name === name);
+    assert.ok(notice, `Missing ${name}`);
+    assert.match(notice.text, copyright);
+    assert.doesNotMatch(notice.name, /\b(?:12\.1\.0|1\.1\.6|0\.3\.5|1\.84\.0)\b/);
+  }
 });

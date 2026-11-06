@@ -9,6 +9,12 @@ const sources = [
   ['Okio · Apache 2.0', ['okio-license.txt']],
   ['Fresco · MIT', ['fresco-license.txt']],
   ['Folly · Apache 2.0', ['folly-license.txt']],
+  // Upstream license texts match the React Native podspec references; the
+  // precompiled iOS framework does not establish exact component versions.
+  ['fmt · MIT', ['fmt-license.txt']],
+  ['DoubleConversion · BSD 3-Clause', ['double-conversion-license.txt']],
+  ['glog · BSD 3-Clause', ['glog-license.txt']],
+  ['Boost · Boost Software License 1.0', ['boost-license.txt']],
   ['Hermes · MIT', ['hermes-license.txt']],
   ['Kotlin · Apache 2.0', ['kotlin-license.txt']],
   // Reference NOTICE retained for matching Codec classes; exact version is unverified.
