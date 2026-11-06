@@ -1,0 +1,30 @@
+name: Rato v23 Android codec audit
+on:
+  push:
+    branches:
+      - codex/rato-v23-codec-audit
+permissions:
+  actions: read
+  contents: read
+jobs:
+  audit:
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          persist-credentials: false
+      - name: Inspect exact AAB and reference Codec
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          umask 077
+          audit_dir="$(mktemp -d "$RUNNER_TEMP/rato-codec.XXXXXX")"
+          trap 'rm -rf "$audit_dir"' EXIT
+          gh api 'repos/TonyRod116/rato-al-sol/actions/artifacts/13512526028/zip' > "$audit_dir/artifact.zip"
+          printf '%s  %s\n' '9a7052980278600c2a3f1dee473e9cf37d6444862ad04c48f81747c48b5515ad' "$audit_dir/artifact.zip" | sha256sum --check --status
+          curl --fail --silent --show-error --location 'https://repo.maven.apache.org/maven2/commons-codec/commons-codec/1.10/commons-codec-1.10.jar' -o "$audit_dir/commons-codec-1.10.jar"
+          printf '%s  %s\n' '4241dfa94e711d435f29a4604a3e2de5c4aa3c165e23bd066be6fc1fc4309569' "$audit_dir/commons-codec-1.10.jar" | sha256sum --check --status
+          python3 .github/scripts/inspect-rato-v23-codec.py "$audit_dir/artifact.zip" "$audit_dir/commons-codec-1.10.jar"
