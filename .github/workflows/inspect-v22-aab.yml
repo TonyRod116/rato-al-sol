@@ -1,0 +1,48 @@
+name: Inspect Rato Android candidate components (draft)
+
+on:
+  push:
+    branches: [codex/rato-v22-component-audit]
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  inspect:
+    if: github.repository == 'TonyRod116/rato-al-sol' && github.event.repository.private
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          persist-credentials: false
+      - name: Verify candidate archive and inspect components
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          umask 077
+          audit_dir="$(mktemp -d "$RUNNER_TEMP/rato-manifest-audit.XXXXXX")"
+          trap 'rm -rf "$audit_dir"' EXIT
+          gh api 'repos/TonyRod116/rato-al-sol/actions/artifacts/13497323377/zip' > "$audit_dir/artifact.zip"
+          printf '%s  %s\n' 'fdb52437b62e1cee1b119c9e6f0510c51e02a1894855b402f9552d37832097ef' "$audit_dir/artifact.zip" | sha256sum --check --status
+          python3 - "$audit_dir/artifact.zip" "$audit_dir/candidate.aab" <<'PY'
+          from pathlib import Path
+          import shutil
+          import sys
+          import zipfile
+          with zipfile.ZipFile(sys.argv[1]) as archive:
+              members = [x for x in archive.infolist() if not x.is_dir()]
+              if len(members) != 1 or members[0].filename != 'rato-android-production.aab':
+                  raise SystemExit('Unexpected candidate archive contents')
+              with archive.open(members[0]) as source, Path(sys.argv[2]).open('wb') as dest:
+                  shutil.copyfileobj(source, dest)
+          PY
+          curl --fail --location --silent --show-error --retry 2 \
+            'https://github.com/google/bundletool/releases/download/1.18.3/bundletool-all-1.18.3.jar' \
+            --output "$audit_dir/bundletool.jar"
+          printf '%s  %s\n' 'a099cfa1543f55593bc2ed16a70a7c67fe54b1747bb7301f37fdfd6d91028e29' "$audit_dir/bundletool.jar" | sha256sum --check --status
+          java -jar "$audit_dir/bundletool.jar" dump manifest --bundle="$audit_dir/candidate.aab" > "$audit_dir/manifest.xml"
+          python3 .github/scripts/inspect-rato-components.py "$audit_dir/manifest.xml"
