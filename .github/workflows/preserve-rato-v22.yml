@@ -1,0 +1,39 @@
+name: Preserve Rato release candidates temporarily
+on:
+  push:
+    branches: [codex/preserve-rato-v22]
+permissions:
+  contents: read
+  actions: read
+jobs:
+  preserve:
+    if: github.repository == 'TonyRod116/rato-al-sol' && github.event.repository.private
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        with:
+          name: rato-iphone-production
+          path: ${{ runner.temp }}/rato-ios
+          github-token: ${{ github.token }}
+          run-id: 42205457883
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        with:
+          name: rato-android-production
+          path: ${{ runner.temp }}/rato-android
+          github-token: ${{ github.token }}
+          run-id: 42205468401
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: rato-iphone-store-v22
+          path: ${{ runner.temp }}/rato-ios/rato-production.ipa
+          retention-days: 7
+          if-no-files-found: error
+          compression-level: 0
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: rato-android-store-v22
+          path: ${{ runner.temp }}/rato-android/rato-android-production.aab
+          retention-days: 7
+          if-no-files-found: error
+          compression-level: 0
