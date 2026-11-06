@@ -1,0 +1,78 @@
+name: Audit native components in existing Rato Android 23 bundle
+
+on:
+  push:
+    branches: [codex/rato-aab-native-audit-23]
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  inspect:
+    if: github.repository == 'TonyRod116/rato-al-sol' && github.event.repository.private
+    runs-on: ubuntu-24.04
+    timeout-minutes: 8
+    steps:
+      - name: Read verified bundle and report component symbol evidence
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          umask 077
+          tmp="$(mktemp -d "$RUNNER_TEMP/rato-native-audit.XXXXXX")"
+          trap 'rm -rf "$tmp"' EXIT
+          gh api 'repos/TonyRod116/rato-al-sol/actions/artifacts/13517713967' > "$tmp/meta.json"
+          jq -e '.expired == false and .name == "rato-android-production" and .workflow_run.id == 42241863769 and .workflow_run.head_sha == "2e41b6cffd9990be223b0de11809875202735310" and .digest == "sha256:1aa915d52edf37dc1f230620dd2032a7c01f2c984b00636ef9f7c8280c190010"' "$tmp/meta.json" >/dev/null
+          gh api 'repos/TonyRod116/rato-al-sol/actions/artifacts/13517713967/zip' > "$tmp/artifact.zip"
+          printf '%s  %s\n' '1aa915d52edf37dc1f230620dd2032a7c01f2c984b00636ef9f7c8280c190010' "$tmp/artifact.zip" | sha256sum --check --status
+          python3 - "$tmp/artifact.zip" "$tmp" <<'PY'
+          import os, re, shutil, subprocess, sys, zipfile
+          from pathlib import Path
+          root = Path(sys.argv[2])
+          aab = root / 'candidate.aab'
+          with zipfile.ZipFile(sys.argv[1]) as z:
+              items = [i for i in z.infolist() if not i.is_dir()]
+              if len(items) != 1 or items[0].filename != 'rato-android-production.aab':
+                  raise SystemExit('Unexpected archive contents')
+              with z.open(items[0]) as src, aab.open('wb') as dst:
+                  shutil.copyfileobj(src, dst)
+          patterns = {
+              'fmt': re.compile(r'_ZNK?3fmt'),
+              'double-conversion': re.compile(r'double_conversion'),
+              'glog': re.compile(r'_ZN6google\d+LogMessage|InitGoogleLogging'),
+          }
+          results = {name: [] for name in patterns}
+          with zipfile.ZipFile(aab) as z:
+              members = [i for i in z.infolist() if i.filename.startswith('base/lib/arm64-v8a/') and i.filename.endswith('.so')]
+              if not members:
+                  raise SystemExit('No arm64 native shared objects found')
+              for member in members:
+                  if member.file_size > 250_000_000:
+                      raise SystemExit('Unexpected native object size')
+                  lib = root / 'native.so'
+                  with z.open(member) as src, lib.open('wb') as dst:
+                      shutil.copyfileobj(src, dst)
+                  proc = subprocess.run(['readelf', '--wide', '--syms', str(lib)], check=True, capture_output=True, text=True)
+                  counts = {k: [0, 0] for k in patterns}
+                  for line in proc.stdout.splitlines():
+                      fields = line.split()
+                      if len(fields) < 8 or not fields[0].endswith(':'):
+                          continue
+                      sym, ndx = fields[7], fields[6]
+                      for key, pattern in patterns.items():
+                          if pattern.search(sym):
+                              counts[key][ndx == 'UND'] += 1
+                  for key, (defined, undefined) in counts.items():
+                      if defined or undefined:
+                          results[key].append((Path(member.filename).name, defined, undefined))
+          print('Audited arm64 shared objects:', len(members))
+          for key, values in results.items():
+              print(key + ':')
+              if not values:
+                  print('  No matching public symbols. This does not establish absence.')
+              for filename, defined, undefined in values:
+                  print(f'  {filename}: defined={defined}, referenced={undefined}')
+          PY
+
