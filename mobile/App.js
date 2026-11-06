@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { ActivityIndicator, AppState, KeyboardAvoidingView, Linking, Modal, PanResponder, Platform, Pressable, ScrollView, StyleSheet, Text, TextInput, useWindowDimensions, View } from 'react-native';
+import { ActivityIndicator, Alert, AppState, KeyboardAvoidingView, Linking, Modal, PanResponder, Platform, Pressable, ScrollView, StyleSheet, Text, TextInput, useWindowDimensions, View } from 'react-native';
 import { SafeAreaProvider, SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import Slider from '@react-native-community/slider';
 import AsyncStorage from '@react-native-async-storage/async-storage';
@@ -40,6 +40,7 @@ import { measuredSheetHeight, normalSheetHeight, swipeSheet, tapSheet } from './
 import { geometrySignature, localFrameDay, millisecondsUntilNextDay, renderedShadowKey } from './src/shadow-cache-key.mjs';
 import { shadowCacheProbePending, startShadowCacheProbe } from './src/shadow-cache-probe.mjs';
 import { mapLoadError } from './src/map-load-error.mjs';
+import { PRIVACY_POLICY_URL, requestPermissionAfterNotice } from './src/location-consent.mjs';
 
 const msg = (es, en) => ({ es, en });
 const cachedServices = createCachedServices({ scenes: getScenes, sceneCache, searchCache, generation: cacheGeneration });
@@ -789,10 +790,24 @@ function Main() {
     setNotice(msg('Punto exterior aproximado; confirma en el mapa dónde están las mesas.', 'Approximate outdoor point; check where the tables are on the map.'));
   }
 
+  function askLocationNotice(forAddress) {
+    const title = t('Uso de la ubicación', 'Location use');
+    const explanation = forAddress
+      ? t('Para buscar la dirección, Android puede pedir permiso de ubicación. La zona encontrada se mostrará en el mapa y se consultará a proveedores de mapas, edificios y lugares para calcular sombras. Puedes mover el mapa sin dar permiso y cambiarlo en Ajustes.', 'Android may request location permission to find an address. The resulting area will appear on the map and be sent to map, building and place providers to calculate shadows. You can move the map without granting permission and change it in Settings.')
+      : t('Si lo permites, usaremos la ubicación del dispositivo para centrar el mapa y buscar cerca. La zona se combinará con datos de edificios y lugares y se consultará a proveedores externos. Puedes mover el mapa sin dar permiso y cambiarlo en Ajustes.', 'If you allow it, we will use your device location to center the map and search nearby. The area will be combined with building and place data and sent to external providers. You can move the map without granting permission and change it in Settings.');
+    return new Promise((resolve) => {
+      const buttons = [{ text: t('Ahora no', 'Not now'), style: 'cancel', onPress: () => resolve(false) }];
+      if (PRIVACY_POLICY_URL) buttons.push({ text: t('Privacidad', 'Privacy'), onPress: () => { Linking.openURL(PRIVACY_POLICY_URL).catch(() => {}); resolve(false); } });
+      buttons.push({ text: t('Continuar', 'Continue'), onPress: () => resolve(true) });
+      Alert.alert(title, explanation, buttons, { cancelable: true, onDismiss: () => resolve(false) });
+    });
+  }
+
   async function useLocation() {
     const seq = ++request.current; setBusy(msg('Buscando tu ubicación…', 'Finding your location…')); setError(''); setNotice(''); setNearbySourceFailure(false);
     try {
-      const permission = await Location.requestForegroundPermissionsAsync();
+      const permission = await requestPermissionAfterNotice({ ask: () => askLocationNotice(false), requestPermission: Location.requestForegroundPermissionsAsync, isCurrent: () => request.current === seq });
+      if (!permission || request.current !== seq) return;
       if (!permission.granted) throw new Error('No se ha dado permiso. Puedes mover el mapa y buscar desde ahí.');
       const result = await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Balanced });
       if (request.current !== seq) return;
@@ -822,7 +837,8 @@ function Main() {
     try {
       if (Platform.OS === 'web') throw new Error('En la web, mueve el mapa hasta la zona que buscas.');
       if (Platform.OS === 'android') {
-        const permission = await Location.requestForegroundPermissionsAsync();
+        const permission = await requestPermissionAfterNotice({ ask: () => askLocationNotice(true), requestPermission: Location.requestForegroundPermissionsAsync, isCurrent: () => request.current === seq });
+        if (!permission || request.current !== seq) return;
         if (!permission.granted) throw new Error('Para buscar direcciones, Android necesita permiso de ubicación. También puedes mover el mapa.');
       }
       const matches = await Location.geocodeAsync(name);
@@ -916,6 +932,7 @@ function Main() {
   }}>
     <View style={styles.rowBetween}><Text style={styles.sectionTitle}>{resultsType === 'nearby' ? t('Lugares encontrados', 'Places found') : t('Resultados', 'Results')}</Text><Text style={styles.subtle}>{visiblePlaces.length}</Text></View>
     {resultsType === 'nearby' && <View style={styles.filterRow}><Chip selected={!sunOnly} onPress={() => setSunOnly(false)}>{t('Todos', 'All')}</Chip><Chip selected={sunOnly} onPress={() => setSunOnly(true)}>{t('Sol o sin confirmar', 'Sun or unconfirmed')}</Chip></View>}
+    {visiblePlaces.length > 0 && <Text accessibilityRole="link" onPress={() => Linking.openURL('https://www.openstreetmap.org/copyright')} style={styles.small}>© OpenStreetMap contributors</Text>}
     {visiblePlaces.length ? resultRows(visiblePlaces) : <Text style={styles.body}>{sunOnly ? t('No hay lugares con sol estimado entre los que hemos podido analizar.', 'No places with estimated sun among those analysed.') : t('No hay resultados. Prueba otra zona o búsqueda.', 'No results. Try another area or search.')}</Text>}
     {visiblePlaces.length > 5 && <Pressable accessibilityRole="button" onPress={() => setShowAllResults(!showAllResults)} style={styles.textAction}><Text style={styles.textActionLabel}>{showAllResults ? t('Ver menos ↑', 'Show less ↑') : t(`Ver más (${Math.min(visiblePlaces.length, 30)}) ↓`, `Show more (${Math.min(visiblePlaces.length, 30)}) ↓`)}</Text></Pressable>}
     {visiblePlaces.some((place) => place.municipalPeriod) && <Text style={styles.small}>{t('Fuente:', 'Source:')} <Text accessibilityRole="link" style={styles.link} onPress={() => Linking.openURL('https://opendata-ajuntament.barcelona.cat/data/en/dataset/terrasses-comercos-vigents')}>{t('Ayuntamiento de Barcelona', 'Barcelona City Council')}</Text> · <Text accessibilityRole="link" style={styles.link} onPress={() => Linking.openURL('https://creativecommons.org/licenses/by/4.0/')}>CC BY 4.0</Text>. {t('Autorizaciones; apertura y posición de mesas sin confirmar.', 'Permits; opening and table positions unconfirmed.')}</Text>}
@@ -956,7 +973,7 @@ function Main() {
           setVisibleBounds((previous) => stableMapBounds(previous, point.visibleBounds || null));
           setOriginLabel(myLocation.current && distanceMetres(myLocation.current, point) < 25 ? 'Tu ubicación' : 'Zona del mapa');
         }} onPick={choosePoint} onPlace={choosePoint} />
-        {(mapBuildings?.source === 'osm' || groundShadow?.geometrySource === 'osm') && <Text accessibilityRole="link" onPress={() => Linking.openURL('https://www.openstreetmap.org/copyright')} style={styles.mapAttribution}>Datos © OpenStreetMap</Text>}
+        <Text accessibilityRole="link" onPress={() => Linking.openURL('https://www.openstreetmap.org/copyright')} style={styles.mapAttribution}>© OpenStreetMap contributors</Text>
         {!map3DAvailable && <Text style={styles.mapFallback}>{t('3D no disponible · mapa en 2D', '3D unavailable · showing 2D map')}</Text>}
         {(mapIssue || shadows.limitExceeded || shadowPending || shadowFailed || sunStatus || partialShadow) && <Text accessibilityRole={mapAction ? 'button' : undefined} onPress={mapAction} style={[styles.mapFallback, { top: map3DAvailable ? 115 : 150 }]}>{shadows.limitExceeded ? t('Acerca el mapa para ver las sombras.', 'Zoom in to see the shadows.') : shadowFailed ? t('No se han podido dibujar las sombras. Toca para reintentar.', 'Could not draw shadows. Tap to retry.') : mapFailed ? localized(mapStatus) : partialShadow ? t('Actualizando sombras.', 'Updating shadows.') : shadowPending ? t('Calculando sombras de la zona…', 'Calculating shadows in this area…') : mapStale || (mapIssue && !mapBuildings) ? localized(mapStatus) : sunStatus === 'night' ? t('Es de noche a esta hora. Cambia la hora para ver sombras.', 'It is night at this time. Change the time to see shadows.') : sunStatus === 'low' ? t('El sol está muy bajo. Cambia la hora para ver sombras.', 'The sun is too low. Change the time to see shadows.') : localized(mapStatus)}</Text>}
       </View>
@@ -1002,6 +1019,7 @@ function Main() {
               <Text style={styles.small}>{localized(mapStatus)} {t('Hora del teléfono', 'Phone time')}: {timezone}.</Text>
               {Platform.OS !== 'web' && selected && coverage.some((area) => (area.stale || area.limited) && distanceMetres(area, selected) < 5) && <Pressable accessibilityRole="button" onPress={() => selectPoint(selected, true)} style={styles.textAction}><Text style={styles.textActionLabel}>{t('Actualizar edificios de este punto', 'Update buildings for this point')}</Text></Pressable>}
               {Platform.OS !== 'web' && <><Text style={styles.small}>{t('Para abrir zonas y búsquedas visitadas más rápido, se guardan datos y consultas en este dispositivo.', 'To reopen visited areas and searches faster, data and queries are saved on this device.')}</Text><Pressable accessibilityRole="button" onPress={clearSavedData} style={styles.textAction}><Text style={styles.textActionLabel}>{t('Borrar datos guardados', 'Clear saved data')}</Text></Pressable>{!!cacheNotice && <Text accessibilityRole="alert" style={styles.small}>{localized(cacheNotice)}</Text>}</>}
+              {!!PRIVACY_POLICY_URL && <Pressable accessibilityRole="link" onPress={() => Linking.openURL(PRIVACY_POLICY_URL)} style={styles.textAction}><Text style={styles.textActionLabel}>{t('Política de privacidad', 'Privacy policy')}</Text></Pressable>}
               <Text style={styles.small}>{t('Datos de', 'Data from')} <Text accessibilityRole="link" style={styles.link} onPress={() => Linking.openURL('https://www.openstreetmap.org/copyright')}>OpenStreetMap</Text>, <Text accessibilityRole="link" style={styles.link} onPress={() => Linking.openURL('https://datos.madrid.es/dataset/300750-0-servicio-mapas')}>{t('Ayuntamiento de Madrid', 'Madrid City Council')}</Text> {t('y', 'and')} <Text accessibilityRole="link" style={styles.link} onPress={() => Linking.openURL('https://opendata-ajuntament.barcelona.cat/data/en/dataset/terrasses-comercos-vigents')}>{t('Ayuntamiento de Barcelona', 'Barcelona City Council')}</Text> (<Text accessibilityRole="link" style={styles.link} onPress={() => Linking.openURL('https://creativecommons.org/licenses/by/4.0/')}>CC BY 4.0</Text>). {t('No indican apertura ni disponibilidad.', 'Results do not indicate opening times or availability.')}</Text>
             </>}
           </> : <>
