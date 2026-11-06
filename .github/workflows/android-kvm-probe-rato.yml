@@ -14,13 +14,13 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 3
     steps:
-      - name: Check KVM availability without changing the host
+      - name: Check emulator and grant this ephemeral runner access to KVM
         shell: bash
         run: |
           set -euo pipefail
-          echo "Runner architecture: $(uname -m)"
           if [ -e /dev/kvm ]; then
-            ls -l /dev/kvm
+            sudo chown "root:$(id -gn)" /dev/kvm
+            sudo chmod g+rw /dev/kvm
             if [ -r /dev/kvm ] && [ -w /dev/kvm ]; then
               echo "KVM_READ_WRITE=yes"
             else
@@ -29,8 +29,14 @@ jobs:
           else
             echo "KVM_AVAILABLE=no"
           fi
-          if command -v emulator >/dev/null 2>&1; then
+          if [ -n "${ANDROID_HOME:-}" ] && [ -x "$ANDROID_HOME/emulator/emulator" ]; then
             echo "ANDROID_EMULATOR=available"
+            "$ANDROID_HOME/emulator/emulator" -accel-check || true
+            if [ -d "$ANDROID_HOME/system-images" ]; then
+              find "$ANDROID_HOME/system-images" -name source.properties -print
+            else
+              echo "SYSTEM_IMAGES=none"
+            fi
           else
-            echo "ANDROID_EMULATOR=not_on_path"
+            echo "ANDROID_EMULATOR=not_installed"
           fi
