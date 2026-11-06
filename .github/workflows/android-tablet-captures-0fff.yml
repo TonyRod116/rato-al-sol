@@ -1,0 +1,158 @@
+name: Provisional Android 23 tablet screenshots for Rato
+
+on:
+  push:
+    branches:
+      - codex/android-store-captures-0fff
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  screenshots:
+    if: github.repository == 'TonyRod116/rato-al-sol' && github.event.repository.private
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    env:
+      BUILD_RUN_ID: '42239597337'
+      BUILD_HEAD_SHA: 'f1eb5a0f11399815878edd9cb96c82c3f86dd63e'
+      APK_ARTIFACT_ID: '13516801887'
+      APK_ZIP_SHA256: 'a797233d6eaf5a3dfb74ecd67dd5b9db45a3f020e5a6e193e3b57761ee6f19ee'
+      APK_VERSION_CODE: '23'
+      APK_SIGNER_SHA256: '347878355437a1cc16cd04a47abec2748341682dddca8224f684ab29ef01e895'
+    steps:
+      - name: Check out this isolated test branch
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          persist-credentials: false
+
+      - name: Validate candidate identifiers
+        shell: bash
+        run: |
+          set -euo pipefail
+          [[ "$BUILD_RUN_ID" =~ ^[0-9]+$ ]]
+          [[ "$BUILD_HEAD_SHA" =~ ^[a-f0-9]{40}$ ]]
+          [[ "$APK_ARTIFACT_ID" =~ ^[0-9]+$ ]]
+          [[ "$APK_ZIP_SHA256" =~ ^[a-f0-9]{64}$ ]]
+          [[ "$APK_VERSION_CODE" =~ ^[0-9]+$ ]]
+          [[ "$APK_SIGNER_SHA256" =~ ^[a-f0-9]{64}$ ]]
+
+      - name: Download and verify the explicitly selected Android APK
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          umask 077
+          meta="$RUNNER_TEMP/rato-android-artifact.json"
+          run_meta="$RUNNER_TEMP/rato-android-run.json"
+          archive="$RUNNER_TEMP/rato-android-artifact.zip"
+          gh api "repos/$GITHUB_REPOSITORY/actions/runs/$BUILD_RUN_ID" > "$run_meta"
+          jq -e --arg sha "$BUILD_HEAD_SHA" '.head_sha == $sha and .status == "completed" and .conclusion == "success"' "$run_meta" >/dev/null
+          gh api "repos/$GITHUB_REPOSITORY/actions/artifacts/$APK_ARTIFACT_ID" > "$meta"
+          jq -e --argjson run "$BUILD_RUN_ID" --arg sha "$BUILD_HEAD_SHA" --arg digest "sha256:$APK_ZIP_SHA256" \
+            '.expired == false and .name == "rato-android-preview-v23-0fff" and .workflow_run.id == $run and .workflow_run.head_sha == $sha and .digest == $digest' "$meta" >/dev/null
+          gh api "repos/$GITHUB_REPOSITORY/actions/artifacts/$APK_ARTIFACT_ID/zip" > "$archive"
+          printf '%s  %s\n' "$APK_ZIP_SHA256" "$archive" | sha256sum --check --status
+          python3 - "$archive" "$RUNNER_TEMP/rato-candidate.apk" <<'PY'
+          import sys, zipfile
+          with zipfile.ZipFile(sys.argv[1]) as archive:
+              candidates = [item for item in archive.infolist()
+                            if not item.is_dir() and item.filename.lower().endswith('.apk')]
+              if len(candidates) != 1:
+                  raise SystemExit('El artifact debe contener exactamente un APK')
+              with archive.open(candidates[0]) as src, open(sys.argv[2], 'wb') as dst:
+                  while block := src.read(1024 * 1024):
+                      dst.write(block)
+          PY
+          aapt="$ANDROID_HOME/build-tools/36.0.0/aapt"
+          signer="$ANDROID_HOME/build-tools/36.0.0/apksigner"
+          badging="$RUNNER_TEMP/rato-badging.txt"
+          "$aapt" dump badging "$RUNNER_TEMP/rato-candidate.apk" > "$badging"
+          grep -Eq "^package: name='com\\.ratoalsol\\.app' versionCode='$APK_VERSION_CODE'([[:space:]]|$)" "$badging"
+          activity=$(sed -n "s/^launchable-activity: name='\([^']*\)'.*/\1/p" "$badging" | head -n 1)
+          [[ "$activity" =~ ^[A-Za-z0-9_.$]+$ ]]
+          "$signer" verify --print-certs "$RUNNER_TEMP/rato-candidate.apk" > "$RUNNER_TEMP/rato-signature.txt"
+          signer_sha=$(sed -n 's/^Signer #1 certificate SHA-256 digest: //p' "$RUNNER_TEMP/rato-signature.txt")
+          [[ "$signer_sha" == "$APK_SIGNER_SHA256" ]]
+          echo "RATO_ACTIVITY=$activity" >> "$GITHUB_ENV"
+          echo 'Paquete, versión y firma verificados.'
+
+      - name: Install official Android components when their licenses are already accepted
+        shell: bash
+        run: |
+          set -euo pipefail
+          sdkmanager="$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager"
+          test -x "$sdkmanager"
+          # No auto-accept: a license prompt receives EOF and this step must fail.
+          "$sdkmanager" --install 'emulator' 'platform-tools' \
+            'system-images;android-35;google_apis;x86_64' </dev/null
+          test -x "$ANDROID_HOME/emulator/emulator"
+          test -f "$ANDROID_HOME/system-images/android-35/google_apis/x86_64/source.properties"
+          echo "$ANDROID_HOME/platform-tools" >> "$GITHUB_PATH"
+
+      - name: Start an isolated accelerated Android tablet
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -e /dev/kvm
+          # This permission change affects only this single-use GitHub runner.
+          sudo chown "root:$(id -gn)" /dev/kvm
+          sudo chmod g+rw /dev/kvm
+          test -r /dev/kvm && test -w /dev/kvm
+          export ANDROID_AVD_HOME="$RUNNER_TEMP/rato-avd"
+          export ANDROID_USER_HOME="$RUNNER_TEMP/rato-android-user"
+          export ANDROID_EMULATOR_HOME="$RUNNER_TEMP/rato-android-user"
+          mkdir -p "$ANDROID_AVD_HOME" "$ANDROID_USER_HOME"
+          echo "ANDROID_AVD_HOME=$ANDROID_AVD_HOME" >> "$GITHUB_ENV"
+          echo "ANDROID_USER_HOME=$ANDROID_USER_HOME" >> "$GITHUB_ENV"
+          echo "ANDROID_EMULATOR_HOME=$ANDROID_EMULATOR_HOME" >> "$GITHUB_ENV"
+          "$ANDROID_HOME/cmdline-tools/latest/bin/avdmanager" create avd \
+            --name rato_tablet --package 'system-images;android-35;google_apis;x86_64' \
+            --device pixel_c --path "$ANDROID_AVD_HOME/rato_tablet.avd" </dev/null
+          python3 - "$ANDROID_AVD_HOME/rato_tablet.avd/config.ini" <<'PY'
+          import pathlib, sys
+          path = pathlib.Path(sys.argv[1])
+          updates = {'hw.lcd.width': '1600', 'hw.lcd.height': '2560',
+                     'hw.lcd.density': '240', 'hw.ramSize': '2048',
+                     'hw.camera.back': 'none', 'hw.camera.front': 'none',
+                     'showDeviceFrame': 'no'}
+          lines = [line for line in path.read_text().splitlines()
+                   if line.split('=', 1)[0] not in updates]
+          path.write_text('\n'.join(lines + [f'{key}={value}' for key, value in updates.items()]) + '\n')
+          PY
+          "$ANDROID_HOME/emulator/emulator" -avd rato_tablet -no-window -no-audio \
+            -no-boot-anim -no-snapshot -no-metrics -accel on -gpu swiftshader_indirect \
+            -port 5554 > "$RUNNER_TEMP/rato-emulator.log" 2>&1 &
+          echo $! > "$RUNNER_TEMP/rato-emulator.pid"
+          timeout 300 adb -s emulator-5554 wait-for-device
+          timeout 300 bash -c 'until [[ "$(adb -s emulator-5554 shell getprop sys.boot_completed 2>/dev/null | tr -d "\r")" == 1 ]]; do sleep 5; done'
+          adb -s emulator-5554 install -r "$RUNNER_TEMP/rato-candidate.apk"
+
+      - name: Capture real app screens for review
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p "$RUNNER_TEMP/rato-screenshots"
+          python3 scripts/rato_capture.py --activity "$RATO_ACTIVITY" --output "$RUNNER_TEMP/rato-screenshots"
+
+      - name: Save provisional screenshots privately for review
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: rato-android-tablet-review
+          path: ${{ runner.temp }}/rato-screenshots/*.png
+          if-no-files-found: warn
+          retention-days: 1
+
+      - name: Stop the isolated emulator
+        if: always()
+        shell: bash
+        run: |
+          adb -s emulator-5554 emu kill >/dev/null 2>&1 || true
+          if [ -f "$RUNNER_TEMP/rato-emulator.pid" ]; then
+            kill "$(cat "$RUNNER_TEMP/rato-emulator.pid")" 2>/dev/null || true
+          fi
+          adb kill-server >/dev/null 2>&1 || true
+
