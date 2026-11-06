@@ -1,0 +1,111 @@
+name: Rato iOS simulator captures from current source
+
+on:
+  push:
+    branches:
+      - codex/rato-ios-simulator-v24
+
+permissions:
+  contents: read
+
+jobs:
+  capture:
+    if: github.repository == 'TonyRod116/rato-al-sol' && github.event.repository.private
+    runs-on: macos-26
+    timeout-minutes: 45
+    env:
+      DEVELOPER_DIR: /Applications/Xcode_26.6.app/Contents/Developer
+      RATO_SOURCE_SHA: e35c62e4e4358fbc23293a1adf50af6953d9540c
+    steps:
+      - name: Check out the exact new application source
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          ref: e35c62e4e4358fbc23293a1adf50af6953d9540c
+          persist-credentials: false
+
+      - name: Verify source and build number
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$RATO_SOURCE_SHA"
+          node -e 'const c=require("./mobile/app.json").expo; if(c.ios.bundleIdentifier!=="com.ratoalsol.app" || String(c.ios.buildNumber)!=="24" || !c.ios.supportsTablet) process.exit(1)'
+          xcodebuild -version
+          xcrun simctl list devices available
+
+      - name: Set up Node
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: '22'
+
+      - name: Generate the simulator project and install dependencies
+        working-directory: mobile
+        shell: bash
+        run: |
+          set -euo pipefail
+          npm ci --no-audit --no-fund
+          npx --no-install expo prebuild --platform ios --no-install --non-interactive
+          cd ios
+          pod install
+
+      - name: Build app for simulator without distribution signing
+        working-directory: mobile/ios
+        shell: bash
+        run: |
+          set -euo pipefail
+          shopt -s nullglob
+          workspaces=( *.xcworkspace )
+          test "${#workspaces[@]}" -eq 1
+          workspace="${workspaces[0]}"
+          xcodebuild -list -json -workspace "$workspace" > "$RUNNER_TEMP/rato-schemes.json"
+          scheme="$(python3 -c 'import json,sys; d=json.load(open(sys.argv[1])); a=[x for x in d["workspace"]["schemes"] if x.lower().replace(" ", "")=="ratoalsol"]; assert len(a)==1, "Expected one Rato al Sol scheme"; print(a[0])' "$RUNNER_TEMP/rato-schemes.json")"
+          xcodebuild -workspace "$workspace" -scheme "$scheme" -configuration Release \
+            -sdk iphonesimulator -destination 'generic/platform=iOS Simulator' \
+            -derivedDataPath "$RUNNER_TEMP/rato-sim-derived" \
+            CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO CODE_SIGN_IDENTITY='' build
+          apps=( "$RUNNER_TEMP/rato-sim-derived/Build/Products/Release-iphonesimulator/"*.app )
+          test "${#apps[@]}" -eq 1
+          /usr/libexec/PlistBuddy -c 'Print :CFBundleIdentifier' "${apps[0]}/Info.plist" | grep -Fx 'com.ratoalsol.app'
+          /usr/libexec/PlistBuddy -c 'Print :CFBundleVersion' "${apps[0]}/Info.plist" | grep -Fx '24'
+          echo "RATO_SIM_APP=${apps[0]}" >> "$GITHUB_ENV"
+
+      - name: Capture the real app on a phone and a tablet
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p "$RUNNER_TEMP/rato-ios-new-captures"
+          xcrun simctl list devices available --json > "$RUNNER_TEMP/rato-sim-devices.json"
+          for spec in 'iPhone 17 Pro|iphone' 'iPad Pro 13-inch (M5)|ipad'; do
+            name="${spec%|*}"
+            label="${spec#*|}"
+            udid="$(python3 - "$RUNNER_TEMP/rato-sim-devices.json" "$name" <<'PY'
+          import json, sys
+          devices = json.load(open(sys.argv[1]))['devices']
+          choices = [(runtime, dev['udid']) for runtime, values in devices.items()
+                     if 'SimRuntime.iOS-' in runtime for dev in values
+                     if dev['name'] == sys.argv[2] and dev.get('isAvailable')]
+          if not choices:
+              raise SystemExit('Required simulator is unavailable')
+          print(sorted(choices, reverse=True)[0][1])
+          PY
+            )"
+            xcrun simctl boot "$udid" || true
+            xcrun simctl bootstatus "$udid" -b
+            xcrun simctl install "$udid" "$RATO_SIM_APP"
+            xcrun simctl privacy "$udid" grant location com.ratoalsol.app
+            xcrun simctl location "$udid" set 40.4168,-3.7038
+            xcrun simctl launch "$udid" com.ratoalsol.app
+            # Provisional only: allow network/map startup, then inspect visually.
+            sleep 75
+            xcrun simctl io "$udid" screenshot "$RUNNER_TEMP/rato-ios-new-captures/${label}-initial.png"
+            sips -g pixelWidth -g pixelHeight "$RUNNER_TEMP/rato-ios-new-captures/${label}-initial.png"
+            xcrun simctl shutdown "$udid"
+          done
+
+      - name: Save new provisional captures privately
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: rato-ios-simulator-v24-new-review
+          path: ${{ runner.temp }}/rato-ios-new-captures/*.png
+          if-no-files-found: error
+          retention-days: 1
+
