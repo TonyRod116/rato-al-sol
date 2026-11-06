@@ -8,6 +8,7 @@ import { translate } from '../../frontend/shared/i18n.mjs';
 import { nativeVisibleViewport, paddedViewport } from './viewport.mjs';
 import { useGroundShadowImage } from './ShadowOverlay';
 import { shadowOverlayBoundsKey } from './shadow-overlay-image.mjs';
+import { createMapGestureGuard } from './map-gesture-guard.mjs';
 
 // Android's map colour-scheme prop is only applied at creation by this version
 // of react-native-maps, so a map style lets it follow the time slider live.
@@ -33,14 +34,24 @@ function SelectedPin() {
   </Svg>;
 }
 
-export default function MapCanvas({ camera, places, selected, language, groundShadow, sun, view3D, onMove, onPick, onPlace, style }) {
+export default function MapCanvas({ camera, places, selected, language, groundShadow, sun, view3D, onMove, onPick, onPlace, onUserInteraction, style }) {
   const map = useRef(null), viewRequest = useRef(0);
+  const latestCamera = useRef(camera);
+  latestCamera.current = camera;
+  const movement = useRef(null);
+  if (!movement.current) movement.current = createMapGestureGuard(Platform.OS);
+  const markInteraction = () => { latestCamera.current = null; onUserInteraction?.(); };
+  const animate = (cameraUpdate) => {
+    if (!map.current) return;
+    movement.current.programmatic();
+    map.current.animateCamera(cameraUpdate, { duration: 350 });
+  };
   const atmosphere = mapAtmosphere(sun);
   const shadowImage = useGroundShadowImage(groundShadow);
   useEffect(() => {
-    if (camera) map.current?.animateCamera({ center: { latitude: camera.latitude, longitude: camera.longitude } }, { duration: 350 });
+    if (camera) animate({ center: { latitude: camera.latitude, longitude: camera.longitude } });
   }, [camera]);
-  useEffect(() => { map.current?.animateCamera({ pitch: view3D ? mapPitch : 0 }, { duration: 350 }); }, [view3D]);
+  useEffect(() => { animate({ pitch: view3D ? mapPitch : 0 }); }, [view3D]);
   async function move(region) {
     const request = ++viewRequest.current;
     let boundary;
@@ -53,11 +64,17 @@ export default function MapCanvas({ camera, places, selected, language, groundSh
     <MapView ref={map} style={StyleSheet.absoluteFill} initialCamera={{ center: DEFAULT_LOCATION, pitch: mapPitch, heading: 0, altitude: 525, zoom: 17.1 }}
       showsBuildings showsCompass pitchEnabled rotateEnabled userInterfaceStyle={Platform.OS === 'android' ? 'light' : atmosphere.isNight ? 'dark' : 'light'}
       customMapStyle={Platform.OS === 'android' ? atmosphere.isNight ? nightMap : defaultMap : undefined}
-      onRegionChangeComplete={move}
-      onPress={(event) => onPick(event.nativeEvent.coordinate)} accessibilityLabel={translate(language, 'Mapa. Toca para elegir un punto exterior.', 'Map. Tap to choose an outdoor point.')}>
+      onMapReady={() => { const point = latestCamera.current; if (point) animate({ center: { latitude: point.latitude, longitude: point.longitude } }); }}
+      onTouchStart={markInteraction}
+      onPanDrag={markInteraction}
+      onDoublePress={markInteraction}
+      onLongPress={markInteraction}
+      onRegionChangeStart={(_, details) => { if (movement.current.started(details)) markInteraction(); }}
+      onRegionChangeComplete={(region, details) => { if (movement.current.completed(details)) markInteraction(); void move(region); }}
+      onPress={(event) => { markInteraction(); onPick(event.nativeEvent.coordinate); }} accessibilityLabel={translate(language, 'Mapa. Toca para elegir un punto exterior.', 'Map. Tap to choose an outdoor point.')}>
       {groundShadow?.uri && <Overlay key={shadowOverlayBoundsKey(groundShadow)} bounds={groundShadow.bounds} image={shadowImage} />}
       {places.slice(0, 30).map((place) => <Marker key={place.id} coordinate={place} title={place.name} pinColor="#cf7554"
-        onPress={(event) => { event.stopPropagation(); onPlace(place); }} />)}
+        onPress={(event) => { event.stopPropagation(); markInteraction(); onPlace(place); }} />)}
       {selected && <Marker coordinate={selected} accessibilityLabel={selected.name}
         anchor={{ x: .5, y: 1 }} centerOffset={{ x: 0, y: -20 }} style={styles.selectedPin}
         onPress={(event) => event.stopPropagation()}>

@@ -41,6 +41,9 @@ import { geometrySignature, localFrameDay, millisecondsUntilNextDay, renderedSha
 import { shadowCacheProbePending, startShadowCacheProbe } from './src/shadow-cache-probe.mjs';
 import { mapLoadError } from './src/map-load-error.mjs';
 import { PRIVACY_POLICY_URL, requestPermissionAfterNotice } from './src/location-consent.mjs';
+import { createLastMapArea, maySaveMapArea, startLocation, START_NOTICE_DECLINED_KEY } from './src/start-location.mjs';
+import { DEPENDENCY_NOTICES, SUNCALC_LICENSE } from './src/third-party-notices.mjs';
+import { NATIVE_NOTICES } from './src/native-third-party-notices.mjs';
 
 const msg = (es, en) => ({ es, en });
 const cachedServices = createCachedServices({ scenes: getScenes, sceneCache, searchCache, generation: cacheGeneration });
@@ -70,6 +73,9 @@ function Chip({ children, selected, onPress }) {
 }
 function Loading({ text }) {
   return <View style={styles.loading}><ActivityIndicator color="#bd6547" /><Text style={styles.muted}>{text}</Text></View>;
+}
+function SourceCredits({ t }) {
+  return <Text style={[styles.small, styles.licenseBody]}>{t('Las fuentes pueden incluir ', 'Sources may include ')}<Text accessibilityRole="link" style={styles.link} onPress={() => Linking.openURL('https://www.openstreetmap.org/copyright')}>© OpenStreetMap contributors</Text>. {t('Datos municipales: ', 'Municipal data: ')}<Text accessibilityRole="link" style={styles.link} onPress={() => Linking.openURL('https://datos.madrid.es/dataset/200085-0-censo-locales/information')}>{t('Ayuntamiento de Madrid', 'Madrid City Council')}</Text> {t('y', 'and')} <Text accessibilityRole="link" style={styles.link} onPress={() => Linking.openURL('https://opendata-ajuntament.barcelona.cat/data/en/dataset/terrasses-comercos-vigents')}>{t('Ayuntamiento de Barcelona', 'Barcelona City Council')}</Text> (<Text accessibilityRole="link" style={styles.link} onPress={() => Linking.openURL('https://creativecommons.org/licenses/by/4.0/')}>CC BY 4.0</Text>).</Text>;
 }
 function Range({ label, value, min, max, step, onChange, valueText }) {
   return Platform.OS === 'web' ? <input type="range" aria-label={label} aria-valuetext={valueText} min={min} max={max} step={step} value={value} onChange={(event) => onChange(Number(event.target.value))} style={{ width: '100%', height: 42, marginTop: 4, accentColor: '#30463a', cursor: 'pointer' }} /> :
@@ -117,6 +123,7 @@ function Main() {
   const [mode, setMode] = useState('place');
   const [view3D, setView3D] = useState(true), [map3DAvailable, setMap3DAvailable] = useState(true);
   const [searchOpen, setSearchOpen] = useState(false);
+  const [licensesOpen, setLicensesOpen] = useState(false);
   const [sheetPosition, setSheetPosition] = useState('normal');
   const sheetExpanded = sheetPosition === 'expanded', sheetMinimized = sheetPosition === 'minimized';
   const setSheetExpanded = (expanded) => setSheetPosition(expanded ? 'expanded' : 'normal');
@@ -169,6 +176,14 @@ function Main() {
   const [mapStale, setMapStale] = useState(false), [cacheNotice, setCacheNotice] = useState('');
   const [searchNeedsRefresh, setSearchNeedsRefresh] = useState(false);
   const request = useRef(0);
+  const startupEpoch = useRef(0), savedMapLoaded = useRef(false), savedMap = useRef(null);
+  const mapTouched = useRef(false), mapSavePaused = useRef(false);
+  const permissionDialogPending = useRef(false);
+  const askLocationNoticeRef = useRef(null);
+  askLocationNoticeRef.current = askLocationNotice;
+  if (!savedMap.current) savedMap.current = createLastMapArea(AsyncStorage);
+  const cancelStartup = () => { startupEpoch.current++; };
+  const onMapInteraction = () => { pendingCamera.current = null; setCamera(null); mapTouched.current = true; mapSavePaused.current = false; cancelStartup(); };
   const nearbySearchOrigin = useRef(null);
   const pendingCamera = useRef(null);
   const myLocation = useRef(null);
@@ -193,6 +208,8 @@ function Main() {
   }
 
   async function clearSavedData() {
+    cancelStartup();
+    mapSavePaused.current = true;
     playbackCacheEpoch.current++; playbackFrames.current.clear();
     cacheEnabledRef.current = false;
     setCacheEnabled(false);
@@ -200,7 +217,7 @@ function Main() {
     zoomPrefetch.current.cancel();
     for (const timer of saveMapTimers.current) clearTimeout(timer);
     saveMapTimers.current.clear();
-    const clearing = clearOfflineData();
+    const clearing = Promise.all([clearOfflineData(), savedMap.current.clear()]).then((results) => results.every(Boolean));
     request.current++; setBusy('');
     refreshMap.current = false; skipMapLoad.current = true; setMapRetry((value) => value + 1);
     clearViewportBuildingMemoryCache(); clearPlacesMemoryCache(); clearMadridSearchMemoryCache(); clearBarcelonaSearchMemoryCache();
@@ -221,12 +238,53 @@ function Main() {
       : msg('No se han podido borrar todos los datos guardados. Vuelve a intentarlo.', 'Could not remove all saved data. Please try again.'));
   }
 
-  function focusCamera(point, key) {
+  function focusCamera(point, key, automatic = false) {
+    if (!automatic) onMapInteraction();
     const position = { latitude: point.latitude, longitude: point.longitude };
     pendingCamera.current = { ...position, until: Date.now() + 2000 };
     setCenter(position);
     setCamera({ ...position, key });
   }
+
+  useEffect(() => {
+    if (Platform.OS === 'web') return;
+    let active = true;
+    const start = () => {
+      const epoch = ++startupEpoch.current;
+      const isCurrent = () => active && startupEpoch.current === epoch;
+      let previousPoint = null;
+      const savedArea = { load: () => savedMap.current.load() };
+      const apply = (point, isLocation) => {
+        if (!isCurrent()) return;
+        if (isLocation) { myLocation.current = point; mapTouched.current = true; }
+        if (!previousPoint || distanceMetres(previousPoint, point) >= 25) focusCamera(point, `startup-${Date.now()}`, true);
+        previousPoint = point;
+        setOriginLabel(isLocation ? 'Tu ubicación' : 'Zona del mapa');
+      };
+      void startLocation({ savedArea,
+        getPermission: Location.getForegroundPermissionsAsync,
+        ask: () => askLocationNoticeRef.current(false),
+        requestPermission: async () => {
+          permissionDialogPending.current = true;
+          try { return await Location.requestForegroundPermissionsAsync(); }
+          finally { permissionDialogPending.current = false; }
+        },
+        getLastKnown: () => Location.getLastKnownPositionAsync({ maxAge: 30000, requiredAccuracy: 1000 }),
+        getCurrent: () => Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Balanced, mayShowUserSettingsDialog: false }),
+        wasNoticeDeclined: async () => (await AsyncStorage.getItem(START_NOTICE_DECLINED_KEY)) === 'yes',
+        rememberNoticeDeclined: () => AsyncStorage.setItem(START_NOTICE_DECLINED_KEY, 'yes'),
+        onSaved: (point) => apply(point, false),
+        onSavedRead: () => { savedMapLoaded.current = true; },
+        onCurrent: (point) => apply(point, true),
+        isCurrent,
+      }).catch(() => {});
+    };
+    start();
+    const subscription = AppState.addEventListener('change', (state) => {
+      if (state === 'background') { if (!permissionDialogPending.current) cancelStartup(); void savedMap.current.flush().catch(() => {}); }
+    });
+    return () => { active = false; subscription.remove(); savedMap.current.dispose(); };
+  }, []);
 
   useEffect(() => () => { for (const timer of saveMapTimers.current) clearTimeout(timer); saveMapTimers.current.clear(); }, []);
   useEffect(() => {
@@ -646,6 +704,7 @@ function Main() {
   const resultsAreForMode = (mode === 'place' && resultsType === 'search') || (mode === 'nearby' && resultsType === 'nearby');
 
   async function search() {
+    cancelStartup();
     setCacheEnabled(true);
     const seq = ++request.current; setBusy(msg('Buscando lugares…', 'Searching for places…')); setError(''); setNotice(''); setNearbySourceFailure(false);
     const force = forceSearch.current; forceSearch.current = false; setSearchNeedsRefresh(false);
@@ -695,6 +754,7 @@ function Main() {
   }
 
   async function findNearby() {
+    cancelStartup();
     setCacheEnabled(true);
     const seq = ++request.current; setBusy(msg('Buscando lugares cercanos…', 'Searching for nearby places…')); setError(''); setNotice(''); setNearbySourceFailure(false);
     nearbySearchOrigin.current = { seq, center };
@@ -794,7 +854,7 @@ function Main() {
     const title = t('Uso de la ubicación', 'Location use');
     const explanation = forAddress
       ? t('Para buscar la dirección, Android puede pedir permiso de ubicación. La zona encontrada se mostrará en el mapa y se consultará a proveedores de mapas, edificios y lugares para calcular sombras. Puedes mover el mapa sin dar permiso y cambiarlo en Ajustes.', 'Android may request location permission to find an address. The resulting area will appear on the map and be sent to map, building and place providers to calculate shadows. You can move the map without granting permission and change it in Settings.')
-      : t('Si lo permites, usaremos la ubicación del dispositivo para centrar el mapa y buscar cerca. La zona se combinará con datos de edificios y lugares y se consultará a proveedores externos. Puedes mover el mapa sin dar permiso y cambiarlo en Ajustes.', 'If you allow it, we will use your device location to center the map and search nearby. The area will be combined with building and place data and sent to external providers. You can move the map without granting permission and change it in Settings.');
+      : t('Si lo permites, usaremos tu ubicación al abrir la app para centrar el mapa y buscar cerca. La zona se combinará con datos de edificios y lugares y se consultará a proveedores externos. Puedes mover el mapa sin dar permiso y cambiarlo en Ajustes.', 'If you allow it, we will use your location when the app opens to center the map and search nearby. The area will be combined with building and place data and sent to external providers. You can move the map without granting permission and change it in Settings.');
     return new Promise((resolve) => {
       const buttons = [{ text: t('Ahora no', 'Not now'), style: 'cancel', onPress: () => resolve(false) }];
       if (PRIVACY_POLICY_URL) buttons.push({ text: t('Privacidad', 'Privacy'), onPress: () => { Linking.openURL(PRIVACY_POLICY_URL).catch(() => {}); resolve(false); } });
@@ -804,6 +864,7 @@ function Main() {
   }
 
   async function useLocation() {
+    cancelStartup();
     const seq = ++request.current; setBusy(msg('Buscando tu ubicación…', 'Finding your location…')); setError(''); setNotice(''); setNearbySourceFailure(false);
     try {
       const permission = await requestPermissionAfterNotice({ ask: () => askLocationNotice(false), requestPermission: Location.requestForegroundPermissionsAsync, isCurrent: () => request.current === seq });
@@ -932,7 +993,7 @@ function Main() {
   }}>
     <View style={styles.rowBetween}><Text style={styles.sectionTitle}>{resultsType === 'nearby' ? t('Lugares encontrados', 'Places found') : t('Resultados', 'Results')}</Text><Text style={styles.subtle}>{visiblePlaces.length}</Text></View>
     {resultsType === 'nearby' && <View style={styles.filterRow}><Chip selected={!sunOnly} onPress={() => setSunOnly(false)}>{t('Todos', 'All')}</Chip><Chip selected={sunOnly} onPress={() => setSunOnly(true)}>{t('Sol o sin confirmar', 'Sun or unconfirmed')}</Chip></View>}
-    {visiblePlaces.length > 0 && <Text accessibilityRole="link" onPress={() => Linking.openURL('https://www.openstreetmap.org/copyright')} style={styles.small}>© OpenStreetMap contributors</Text>}
+    {visiblePlaces.length > 0 && <SourceCredits t={t} />}
     {visiblePlaces.length ? resultRows(visiblePlaces) : <Text style={styles.body}>{sunOnly ? t('No hay lugares con sol estimado entre los que hemos podido analizar.', 'No places with estimated sun among those analysed.') : t('No hay resultados. Prueba otra zona o búsqueda.', 'No results. Try another area or search.')}</Text>}
     {visiblePlaces.length > 5 && <Pressable accessibilityRole="button" onPress={() => setShowAllResults(!showAllResults)} style={styles.textAction}><Text style={styles.textActionLabel}>{showAllResults ? t('Ver menos ↑', 'Show less ↑') : t(`Ver más (${Math.min(visiblePlaces.length, 30)}) ↓`, `Show more (${Math.min(visiblePlaces.length, 30)}) ↓`)}</Text></Pressable>}
     {visiblePlaces.some((place) => place.municipalPeriod) && <Text style={styles.small}>{t('Fuente:', 'Source:')} <Text accessibilityRole="link" style={styles.link} onPress={() => Linking.openURL('https://opendata-ajuntament.barcelona.cat/data/en/dataset/terrasses-comercos-vigents')}>{t('Ayuntamiento de Barcelona', 'Barcelona City Council')}</Text> · <Text accessibilityRole="link" style={styles.link} onPress={() => Linking.openURL('https://creativecommons.org/licenses/by/4.0/')}>CC BY 4.0</Text>. {t('Autorizaciones; apertura y posición de mesas sin confirmar.', 'Permits; opening and table positions unconfirmed.')}</Text>}
@@ -941,12 +1002,13 @@ function Main() {
 
   return <SafeAreaView style={styles.safe} edges={['top']}>
     <StatusBar style="dark" />
-    <View style={styles.app} accessibilityElementsHidden={searchOpen} importantForAccessibility={searchOpen ? 'no-hide-descendants' : 'auto'} {...(Platform.OS === 'web' ? { 'aria-hidden': searchOpen, inert: searchOpen } : {})}>
+    <View style={styles.app} onTouchStart={Platform.OS === 'web' ? undefined : cancelStartup} accessibilityElementsHidden={searchOpen} importantForAccessibility={searchOpen ? 'no-hide-descendants' : 'auto'} {...(Platform.OS === 'web' ? { 'aria-hidden': searchOpen, inert: searchOpen } : {})}>
       <View style={[styles.mapArea, { bottom: sheetHeight }]}>
-        <MapCanvas camera={camera} places={resultsAreForMode ? visiblePlaces : []} selected={selected ? { ...selected, name: pointName(selected) } : null} language={language} shadows={shadows} groundShadow={groundShadow} sun={mapSun} view3D={view3D} on3DAvailable={(available) => { setMap3DAvailable(available); if (!available) setView3D(false); }} onMove={(point) => {
+        <MapCanvas camera={camera} places={resultsAreForMode ? visiblePlaces : []} selected={selected ? { ...selected, name: pointName(selected) } : null} language={language} shadows={shadows} groundShadow={groundShadow} sun={mapSun} view3D={view3D} onUserInteraction={onMapInteraction} on3DAvailable={(available) => { setMap3DAvailable(available); if (!available) setView3D(false); }} onMove={(point) => {
           const pending = pendingCamera.current;
           if (pending && Date.now() < pending.until && distanceMetres(pending, point) > 40) return;
           pendingCamera.current = null;
+          if (Platform.OS !== 'web' && maySaveMapArea({ loaded: savedMapLoaded.current, touched: mapTouched.current, paused: mapSavePaused.current })) savedMap.current.save(point);
           const nearbyRequest = nearbySearchOrigin.current;
           if (mode === 'nearby' && nearbyRequest && nearbyRequest.seq === request.current && distanceMetres(nearbyRequest.center, point) > 25) {
             nearbySearchOrigin.current = null; request.current++; setBusy(''); setPlaces([]); setResultsType(null);
@@ -1020,7 +1082,8 @@ function Main() {
               {Platform.OS !== 'web' && selected && coverage.some((area) => (area.stale || area.limited) && distanceMetres(area, selected) < 5) && <Pressable accessibilityRole="button" onPress={() => selectPoint(selected, true)} style={styles.textAction}><Text style={styles.textActionLabel}>{t('Actualizar edificios de este punto', 'Update buildings for this point')}</Text></Pressable>}
               {Platform.OS !== 'web' && <><Text style={styles.small}>{t('Para abrir zonas y búsquedas visitadas más rápido, se guardan datos y consultas en este dispositivo.', 'To reopen visited areas and searches faster, data and queries are saved on this device.')}</Text><Pressable accessibilityRole="button" onPress={clearSavedData} style={styles.textAction}><Text style={styles.textActionLabel}>{t('Borrar datos guardados', 'Clear saved data')}</Text></Pressable>{!!cacheNotice && <Text accessibilityRole="alert" style={styles.small}>{localized(cacheNotice)}</Text>}</>}
               {!!PRIVACY_POLICY_URL && <Pressable accessibilityRole="link" onPress={() => Linking.openURL(PRIVACY_POLICY_URL)} style={styles.textAction}><Text style={styles.textActionLabel}>{t('Política de privacidad', 'Privacy policy')}</Text></Pressable>}
-              <Text style={styles.small}>{t('Datos de', 'Data from')} <Text accessibilityRole="link" style={styles.link} onPress={() => Linking.openURL('https://www.openstreetmap.org/copyright')}>OpenStreetMap</Text>, <Text accessibilityRole="link" style={styles.link} onPress={() => Linking.openURL('https://datos.madrid.es/dataset/300750-0-servicio-mapas')}>{t('Ayuntamiento de Madrid', 'Madrid City Council')}</Text> {t('y', 'and')} <Text accessibilityRole="link" style={styles.link} onPress={() => Linking.openURL('https://opendata-ajuntament.barcelona.cat/data/en/dataset/terrasses-comercos-vigents')}>{t('Ayuntamiento de Barcelona', 'Barcelona City Council')}</Text> (<Text accessibilityRole="link" style={styles.link} onPress={() => Linking.openURL('https://creativecommons.org/licenses/by/4.0/')}>CC BY 4.0</Text>). {t('No indican apertura ni disponibilidad.', 'Results do not indicate opening times or availability.')}</Text>
+              <SourceCredits t={t} />
+              <Pressable accessibilityRole="button" onPress={() => setLicensesOpen(true)} style={styles.textAction}><Text style={styles.textActionLabel}>{t('Fuentes y licencias', 'Sources and licenses')}</Text></Pressable>
             </>}
           </> : <>
             <Text style={styles.miniHeading}>{t('ENCUENTRA UN RATO AL SOL', 'FIND YOUR PLACE IN THE SUN')}</Text><Text style={styles.placeTitle}>{t('Busca cerca', 'Find places nearby')}</Text>
@@ -1035,6 +1098,7 @@ function Main() {
             <Action onPress={findNearby} disabled={!!busy} style={styles.nearbyAction}>{t('Buscar lugares con sol', 'Find sunny places')}</Action>
             {feedback}{results}
             <Text style={styles.small}>{t('La ubicación solo se usa si la eliges. Consultamos OpenStreetMap y los datos municipales disponibles.', 'Your location is only used if you choose it. We consult OpenStreetMap and available city data.')}</Text>
+            <Pressable accessibilityRole="button" onPress={() => setLicensesOpen(true)} style={styles.textAction}><Text style={styles.textActionLabel}>{t('Fuentes y licencias', 'Sources and licenses')}</Text></Pressable>
           </>}
         </ScrollView>}
         {!sheetMinimized && mode === 'place' && <View onLayout={(event) => { if (!sheetExpanded) measureSheetPart('controls', event.nativeEvent.layout.height); }} style={styles.fixedTimeControls}>
@@ -1057,6 +1121,24 @@ function Main() {
         </View>
       </View>
     </View>
+    <Modal visible={licensesOpen} animationType="slide" onRequestClose={() => setLicensesOpen(false)}>
+      <SafeAreaView style={styles.modalSafe} edges={['top', 'bottom']}><View style={styles.modalContent}>
+        <View style={styles.modalHeader}><Pressable accessibilityRole="button" accessibilityLabel={t('Volver al mapa', 'Back to map')} onPress={() => setLicensesOpen(false)} style={styles.backButton}><Text style={styles.backIcon}>‹</Text></Pressable><Text accessibilityRole="header" style={styles.modalTitle}>{t('Fuentes y licencias', 'Sources and licenses')}</Text></View>
+        <ScrollView contentContainerStyle={styles.searchResults}>
+          <Text style={[styles.body, styles.licenseBody]}>{t('Usamos datos de estas fuentes. Los filtramos y calculamos estimaciones de sombra; no representan necesariamente la situación actual ni la posición de las mesas.', 'We use data from these sources. We filter it and calculate shadow estimates; these may not reflect current conditions or the position of tables.')}</Text>
+          <Text style={[styles.body, styles.licenseBody]}>{t('Consulta las fechas de actualización en las páginas de cada fuente. Pueden diferir de los datos guardados en este dispositivo.', 'See each source page for update dates. They may differ from data saved on this device.')}</Text>
+          <SourceCredits t={t} />
+          <Text accessibilityRole="link" style={styles.link} onPress={() => Linking.openURL('https://datos.madrid.es/dataset/300750-0-servicio-mapas')}>{t('Alturas de edificios del Ayuntamiento de Madrid · CC BY 4.0', 'Madrid City Council building heights · CC BY 4.0')}</Text>
+          <Text accessibilityRole="link" style={styles.link} onPress={() => Linking.openURL('https://datos.madrid.es/dataset/200761-0-parques-jardines/information')}>{t('Parques y jardines del Ayuntamiento de Madrid · CC BY 4.0', 'Madrid City Council parks and gardens · CC BY 4.0')}</Text>
+          <Text accessibilityRole="header" style={styles.sectionTitle}>SunCalc · BSD 2-Clause</Text>
+          <Text style={[styles.body, styles.licenseBody]}>{SUNCALC_LICENSE}</Text>
+          <Text accessibilityRole="header" style={styles.sectionTitle}>{t('Otras bibliotecas', 'Other libraries')}</Text>
+          {DEPENDENCY_NOTICES.map((notice) => <View key={`${notice.name}@${notice.version}`}><Text accessibilityRole="header" style={styles.sectionTitle}>{notice.name} · {notice.version} · {notice.license}</Text><Text style={[styles.body, styles.licenseBody]}>{notice.text}</Text></View>)}
+          <Text accessibilityRole="header" style={styles.sectionTitle}>{t('Componentes nativos', 'Native components')}</Text>
+          {NATIVE_NOTICES.map((notice) => <View key={notice.name}><Text accessibilityRole="header" style={styles.sectionTitle}>{notice.name}</Text><Text style={[styles.body, styles.licenseBody]}>{notice.text}</Text></View>)}
+        </ScrollView>
+      </View></SafeAreaView>
+    </Modal>
     <Modal visible={searchOpen} animationType="slide" onRequestClose={() => setSearchOpen(false)}>
       <SafeAreaView style={styles.modalSafe} edges={['top', 'bottom']}><KeyboardAvoidingView style={styles.modalContent} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
         <View style={styles.modalHeader}><Pressable accessibilityRole="button" accessibilityLabel={t('Volver al mapa', 'Back to map')} onPress={() => setSearchOpen(false)} style={styles.backButton}><Text style={styles.backIcon}>‹</Text></Pressable><Text style={styles.modalTitle}>{t('Buscar un lugar', 'Find a place')}</Text></View>
@@ -1074,6 +1156,7 @@ function Main() {
 export default function App() { return <SafeAreaProvider><Main /></SafeAreaProvider>; }
 
 const styles = StyleSheet.create({
+  licenseBody: { color: '#40594b' },
   safe: { flex: 1, backgroundColor: '#faf7ee' }, app: { flex: 1, width: '100%', maxWidth: 760, alignSelf: 'center', backgroundColor: '#e9e5d9', overflow: 'hidden' }, mapArea: { position: 'absolute', top: 0, left: 0, right: 0 },
   topControls: { position: 'absolute', top: 0, left: 0, right: 0, paddingHorizontal: 16, paddingTop: 6 }, brandRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }, brandBadge: { backgroundColor: '#fffcf5', borderRadius: 18, paddingHorizontal: 11, paddingVertical: 7 }, brand: { color: '#263f32', fontFamily: Platform.OS === 'ios' ? 'Georgia' : 'serif', fontSize: 20, fontWeight: '700', letterSpacing: -0.7 }, brandSun: { color: '#cb8d24', fontFamily: 'System' }, accent: { color: '#c66e4e' },
   languageControl: { flexDirection: 'row', backgroundColor: '#fcfaf3', borderRadius: 22, overflow: 'hidden', elevation: 2 }, languageOption: { minWidth: 44, minHeight: 44, alignItems: 'center', justifyContent: 'center' }, languageSelected: { backgroundColor: '#304a3a' }, languageText: { color: '#617266', fontSize: 10, fontWeight: '800' }, languageSelectedText: { color: '#fffdf7' },
