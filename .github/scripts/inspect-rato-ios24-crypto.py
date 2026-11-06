@@ -47,7 +47,7 @@ with zipfile.ZipFile(p) as artifact:
             pos+=sz
         return found
     markers={
-        'openssl':b'OpenSSL','boringssl':b'BoringSSL','libcrypto':b'libcrypto',
+        'native_boost_mangled':b'_ZN5boost', 'native_fmt_mangled':b'_ZN3fmt', 'native_double_conversion_mangled':b'_ZN17double_conversion', 'native_glog':b'glog', 'native_folly_mangled':b'_ZN5folly', 'openssl':b'OpenSSL','boringssl':b'BoringSSL','libcrypto':b'libcrypto',
         'EVP_Encrypt':b'EVP_Encrypt','EVP_Decrypt':b'EVP_Decrypt',
         'mbedtls':b'mbedtls','libsodium':b'libsodium','CryptoSwift':b'CryptoSwift',
         'CommonCrypto':b'CommonCrypto','CCCrypt':b'CCCrypt','CryptoKit':b'CryptoKit',
@@ -68,7 +68,7 @@ with zipfile.ZipFile(p) as artifact:
         for off,endian in paths:global_deps.update(deps(data,off,endian))
         for label,needle in markers.items():
             if needle.lower() in data.lower():hits[label].append(display)
-    print('macho_binaries:',len(binaries))
+    print('packaged_license_notice_paths:', [n[len(app_root):] for n in names if n.startswith(app_root) and any(w in n.lower() for w in ('license','licence','notice'))][:100])\n    print('macho_binaries:',len(binaries))
     for n in sorted(binaries):print('BINARY',n)
     print('linked_library_count:',len(global_deps))
     for n in sorted(global_deps):print('LOAD',n)
