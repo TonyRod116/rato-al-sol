@@ -11,9 +11,8 @@ const sources = [
   ['Folly · Apache 2.0', ['folly-license.txt']],
   ['Hermes · MIT', ['hermes-license.txt']],
   ['Kotlin · Apache 2.0', ['kotlin-license.txt']],
-  // The precise NOTICE in the store binary has not yet been verified. Do not
-  // present an upstream snapshot's copyright years as the bundled version.
-  ['Apache Commons Codec · Apache 2.0', ['codec-license.txt']],
+  // Reference NOTICE retained for matching Codec classes; exact version is unverified.
+  ['Apache Commons Codec · Apache 2.0', ['codec-notice.txt', 'codec-license.txt']],
   ['Public Suffix List · MPL 2.0', ['public-suffix-notice.txt', 'mpl-2.0.txt']],
 ];
 const notices = sources.map(([name, files]) => ({ name, text: files.map((file) => {

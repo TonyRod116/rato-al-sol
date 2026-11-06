@@ -69,11 +69,18 @@ test('the native notices preserve complete provider text and the bundled Public 
     ['OkHttp · Apache 2.0', ['okhttp-license.txt']], ['Okio · Apache 2.0', ['okio-license.txt']],
     ['Fresco · MIT', ['fresco-license.txt']], ['Folly · Apache 2.0', ['folly-license.txt']],
     ['Hermes · MIT', ['hermes-license.txt']], ['Kotlin · Apache 2.0', ['kotlin-license.txt']],
-    ['Apache Commons Codec · Apache 2.0', ['codec-license.txt']],
+    ['Apache Commons Codec · Apache 2.0', ['codec-notice.txt', 'codec-license.txt']],
     ['Public Suffix List · MPL 2.0', ['public-suffix-notice.txt', 'mpl-2.0.txt']],
   ]) {
     const notice = NATIVE_NOTICES.find((item) => item.name === name);
     assert.ok(notice, `Missing ${name}`);
     for (const file of files) assert.ok(notice.text.includes(normalize(await readFile(new URL(file, folder), 'utf8'))), `${name} lost ${file}`);
   }
+});
+
+test('Codec notice retains the Beider-Morse attribution without asserting a bundled version', () => {
+  const codec = NATIVE_NOTICES.find((item) => item.name === 'Apache Commons Codec · Apache 2.0');
+  assert.ok(codec);
+  assert.match(codec.text, /Copyright \(c\) 2008 Alexander Beider & Stephen P\. Morse\./);
+  assert.doesNotMatch(codec.name, /1\.10/);
 });
