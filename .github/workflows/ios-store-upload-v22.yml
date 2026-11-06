@@ -1,0 +1,59 @@
+name: Upload Rato iPhone candidate to App Store Connect
+
+on:
+  push:
+    branches:
+      - codex/ios-store-upload-v22
+
+permissions:
+  contents: read
+  actions: read
+
+concurrency:
+  group: rato-ios-store-upload-v22
+  cancel-in-progress: false
+
+jobs:
+  upload:
+    if: github.repository == 'TonyRod116/rato-al-sol' && github.event.repository.private
+    runs-on: macos-26
+    timeout-minutes: 20
+    env:
+      DEVELOPER_DIR: /Applications/Xcode_26.6.app/Contents/Developer
+    steps:
+      - name: Download and verify the previously checked iPhone candidate
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          umask 077
+          archive="$RUNNER_TEMP/rato-verified-artifact.zip"
+          trap 'rm -f "$archive"' EXIT
+          gh api 'repos/TonyRod116/rato-al-sol/actions/artifacts/13497512931/zip' > "$archive"
+          printf '%s  %s\n' '08b4c73f186ce8e9ba3c137ea4e327df6ceb09de409d2bba321a1a011225dbfc' "$archive" | shasum -a 256 --check --status
+          mkdir "$RUNNER_TEMP/rato-ios-upload"
+          /usr/bin/ditto -x -k "$archive" "$RUNNER_TEMP/rato-ios-upload"
+
+      - name: Upload to App Store Connect with the temporary team key
+        shell: bash
+        env:
+          APPLE_ASC_KEY_ID: ${{ secrets.APPLE_ASC_KEY_ID }}
+          APPLE_ASC_ISSUER_ID: ${{ secrets.APPLE_ASC_ISSUER_ID }}
+          APPLE_ASC_PRIVATE_KEY: ${{ secrets.APPLE_ASC_PRIVATE_KEY }}
+        run: |
+          set -euo pipefail
+          test -n "$APPLE_ASC_PRIVATE_KEY"
+          [[ "$APPLE_ASC_KEY_ID" =~ ^[A-Za-z0-9]{10}$ ]]
+          [[ "$APPLE_ASC_ISSUER_ID" =~ ^[A-Fa-f0-9]{8}-[A-Fa-f0-9]{4}-[A-Fa-f0-9]{4}-[A-Fa-f0-9]{4}-[A-Fa-f0-9]{12}$ ]]
+          ipa="$RUNNER_TEMP/rato-ios-upload/rato-production.ipa"
+          test -s "$ipa"
+          umask 077
+          rato_key_dir="$(mktemp -d "$RUNNER_TEMP/rato-asc.XXXXXX")"
+          trap 'rm -rf "$rato_key_dir"' EXIT
+          mkdir "$rato_key_dir/private_keys"
+          printf '%s\n' "$APPLE_ASC_PRIVATE_KEY" > "$rato_key_dir/private_keys/AuthKey_${APPLE_ASC_KEY_ID}.p8"
+          unset APPLE_ASC_PRIVATE_KEY
+          cd "$rato_key_dir"
+          xcrun altool --upload-app --type ios --file "$ipa" \
+            --apiKey "$APPLE_ASC_KEY_ID" --apiIssuer "$APPLE_ASC_ISSUER_ID"
