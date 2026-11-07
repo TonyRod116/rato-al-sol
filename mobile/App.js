@@ -155,7 +155,6 @@ function Main() {
   const cachePauseViewport = useRef(null);
   const [appActive, setAppActive] = useState(AppState.currentState == null || AppState.currentState === 'active');
   const [calendarDay, setCalendarDay] = useState(() => localFrameDay(new Date()));
-  const playbackStarted = useRef(false);
   const playbackCacheEpoch = useRef(0), playbackFrames = useRef(null);
   if (!playbackFrames.current) playbackFrames.current = createPlaybackFrameCache({
     retain: retainShadowFile, release: releaseShadowFile, retire: retireShadowFile,
@@ -546,7 +545,7 @@ function Main() {
       }).catch(() => {}).finally(() => releaseShadowFile(frame.uri));
     }
   }, [currentShadowResult, futureShadow, appActive, cacheEnabled]);
-  const prefetchMinutes = !playingDay && !playbackStarted.current ? PLAYBACK_START : nextPlaybackTime(minutes);
+  const prefetchMinutes = nextPlaybackTime(minutes);
   const allowPrefetch = appActive && (cacheEnabled || playingDay);
   useEffect(() => { setPrefetchBlocked(false); }, [mapBuildings, shadowArea, day, shadowTimeKey, mapRetry]);
   useEffect(() => {
@@ -926,23 +925,13 @@ function Main() {
   const chooseDay = (value) => { setCacheEnabled(true); setDayOffset(value); };
   const changeTime = (value) => {
     setCacheEnabled(true);
-    playbackStarted.current = false; setPlayingDay(false);
+    setPlayingDay(false);
     setMinutes(value); setEndMinutes((previous) => Math.max(previous, value + 15));
   };
   const toggleDayPlayback = () => {
     setCacheEnabled(true);
     if (playingDay) { setPlayingDay(false); return; }
     if (prefetchBlocked) { setPrefetchBlocked(false); setNotice(''); }
-    if (!playbackStarted.current) {
-      const firstInstant = atMinutes(day, PLAYBACK_START);
-      if (futureShadow && !futureShadow.failed && shadowFrameMatches(futureShadow, { ...frameContext, timeKey: firstInstant?.getTime() })) {
-        setNativeShadowResult(futureShadow);
-        if (futureShadow.uri) setLastShadowImage(futureShadow);
-      }
-      setMinutes(PLAYBACK_START);
-      setEndMinutes((previous) => Math.max(previous, PLAYBACK_START + 15));
-      playbackStarted.current = true;
-    }
     setPlayingDay(true);
   };
   const setView = (value) => {
