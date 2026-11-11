@@ -37,11 +37,11 @@ function editDistance(a, b) {
 
 const categories = [
   { names: ['restaurante', 'restaurantes', 'restaurant', 'restaurants'], filter: '["amenity"~"^(restaurant|fast_food)$"]', kind: 'business' },
-  { names: ['terraza', 'terrazas', 'terrace', 'terraces'], filter: '["amenity"~"^(restaurant|cafe|bar|pub|ice_cream)$"]["outdoor_seating"="yes"]', kind: 'business' },
+  { names: ['terraza', 'terrazas', 'terrace', 'terraces', 'terrassa', 'terrasses'], filter: '["amenity"~"^(restaurant|cafe|bar|pub|ice_cream)$"]["outdoor_seating"="yes"]', kind: 'business' },
   { names: ['bar', 'bares', 'bars'], filter: '["amenity"~"^(bar|pub)$"]', kind: 'business' },
   { names: ['cafe', 'cafes', 'cafeteria', 'cafeterias'], filter: '["amenity"="cafe"]', kind: 'business' },
-  { names: ['parque', 'parques', 'jardin', 'jardines', 'park', 'parks', 'garden', 'gardens'], filter: '["leisure"~"^(park|garden|playground|recreation_ground)$"]', kind: 'public' },
-  { names: ['plaza', 'plazas', 'square', 'squares'], filter: '["place"="square"]', kind: 'public' },
+  { names: ['parque', 'parques', 'jardin', 'jardines', 'park', 'parks', 'garden', 'gardens', 'parc', 'parcs', 'jardins'], filter: '["leisure"~"^(park|garden|playground|recreation_ground)$"]', kind: 'public' },
+  { names: ['plaza', 'plazas', 'square', 'squares', 'placa'], filter: '["place"="square"]', kind: 'public' },
 ];
 
 export function searchCategory(text) {

@@ -1,4 +1,4 @@
-import { validCoordinate } from '../../frontend/shared/places.mjs';
+import { validCoordinate } from './places.mjs';
 
 const SCALE = 1_000_000;
 const TILE_SIZE = 4000;
@@ -41,7 +41,10 @@ function decodeTile(bytes, x, y) {
   return features;
 }
 
-export function createShadowCoverage(indexes, readTile) {
+export function createShadowCoverage(indexes, readTile, { parallelReads = 1 } = {}) {
+  if (!Number.isSafeInteger(parallelReads) || parallelReads < 1 || parallelReads > MAX_VIEW_TILES) {
+    throw new RangeError('Invalid shadow tile batch size');
+  }
   const decoded = new Map();
 
   function tilesForBounds(bounds) {
@@ -61,6 +64,23 @@ export function createShadowCoverage(indexes, readTile) {
     return { city, tiles };
   }
 
+  async function getTile(city, { x, y, entry }) {
+    const key = `${city}:${x},${y}`;
+    const tile = decoded.get(key) ?? readTile(city, ...entry).then((bytes) => {
+      if (bytes.byteLength !== entry[1]) throw new Error('Incomplete shadow tile');
+      return decodeTile(bytes, x, y);
+    });
+    decoded.delete(key);
+    decoded.set(key, tile);
+    if (decoded.size > MAX_CACHED_TILES) decoded.delete(decoded.keys().next().value);
+    try {
+      return await tile;
+    } catch (error) {
+      if (decoded.get(key) === tile) decoded.delete(key);
+      throw error;
+    }
+  }
+
   async function get(bounds) {
     const area = tilesForBounds(bounds);
     if (!area) return null;
@@ -68,30 +88,17 @@ export function createShadowCoverage(indexes, readTile) {
     const features = new Map();
     let vertices = 0;
     let started = Date.now();
-    for (const { x, y, entry } of tiles) {
-      const key = `${city}:${x},${y}`;
-      let tile = decoded.get(key);
-      if (!tile) {
-        tile = readTile(city, ...entry).then((bytes) => {
-          if (bytes.byteLength !== entry[1]) throw new Error('Incomplete shadow tile');
-          return decodeTile(bytes, x, y);
-        });
-      }
-      decoded.delete(key);
-      decoded.set(key, tile);
-      if (decoded.size > MAX_CACHED_TILES) decoded.delete(decoded.keys().next().value);
-      try {
-        for (const item of await tile) {
+    for (let offset = 0; offset < tiles.length; offset += parallelReads) {
+      const batch = tiles.slice(offset, offset + parallelReads);
+      for (const tile of await Promise.all(batch.map((entry) => getTile(city, entry)))) {
+        for (const item of tile) {
           const id = item.feature.properties.id;
           if (features.has(id) || !intersects(item.bounds, bounds)) continue;
           features.set(id, item.feature);
           vertices += item.vertices;
         }
-      } catch (error) {
-        if (decoded.get(key) === tile) decoded.delete(key);
-        throw error;
+        if (features.size > 8000 || vertices > 200000) throw new Error('Acerca el mapa para cargar edificios.');
       }
-      if (features.size > 8000 || vertices > 200000) throw new Error('Acerca el mapa para cargar edificios.');
       if (Date.now() - started >= 6) {
         await new Promise((resolve) => setTimeout(resolve, 0));
         started = Date.now();

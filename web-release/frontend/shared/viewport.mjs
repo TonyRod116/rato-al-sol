@@ -100,7 +100,7 @@ export function expandedMadridViewport(bounds, previous) {
 
 // Reuse only complete areas: a nearby viewport may be served from a wider
 // request, but never present partial building coverage as a complete result.
-export function createViewportLoader(load, now = Date.now, requestBounds = (bounds) => bounds) {
+export function createViewportLoader(load, now = Date.now, requestBounds = (bounds) => bounds, hasLocalData = () => false) {
   const recent = [];
   const pending = [];
   let previousBounds = null;
@@ -109,6 +109,7 @@ export function createViewportLoader(load, now = Date.now, requestBounds = (boun
     outer[0] <= inner[0] && outer[1] <= inner[1] && outer[2] >= inner[2] && outer[3] >= inner[3];
   const sourceFor = (bounds) => {
     if (!Array.isArray(bounds) || bounds.length !== 4 || !bounds.every(Number.isFinite) || bounds[0] >= bounds[2] || bounds[1] >= bounds[3]) return null;
+    if (hasLocalData(bounds)) return null;
     const [w, s, e, n] = bounds;
     const corners = [{ longitude: w, latitude: s }, { longitude: w, latitude: n },
       { longitude: e, latitude: s }, { longitude: e, latitude: n }];
@@ -197,7 +198,9 @@ export function createViewportLoader(load, now = Date.now, requestBounds = (boun
   }
   function find(bounds) {
     const time = now();
-    return recent.find((entry) => entry.expires > time && covers(entry.bounds, bounds))?.value || null;
+    const local = hasLocalData(bounds);
+    return recent.find((entry) => entry.expires > time && covers(entry.bounds, bounds) &&
+      (!local || hasLocalData(entry.bounds)))?.value || null;
   }
   function prime(value) {
     if (!value || !Array.isArray(value.bounds) || !Array.isArray(value.features)) return;
@@ -207,9 +210,11 @@ export function createViewportLoader(load, now = Date.now, requestBounds = (boun
   function get(bounds) {
     const cached = find(bounds);
     if (cached) return Promise.resolve(cached);
-    const underway = pending.find((entry) => covers(entry.bounds, bounds));
+    const local = hasLocalData(bounds);
+    const underway = pending.find((entry) => covers(entry.bounds, bounds) && (!local || hasLocalData(entry.bounds)));
     if (underway) return underway.promise;
-    const requested = requestBounds(bounds, previousBounds);
+    const expanded = requestBounds(bounds, previousBounds);
+    const requested = local && !hasLocalData(expanded) ? bounds : expanded;
     previousBounds = [...bounds];
     const entry = { bounds: [...(covers(requested, bounds) ? requested : bounds)] };
     const base = incrementalBase(entry.bounds);

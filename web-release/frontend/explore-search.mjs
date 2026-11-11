@@ -12,8 +12,8 @@ import { timePercent, visibleWindows } from './shared/time-selection.mjs';
 const $ = (id) => document.getElementById(id);
 const MAX_ANALYSED = 4;
 const labels = () => ({ sun: t('Sol estimado', 'Estimated sun'), shade: t('Sombra estimada', 'Estimated shade'), night: t('Noche', 'Night'), unknown: t('Sin datos suficientes', 'Not enough data') });
-const pointName = (point) => point.i18nName ? t(point.i18nName.es, point.i18nName.en) : point.name;
-const write = (id, es, en) => message($(id), es, en);
+const pointName = (point) => point.i18nName ? t(point.i18nName.es, point.i18nName.en, point.i18nName.ca) : point.name;
+const write = (id, es, en, ca) => message($(id), es, en, ca);
 const time = (minutes) => `${String(Math.floor(minutes / 60)).padStart(2, '0')}:${String(minutes % 60).padStart(2, '0')}`;
 const distance = (metres) => metres < 1000 ? `${Math.round(metres / 10) * 10} m` : `${(metres / 1000).toFixed(1).replace('.', t(',', '.'))} km`;
 
@@ -23,7 +23,7 @@ export function createExplorer({ getCenter, getDate, getTime, onPlaces, onPoint 
 
   function mapPlaces(items) {
     onPlaces(items.map((place) => ({ ...place, position: { lat: place.latitude, lng: place.longitude },
-      pinLabel: t(`${place.name}, ubicación aproximada`, `${place.name}, approximate location`) })), (id) => {
+      pinLabel: t(`${place.name}, ubicación aproximada`, `${place.name}, approximate location`, `${place.name}, ubicació aproximada`) })), (id) => {
       const place = items.find((item) => item.id === id);
       if (place) selectPoint(place, true);
     });
@@ -34,7 +34,13 @@ export function createExplorer({ getCenter, getDate, getTime, onPlaces, onPoint 
       point.kind === 'public' ? t('Es un punto de referencia, no una estimación para todo el parque o plaza. ', 'This is a reference point, not an estimate for the whole park or square. ') :
       point.kind === 'place' ? t('Es una ubicación aproximada; para mayor precisión marca el punto exterior en el mapa. ', 'This is an approximate location; for more precision, mark the outdoor point on the map. ') :
       point.kind === 'approx' ? t('Es un punto exterior aproximado, no la posición confirmada de las mesas. ', 'This is an approximate outdoor point, not the confirmed location of the tables. ') : '';
-    const attribution = source === 'madrid' ? t('Alturas: Ayuntamiento de Madrid (CC BY 4.0).', 'Heights: Madrid City Council (CC BY 4.0).') : t('Edificios: OpenStreetMap y colaboradores.', 'Buildings: OpenStreetMap and contributors.');
+    const attribution = source === 'madrid-local'
+      ? t('Edificios y alturas del Ayuntamiento de Madrid y Catastro.', 'Buildings and heights from Madrid City Council and the Spanish Cadastre.', 'Edificis i alçades de l’Ajuntament de Madrid i del Cadastre.')
+      : source === 'barcelona-local'
+      ? t('Alturas estimadas a partir de las plantas de Catastro.', 'Heights estimated from Spanish Cadastre floor counts.', 'Alçades estimades a partir de les plantes del Cadastre.')
+      : source === 'madrid'
+      ? t('Alturas: Ayuntamiento de Madrid (CC BY 4.0).', 'Heights: Madrid City Council (CC BY 4.0).')
+      : t('Edificios: OpenStreetMap y colaboradores.', 'Buildings: OpenStreetMap and contributors.');
     return position + t('Muestras cada 30 minutos; horas locales aproximadas de la España peninsular. No incluye nubes, árboles, toldos ni sombrillas. ', 'Samples every 30 minutes; approximate local times in mainland Spain. Clouds, trees, awnings and parasols are not included. ') + attribution;
   }
 
@@ -59,8 +65,8 @@ export function createExplorer({ getCenter, getDate, getTime, onPlaces, onPoint 
     const windows = visibleWindows(selected.windows);
     const current = lightAt(selected.scene, civilTimeToUtc(getDate(), getTime()));
     const inside = sceneInsideBuilding(selected.scene);
-    $('point-status').textContent = inside ? t('La referencia cae dentro de un edificio. Elige un punto exterior.', 'The reference point is inside a building. Choose an outdoor point.') : t(`${labels()[current]} a las ${time(getTime())} · transiciones aproximadas`, `${labels()[current]} at ${time(getTime())} · approximate transitions`);
-    $('daylight-place').textContent = inside ? t(`${pointName(selected)} · Elige un punto exterior para consultar su luz.`, `${pointName(selected)} · Choose an outdoor point to check its light.`) : t(`${pointName(selected)} · ${labels()[current]} a las ${time(getTime())}`, `${pointName(selected)} · ${labels()[current]} at ${time(getTime())}`);
+    $('point-status').textContent = inside ? t('La referencia cae dentro de un edificio. Elige un punto exterior.', 'The reference point is inside a building. Choose an outdoor point.') : t(`${labels()[current]} a las ${time(getTime())} · transiciones aproximadas`, `${labels()[current]} at ${time(getTime())} · approximate transitions`, `${labels()[current]} a les ${time(getTime())} · transicions aproximades`);
+    $('daylight-place').textContent = inside ? t(`${pointName(selected)} · Elige un punto exterior para consultar su luz.`, `${pointName(selected)} · Choose an outdoor point to check its light.`, `${pointName(selected)} · Tria un punt exterior per consultar-ne la llum.`) : t(`${pointName(selected)} · ${labels()[current]} a las ${time(getTime())}`, `${pointName(selected)} · ${labels()[current]} at ${time(getTime())}`, `${pointName(selected)} · ${labels()[current]} a les ${time(getTime())}`);
     const bar = $('daylight-segments'), readable = $('daylight-readable'), highlights = $('daylight-highlights');
     bar.replaceChildren(); readable.replaceChildren(); highlights.replaceChildren(); highlights.hidden = true;
     $('daylight-now').hidden = false;
@@ -79,7 +85,7 @@ export function createExplorer({ getCenter, getDate, getTime, onPlaces, onPoint 
       segment.style.flexBasis = '0';
       bar.append(segment);
       const description = document.createElement('li');
-      description.textContent = t(`${labels()[window.state]} aproximadamente de ${time(window.from)} a ${time(window.to)}.`, `${labels()[window.state]} approximately from ${time(window.from)} to ${time(window.to)}.`);
+      description.textContent = t(`${labels()[window.state]} aproximadamente de ${time(window.from)} a ${time(window.to)}.`, `${labels()[window.state]} approximately from ${time(window.from)} to ${time(window.to)}.`, `${labels()[window.state]} aproximadament de ${time(window.from)} a ${time(window.to)}.`);
       readable.append(description);
       if (window.state === 'sun' || window.state === 'shade') {
         const highlight = document.createElement('li'), name = document.createElement('span'), hours = document.createElement('strong');
@@ -95,11 +101,11 @@ export function createExplorer({ getCenter, getDate, getTime, onPlaces, onPoint 
       const item = document.createElement('li'), button = document.createElement('button');
       const title = document.createElement('strong'), detail = document.createElement('small');
       button.type = 'button';
-      title.textContent = t(`${choice.direction} · a unos ${choice.metres} m`, `${direction(choice.direction)} · about ${choice.metres} m away`);
+      title.textContent = t(`${choice.direction} · a unos ${choice.metres} m`, `${direction(choice.direction)} · about ${choice.metres} m away`, `${direction(choice.direction)} · a uns ${choice.metres} m`);
       const useful = choice.windows.filter((window) => window.state === 'sun' || window.state === 'shade');
       detail.textContent = useful.length ? useful.map((window) => `${labels()[window.state]} ${time(window.from)}–${time(window.to)}`).join(' · ') : t('Sin horas suficientes para estimar', 'Not enough hours to estimate');
       button.append(title, detail); item.append(button); choices.append(item);
-      button.addEventListener('click', () => selectPoint({ ...choice.point, i18nName: { es: `Punto al ${choice.direction.toLocaleLowerCase('es')} de ${selected.i18nName?.es || selected.name}`, en: `Point ${translateDirection('en', choice.direction.toLocaleLowerCase('es'))} of ${selected.i18nName?.en || selected.name}` }, kind: 'approx' }, true, { scene: choice.scene, source: selected.source }));
+      button.addEventListener('click', () => selectPoint({ ...choice.point, i18nName: { es: `Punto al ${choice.direction.toLocaleLowerCase('es')} de ${selected.i18nName?.es || selected.name}`, en: `Point ${translateDirection('en', choice.direction.toLocaleLowerCase('es'))} of ${selected.i18nName?.en || selected.name}`, ca: `Punt al ${translateDirection('ca', choice.direction.toLocaleLowerCase('es'))} de ${selected.i18nName?.ca || selected.name}` }, kind: 'approx' }, true, { scene: choice.scene, source: selected.source }));
     }
     $('point-note').hidden = false;
     $('point-note').textContent = pointNote(selected, selected.source);
@@ -108,7 +114,7 @@ export function createExplorer({ getCenter, getDate, getTime, onPlaces, onPoint 
   async function selectPoint(point, focus = false, prepared = null) {
     if (!validCoordinate(point)) return;
     const request = ++pointRequest;
-    selected = { ...point, name: point.name || point.i18nName?.es || 'Punto elegido en el mapa', i18nName: point.i18nName || (!point.name ? { es: 'Punto elegido en el mapa', en: 'Point selected on the map' } : null), kind: point.kind || 'point', scene: null };
+    selected = { ...point, name: point.name || point.i18nName?.es || 'Punto elegido en el mapa', i18nName: point.i18nName || (!point.name ? { es: 'Punto elegido en el mapa', en: 'Point selected on the map', ca: 'Punt triat al mapa' } : null), kind: point.kind || 'point', scene: null };
     onPoint({ ...selected, name: pointName(selected) }, focus);
     $('point-title').textContent = pointName(selected);
     write('point-status', 'Consultando los edificios de alrededor…', 'Checking nearby buildings…');
@@ -195,7 +201,8 @@ export function createExplorer({ getCenter, getDate, getTime, onPlaces, onPoint 
     const analysed = [...sceneByPlace.values()].filter(Boolean).length;
     const warningEs = nearbyFailures ? ' Algunas fuentes no están disponibles; los resultados pueden estar incompletos.' : '';
     const warningEn = nearbyFailures ? ' Some sources are unavailable; results may be incomplete.' : '';
-    write('nearby-status', nearby.length ? `${sunny.length} con sol estimado · ${analysed} puntos de espacios exteriores analizados. Distancias desde donde buscaste. Hora local peninsular; muestras cada 30 min.${warningEs}` : 'Todavía no hay resultados. Mueve el mapa, cambia la distancia o vuelve a intentarlo.', nearby.length ? `${sunny.length} with estimated sun · ${analysed} outdoor points analysed. Distances from your search area. Mainland Spain time; samples every 30 min.${warningEn}` : 'No results yet. Move the map, change the distance or try again.');
+    const warningCa = nearbyFailures ? ' Algunes fonts no estan disponibles; els resultats poden ser incomplets.' : '';
+    write('nearby-status', nearby.length ? `${sunny.length} con sol estimado · ${analysed} puntos de espacios exteriores analizados. Distancias desde donde buscaste. Hora local peninsular; muestras cada 30 min.${warningEs}` : 'Todavía no hay resultados. Mueve el mapa, cambia la distancia o vuelve a intentarlo.', nearby.length ? `${sunny.length} with estimated sun · ${analysed} outdoor points analysed. Distances from your search area. Mainland Spain time; samples every 30 min.${warningEn}` : 'No results yet. Move the map, change the distance or try again.', nearby.length ? `${sunny.length} amb sol estimat · ${analysed} punts d’espais exteriors analitzats. Distàncies des d’on has cercat. Hora local peninsular; mostres cada 30 min.${warningCa}` : 'Encara no hi ha resultats. Mou el mapa, canvia la distància o torna-ho a provar.');
     if (nearby.length) mapPlaces([...sunny, ...uncertain].slice(0, 20));
   }
 
@@ -230,9 +237,12 @@ export function createExplorer({ getCenter, getDate, getTime, onPlaces, onPoint 
     write('nearby-status', 'Busca parques y terrazas para la fecha seleccionada.', 'Search parks and outdoor seating for the selected date.');
     onPlaces([], () => {});
     write('place-status', 'Buscando lugares cerca del mapa…', 'Searching for places near the map…');
-    const sources = [searchPlaces(query, center)];
-    if (inMadridArea(center)) sources.push(searchMadridFallback(center, 5000, query), searchMadridParks(center, 5000, query));
-    if (inBarcelonaArea(center)) sources.push(searchBarcelonaTerraces(center, 5000, query));
+    // "Places" is Catalan for squares but also an English word. Expand it
+    // only in Catalan so English searches retain their original meaning.
+    const providerQuery = document.documentElement?.lang === 'ca' && query.toLocaleLowerCase('ca') === 'places' ? 'plaça' : query;
+    const sources = [searchPlaces(providerQuery, center)];
+    if (inMadridArea(center)) sources.push(searchMadridFallback(center, 5000, providerQuery), searchMadridParks(center, 5000, providerQuery));
+    if (inBarcelonaArea(center)) sources.push(searchBarcelonaTerraces(center, 5000, providerQuery));
     let waiting = sources.length, successes = 0, failures = 0;
     for (const source of sources) source.then((found) => {
       if (request !== placeRequest) return;
@@ -242,7 +252,8 @@ export function createExplorer({ getCenter, getDate, getTime, onPlaces, onPoint 
       waiting--;
       const warningEs = failures ? ' Algunas fuentes no están disponibles; la búsqueda puede estar incompleta.' : '';
       const warningEn = failures ? ' Some sources are unavailable; the search may be incomplete.' : '';
-      write('place-status', places.length ? `${places.length > 20 ? `Mostramos 20 de ${places.length}` : `${places.length}`} ${places.length === 1 ? 'lugar' : 'lugares'} cerca del mapa${waiting ? ' · buscando más…' : ''}. Selecciona uno.${warningEs}` : waiting ? 'Buscando lugares cerca del mapa…' : successes ? (failures ? 'No hemos encontrado coincidencias en las fuentes disponibles; la búsqueda está incompleta. Vuelve a intentarlo.' : 'No hemos encontrado coincidencias cerca. Prueba otro nombre o mueve el mapa.') : 'No hemos podido consultar los lugares. Vuelve a intentarlo.', places.length ? `${places.length > 20 ? `Showing 20 of ${places.length}` : `${places.length}`} ${places.length === 1 ? 'place' : 'places'} near the map${waiting ? ' · searching for more…' : ''}. Select one.${warningEn}` : waiting ? 'Searching for places near the map…' : successes ? (failures ? 'No matches in available sources; the search is incomplete. Please try again.' : 'No matches nearby. Try another name or move the map.') : 'Could not retrieve places. Please try again.');
+      const warningCa = failures ? ' Algunes fonts no estan disponibles; la cerca pot ser incompleta.' : '';
+      write('place-status', places.length ? `${places.length > 20 ? `Mostramos 20 de ${places.length}` : `${places.length}`} ${places.length === 1 ? 'lugar' : 'lugares'} cerca del mapa${waiting ? ' · buscando más…' : ''}. Selecciona uno.${warningEs}` : waiting ? 'Buscando lugares cerca del mapa…' : successes ? (failures ? 'No hemos encontrado coincidencias en las fuentes disponibles; la búsqueda está incompleta. Vuelve a intentarlo.' : 'No hemos encontrado coincidencias cerca. Prueba otro nombre o mueve el mapa.') : 'No hemos podido consultar los lugares. Vuelve a intentarlo.', places.length ? `${places.length > 20 ? `Showing 20 of ${places.length}` : `${places.length}`} ${places.length === 1 ? 'place' : 'places'} near the map${waiting ? ' · searching for more…' : ''}. Select one.${warningEn}` : waiting ? 'Searching for places near the map…' : successes ? (failures ? 'No matches in available sources; the search is incomplete. Please try again.' : 'No matches nearby. Try another name or move the map.') : 'Could not retrieve places. Please try again.', places.length ? `${places.length > 20 ? `Mostrem 20 de ${places.length}` : `${places.length}`} ${places.length === 1 ? 'lloc' : 'llocs'} a prop del mapa${waiting ? ' · buscant-ne més…' : ''}. Tria’n un.${warningCa}` : waiting ? 'Buscant llocs a prop del mapa…' : successes ? (failures ? 'No hem trobat coincidències a les fonts disponibles; la cerca és incompleta. Torna-ho a provar.' : 'No hem trobat coincidències a prop. Prova un altre nom o mou el mapa.') : 'No hem pogut consultar els llocs. Torna-ho a provar.');
     });
   });
 

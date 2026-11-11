@@ -29,7 +29,8 @@ export async function createCityMap(element, onViewChange = () => {}, onBasemapE
   const map = new gl.Map({
     container: element,
     style: 'https://tiles.openfreemap.org/styles/liberty',
-    center: [DEFAULT_LOCATION.longitude, DEFAULT_LOCATION.latitude], zoom: options.zoom ?? 18, pitch: options.pitch ?? 20, bearing: options.bearing ?? 0,
+    center: [options.center?.lng ?? DEFAULT_LOCATION.longitude, options.center?.lat ?? DEFAULT_LOCATION.latitude],
+    zoom: options.zoom ?? 18, pitch: options.pitch ?? 20, bearing: options.bearing ?? 0,
     minZoom: 14, maxZoom: 19,
     scrollZoom: false,
   });

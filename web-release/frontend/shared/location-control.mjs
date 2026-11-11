@@ -1,5 +1,51 @@
-// Request location only after an explicit tap. A later city selection cancels
-// any pending result so an old permission prompt cannot move the map back.
+const LAST_CENTER = 'rato.web-map-center.v1';
+const getStorage = () => globalThis.localStorage;
+const validCenter = (center) => Number.isFinite(center?.lat) && Number.isFinite(center?.lng) &&
+  Math.abs(center.lat) <= 85 && Math.abs(center.lng) <= 180;
+const fromPosition = (position) => ({ lat: position?.coords?.latitude, lng: position?.coords?.longitude });
+
+export function savedMapCenter(storage = getStorage) {
+  try {
+    const point = JSON.parse(storage().getItem(LAST_CENTER));
+    return validCenter(point) ? point : null;
+  } catch { return null; }
+}
+
+export function rememberMapCenter(center, storage = getStorage) {
+  if (!validCenter(center)) return;
+  try {
+    storage().setItem(LAST_CENTER, JSON.stringify({
+      lat: Number(center.lat.toFixed(4)), lng: Number(center.lng.toFixed(4)),
+    }));
+  } catch { /* The map also works without browser storage. */ }
+}
+
+// Only ask the browser at startup when its permission has already been granted.
+export async function startupMapCenter({ fallback, getPermission, geolocation, timeoutMs = 2500 }) {
+  let timer;
+  let expired = false;
+  const deadline = new Promise((resolve) => {
+    timer = setTimeout(() => {
+      expired = true;
+      resolve(fallback);
+    }, timeoutMs);
+  });
+  const locate = async () => {
+    if ((await getPermission())?.state !== 'granted' || expired) return fallback;
+    return new Promise((resolve) => {
+      const service = geolocation();
+      if (!service?.getCurrentPosition) return resolve(fallback);
+      service.getCurrentPosition((position) => {
+        const center = fromPosition(position);
+        resolve(validCenter(center) ? center : fallback);
+      }, () => resolve(fallback), { enableHighAccuracy: false, timeout: timeoutMs, maximumAge: 60000 });
+    });
+  };
+  try { return await Promise.race([locate().catch(() => fallback), deadline]); }
+  finally { clearTimeout(timer); }
+}
+
+// A later city selection cancels the result of a manual location request.
 export function createLocationControl({ button, status, geolocation, onFound, showMessage }) {
   let request = 0;
 
@@ -31,12 +77,12 @@ export function createLocationControl({ button, status, geolocation, onFound, sh
       else show('No hemos podido obtener tu ubicación. Elige Madrid o Barcelona o inténtalo de nuevo.', 'Could not find your location. Choose Madrid or Barcelona, or try again.');
     };
     try {
-      service.getCurrentPosition(({ coords }) => {
+      service.getCurrentPosition((position) => {
         if (current !== request) return;
-        const { latitude, longitude } = coords || {};
-        if (!Number.isFinite(latitude) || !Number.isFinite(longitude) || Math.abs(latitude) > 85 || Math.abs(longitude) > 180) return fail();
+        const center = fromPosition(position);
+        if (!validCenter(center)) return fail();
         button.disabled = false;
-        const withinMainCoverage = onFound({ lat: latitude, lng: longitude });
+        const withinMainCoverage = onFound(center);
         if (withinMainCoverage === false) show('Mapa centrado en tu ubicación. Fuera de Madrid y Barcelona, la cobertura de datos puede variar.', 'Map centred on your location. Data coverage may vary outside Madrid and Barcelona.');
         else show('Mapa centrado en tu ubicación. Puedes buscar lugares cercanos.', 'Map centred on your location. You can search for nearby places.');
       }, fail, { enableHighAccuracy: false, timeout: 10000, maximumAge: 60000 });

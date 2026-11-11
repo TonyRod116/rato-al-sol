@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
-import { createLocationControl } from '../frontend/shared/location-control.mjs';
+import { createLocationControl, rememberMapCenter, savedMapCenter, startupMapCenter } from '../frontend/shared/location-control.mjs';
 
 const setup = (geolocation) => {
   const button = { disabled: false }, status = { hidden: true }, positions = [];
@@ -10,7 +10,7 @@ const setup = (geolocation) => {
   return { button, status, positions, control };
 };
 
-test('location is requested only after a tap and centers the map on success', () => {
+test('the manual location control centers the map after a tap', () => {
   let success, options, calls = 0;
   const state = setup({ getCurrentPosition(ok, _fail, opts) { calls++; success = ok; options = opts; } });
   assert.equal(calls, 0);
@@ -22,6 +22,74 @@ test('location is requested only after a tap and centers the map on success', ()
   assert.deepEqual(state.positions, [{ lat: 41.4, lng: 2.1 }]);
   assert.equal(state.button.disabled, false);
   assert.match(state.status.textContent, /centrado en tu ubicación/);
+});
+
+test('startup centers on the current location when permission is already granted', async () => {
+  const fallback = { lat: 40.42, lng: -3.7 };
+  const center = await startupMapCenter({
+    fallback,
+    getPermission: async () => ({ state: 'granted' }),
+    geolocation: () => ({
+      getCurrentPosition(success) {
+        success({ coords: { latitude: 41.3851, longitude: 2.1734 } });
+      },
+    }),
+  });
+  assert.deepEqual(center, { lat: 41.3851, lng: 2.1734 });
+});
+
+test('startup uses the last center without prompting if permission is unavailable', async () => {
+  const fallback = { lat: 41.3851, lng: 2.1734 };
+  let calls = 0;
+  for (const state of ['prompt', 'denied', undefined]) {
+    const center = await startupMapCenter({
+      fallback,
+      getPermission: () => state && { state },
+      geolocation: () => { calls++; },
+    });
+    assert.equal(center, fallback);
+  }
+  assert.equal(calls, 0);
+});
+
+test('startup uses the last center when location times out', async () => {
+  const fallback = { lat: 41.3851, lng: 2.1734 };
+  const center = await startupMapCenter({
+    fallback,
+    getPermission: () => ({ state: 'granted' }),
+    geolocation: () => ({ getCurrentPosition() {} }),
+    timeoutMs: 5,
+  });
+  assert.equal(center, fallback);
+});
+
+test('permission arriving after the startup deadline does not request location', async () => {
+  const fallback = { lat: 41.3851, lng: 2.1734 };
+  const permission = Promise.withResolvers();
+  let calls = 0;
+  const center = await startupMapCenter({
+    fallback,
+    getPermission: () => permission.promise,
+    geolocation: () => { calls++; },
+    timeoutMs: 5,
+  });
+  assert.equal(center, fallback);
+  permission.resolve({ state: 'granted' });
+  await permission.promise;
+  assert.equal(calls, 0);
+});
+
+test('the last center is stored approximately and invalid or unavailable storage is ignored', () => {
+  let entry = null;
+  const storage = () => ({ getItem: () => entry, setItem: (_key, value) => { entry = value; } });
+  assert.equal(savedMapCenter(storage), null);
+  rememberMapCenter({ lat: 41.385126, lng: 2.173498 }, storage);
+  assert.deepEqual(savedMapCenter(storage), { lat: 41.3851, lng: 2.1735 });
+  rememberMapCenter(null, storage);
+  assert.deepEqual(savedMapCenter(storage), { lat: 41.3851, lng: 2.1735 });
+  entry = '{broken';
+  assert.equal(savedMapCenter(storage), null);
+  assert.equal(savedMapCenter(() => { throw new Error('Storage unavailable'); }), null);
 });
 
 test('permission denial or unsupported browser leaves a clear manual alternative', () => {

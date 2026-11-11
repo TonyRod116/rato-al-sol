@@ -4,7 +4,7 @@ import test from 'node:test';
 import { buildingShadows } from '../frontend/map-shadows.mjs';
 import { lightAt, prepareScene } from '../frontend/shared/estimate.mjs';
 import { pointInOrOnPolygon, sunPosition } from '../frontend/solar.mjs';
-import { createShadowCoverage } from '../mobile/src/shadow-coverage.mjs';
+import { createShadowCoverage } from '../frontend/shared/shadow-coverage.mjs';
 
 const files = new URL('../mobile/assets/shadow-data/', import.meta.url);
 const middaySample = new Date('2026-11-11T12:00:00+01:00');

@@ -1,18 +1,20 @@
-# Fuente web de Rato al Sol — versión 63c5771784796ce6
+# Web de Rato al Sol
 
-Esta carpeta conserva de forma independiente la fuente y el empaquetador de la versión web identificada como `63c5771784796ce6`. Procede de `work/rato-web-location` y se ha contrastado con el paquete preparado en `work/rato-web-location-ready/rato-al-sol`. No procede del árbol móvil `e35c62e4e4358fbc23293a1adf50af6953d9540c`.
+La web ofrece navegación entre Madrid y Barcelona y está en español, catalán e inglés. Si el navegador ya tiene permiso, el mapa se abre cerca de la ubicación actual. Si no puede localizarte, recupera el último centro del mapa guardado en el navegador. La reproducción parte de la hora elegida y vuelve al inicio al llegar a las 22:00.
 
-Contiene únicamente los 31 archivos de `frontend` declarados en `scripts/build-web.mjs`, el empaquetador y seis archivos de pruebas de la web. El directorio `frontend` de esta copia es independiente del `frontend` compartido con la app móvil: no debe sustituirse el de la app por esta copia sin revisar sus imports y volver a probarla. En particular, `shared/time-selection.mjs` difiere en ambas versiones.
+El paquete usa el mismo lector y la misma cartografía de sombras que el móvil. El navegador pide los tramos de archivo correspondientes a la vista o al punto elegido. Las teselas recientes se reutilizan al mover el mapa. Cuando una zona queda fuera de la cobertura incluida o los archivos no están disponibles, la web consulta los proveedores habituales.
 
-## Reproducir y comprobar
+## Preparar una versión
 
-Desde esta carpeta, con Node.js instalado:
+Ejecuta desde `web-release/`.
 
 ```sh
 node --test tests/*.test.mjs
 node scripts/build-web.mjs --output /ruta/nueva/rato-al-sol
 ```
 
-La ruta de salida debe ser nueva. El directorio creado debe contener `releases/63c5771784796ce6`; el SHA-256 de `index.html` esperado es `0168c2573404b72326a7a9657afdf3fe14efdf7b39ee9c914d3dc8c4d981f6af`. Los 30 archivos de la carpeta de esa versión se han comparado byte a byte con la copia preparada para publicación. Para verificar el contenido de una instalación pública se necesita además contrastarla con el servidor.
+El empaquetador copia el lector y los datos generados de la app móvil a `releases/<id>/`. El identificador depende del contenido. El alojamiento debe admitir solicitudes HTTP por rangos en los archivos `.bin`. Sirve la carpeta generada para probar esta capa. La vista directa de `frontend/` usa los proveedores habituales.
 
-Esta copia no modifica ninguna rama, servidor, app ni binario de tienda. Una futura integración en el repositorio puede conservarse como subdirectorio independiente; debe evitarse modificar archivos compartidos con móvil para preservar la correspondencia con las compilaciones ya generadas.
+Para actualizar el sitio, carga primero el directorio de versión completo y comprueba los rangos de los dos archivos de edificios. Sube el nuevo `index.html` cuando los archivos estén disponibles. Conserva una copia del índice anterior para volver a su versión si falla la comprobación pública.
+
+[Fuentes, atribuciones y regeneración de los datos](../docs/DATA_SOURCES.md)

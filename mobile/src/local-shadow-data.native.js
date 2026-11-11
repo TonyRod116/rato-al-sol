@@ -1,6 +1,6 @@
 import { Asset } from 'expo-asset';
 import { File } from 'expo-file-system';
-import { createShadowCoverage } from './shadow-coverage.mjs';
+import { createShadowCoverage } from '../../frontend/shared/shadow-coverage.mjs';
 
 const assets = {
   barcelona: require('../assets/shadow-data/barcelona.bin'),

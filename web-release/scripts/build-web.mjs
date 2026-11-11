@@ -5,6 +5,12 @@ import { fileURLToPath, pathToFileURL } from 'node:url';
 
 const root = dirname(dirname(fileURLToPath(import.meta.url)));
 const source = join(root, 'frontend');
+const sharedFiles = {
+  'shared/shadow-coverage.mjs': join(root, '../frontend/shared/shadow-coverage.mjs'),
+  ...Object.fromEntries(['madrid.bin', 'madrid.json', 'barcelona.bin', 'barcelona.json'].map((file) =>
+    [`shadow-data/${file}`, join(root, '../mobile/assets/shadow-data', file)])),
+};
+const sourceFile = (file) => sharedFiles[file] ?? join(source, file);
 
 // Keep this list aligned with the imports in frontend/index.html and app.mjs.
 // Local configuration and inactive experiments must not enter the package.
@@ -13,15 +19,16 @@ const publicFiles = [
   'madrid.mjs', 'madrid-buildings.mjs', 'map-shadows.mjs', 'viewport-buildings.mjs',
   'open-map.mjs', 'city-map.mjs', 'explore-search.mjs', 'map-atmosphere.mjs',
   'shadow-mask.mjs', 'map-basemap.mjs',
-  'shared/places.mjs', 'shared/barcelona-terraces.mjs', 'shared/ayala-fallback.mjs', 'shared/madrid-scene.mjs', 'shared/default-location.mjs', 'shared/time-selection.mjs', 'shared/i18n.mjs', 'shared/location-control.mjs',
-  'shared/scene-provider.mjs', 'shared/estimate.mjs', 'shared/viewport.mjs', 'shared/shadow-geometry-task.mjs', 'shared/web-shadow-retention.mjs',
+  'shared/places.mjs', 'shared/barcelona-terraces.mjs', 'shared/ayala-fallback.mjs', 'shared/madrid-scene.mjs', 'shared/default-location.mjs', 'shared/time-selection.mjs', 'shared/i18n.mjs', 'shared/catalog-ca.mjs', 'shared/location-control.mjs',
+  'shared/scene-provider.mjs', 'shared/estimate.mjs', 'shared/viewport.mjs', 'shared/shadow-geometry-task.mjs', 'shared/web-shadow-retention.mjs', 'shared/web-shadow-data.mjs',
   'vendor/suncalc-2.0.2.mjs', 'vendor/SUNCALC-LICENSE.txt',
+  ...Object.keys(sharedFiles),
 ];
 
 export function buildWeb(output) {
   const destination = resolve(output);
   const digest = createHash('sha256').update('rato-web-release-layout-v1\0');
-  for (const file of publicFiles) digest.update(file).update('\0').update(readFileSync(join(source, file))).update('\0');
+  for (const file of publicFiles) digest.update(file).update('\0').update(readFileSync(sourceFile(file))).update('\0');
   const release = digest.digest('hex').slice(0, 16);
   const releaseRoot = join(destination, 'releases', release);
   mkdirSync(dirname(destination), { recursive: true });
@@ -29,7 +36,7 @@ export function buildWeb(output) {
   for (const file of publicFiles.filter((name) => name !== 'index.html')) {
     const target = join(releaseRoot, file);
     mkdirSync(dirname(target), { recursive: true });
-    copyFileSync(join(source, file), target);
+    copyFileSync(sourceFile(file), target);
   }
   const html = readFileSync(join(source, 'index.html'), 'utf8').replace(
     /(["'])\.\/(favicon\.svg|styles\.css|app\.mjs)(?:\?[^"']*)?\1/g,

@@ -1,7 +1,12 @@
 import { getBuildings } from './places.mjs';
 import { getMadridScene, inMadridArea, MADRID_RADIUS } from './madrid-scene.mjs';
+import { webShadowData } from './web-shadow-data.mjs';
 
 export async function getScenes(points, fetchFn = fetch) {
+  if (fetchFn === fetch) {
+    const local = await webShadowData.scenes(points).catch(() => null);
+    if (local) return local;
+  }
   // A single point in Madrid can use municipal heights, which are more useful
   // than sparse community height tags. Larger batches use OpenStreetMap.
   if (points.length === 1 && inMadridArea(points[0])) {

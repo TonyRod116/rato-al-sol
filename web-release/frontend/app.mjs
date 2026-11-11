@@ -6,10 +6,11 @@ import { getViewportBuildings, viewportBounds } from './viewport-buildings.mjs';
 import { createViewportLoader, expandedMadridViewport } from './shared/viewport.mjs';
 import { startShadowGeometry } from './shared/shadow-geometry-task.mjs';
 import { boundsCover, canReuseWebShadow } from './shared/web-shadow-retention.mjs';
+import { webShadowData } from './shared/web-shadow-data.mjs';
 import { createOpenMap } from './open-map.mjs?v=20261106-proto1';
 import { createCityMap } from './city-map.mjs?v=20261106-proto1';
 import { createExplorer } from './explore-search.mjs?v=20261103-18';
-import { createLocationControl } from './shared/location-control.mjs';
+import { createLocationControl, rememberMapCenter, savedMapCenter, startupMapCenter } from './shared/location-control.mjs';
 import { inMadridArea } from './shared/madrid-scene.mjs';
 import { inBarcelonaArea } from './shared/barcelona-terraces.mjs';
 import { direction, message, savedLanguage, setLanguage, t } from './i18n.mjs';
@@ -23,11 +24,18 @@ const state = { date: `${today.year}-${today.month}-${today.day}`, minutes: init
 const empty = { type: 'FeatureCollection', features: [] };
 let buildings, activeMap;
 let mapStarted = false, mapLoading = false, is3D = true, playback, pendingFrame;
-let view = { bearing: 0, pitch: 0, center: { lat: DEFAULT_LOCATION.latitude, lng: DEFAULT_LOCATION.longitude } };
+let view = { bearing: 0, pitch: 0, center: savedMapCenter() ?? { lat: DEFAULT_LOCATION.latitude, lng: DEFAULT_LOCATION.longitude } };
 let currentDirection = null;
 let buildingsLoading = false, buildingsError = '', buildingRequest = 0, buildingKey = '', buildingTimer;
-let shadowPending = false, shadowError = '', stopShadow = () => {}, shadowEpoch = 0, lastShadowFrame = null;
-const viewportLoader = createViewportLoader(getViewportBuildings, Date.now, expandedMadridViewport);
+let shadowPending = false, shadowError = '', stopShadow = () => {}, shadowEpoch = 0, shadowTimeout, lastShadowFrame = null;
+async function loadViewport(bounds, fetchFn, options) {
+  const local = await webShadowData.get(bounds).catch((error) => {
+    if (error?.message?.startsWith('Acerca el mapa')) throw error;
+    return null;
+  });
+  return local ?? getViewportBuildings(bounds, fetchFn, options);
+}
+const viewportLoader = createViewportLoader(loadViewport, Date.now, expandedMadridViewport, webShadowData.has);
 let searchPins;
 let searchTimeEdited = false;
 const explorer = createExplorer({
@@ -88,6 +96,8 @@ function updateShadowStatus() {
   else if (shadowError) message(status, 'No se han podido calcular las sombras de esta zona. Acerca el mapa.', 'Could not calculate shadows here. Zoom in to try again.');
   else if (shadowPending) message(status, 'Calculando sombras de la zona.', 'Calculating shadows for this area.');
   else if (!buildings) message(status, 'Las sombras aún no están disponibles.', 'Shadows are not yet available.');
+  else if (buildings.source === 'barcelona-local') message(status, 'Sombras orientativas · Catastro.', 'Approximate shadows · Spanish Cadastre.', 'Ombres orientatives · Cadastre.');
+  else if (buildings.source === 'madrid-local') message(status, 'Sombras orientativas · Ayuntamiento de Madrid y Catastro.', 'Approximate shadows · Madrid City Council and Spanish Cadastre.', 'Ombres orientatives · Ajuntament de Madrid i Cadastre.');
   else if (buildings.source === 'osm') message(status, 'Sombras orientativas · OpenStreetMap. Pueden faltar edificios y alturas.', 'Approximate shadows · OpenStreetMap. Some buildings or heights may be missing.');
   else if (buildings.omitted) message(status, 'Sombras orientativas · alturas municipales. Faltan algunas alturas.', 'Approximate shadows · municipal heights. Some heights are missing.');
   else message(status, 'Sombras orientativas · alturas municipales de la zona visible.', 'Approximate shadows · municipal heights in the visible area.');
@@ -103,19 +113,20 @@ function updateSolar() {
   $('#date').value = state.date;
   $('#time').value = state.minutes;
   $('#time-value').value = clock;
-  $('#time').setAttribute('aria-valuetext', t(`${clock}, hora local peninsular`, `${clock}, mainland Spain time`));
+  $('#time').setAttribute('aria-valuetext', t(`${clock}, hora local peninsular`, `${clock}, mainland Spain time`, `${clock}, hora local peninsular`));
   $('#time').style.setProperty('--progress', `${(state.minutes - TIME_START) / (TIME_END - TIME_START) * 100}%`);
   $('#direction-text').textContent = !instant
     ? t('Esta hora no existe en la España peninsular por el cambio al horario de verano. Elige otra hora.', 'This time does not exist in mainland Spain due to the daylight saving time change. Choose another time.')
     : currentDirection
-    ? t(`A las ${clock}, las sombras apuntan hacia el ${currentDirection.label}.`, `At ${clock}, shadows point ${direction(currentDirection.label)}.`)
-    : sun && sun.altitude < -1 ? t(`A las ${clock} es de noche; no hay sombra solar.`, `At ${clock} it is night; there are no sun shadows.`)
-      : t(`A las ${clock} el sol está muy bajo; no mostramos sombras fiables.`, `At ${clock} the sun is very low; reliable shadows are unavailable.`);
+    ? t(`A las ${clock}, las sombras apuntan hacia el ${currentDirection.label}.`, `At ${clock}, shadows point ${direction(currentDirection.label)}.`, `A les ${clock}, les ombres apunten cap al ${direction(currentDirection.label)}.`)
+    : sun && sun.altitude < -1 ? t(`A las ${clock} es de noche; no hay sombra solar.`, `At ${clock} it is night; there are no sun shadows.`, `A les ${clock} és de nit; no hi ha ombra solar.`)
+      : t(`A las ${clock} el sol está muy bajo; no mostramos sombras fiables.`, `At ${clock} the sun is very low; reliable shadows are unavailable.`, `A les ${clock} el sol és molt baix; no mostrem ombres fiables.`);
   $('#direction-symbol').textContent = currentDirection ? '↑' : sun && sun.altitude < -1 ? '☾' : '☼';
   $('#direction-symbol').style.transform = currentDirection ? `rotate(${currentDirection.bearing}deg)` : '';
   explorer.updateTime();
   if (pendingFrame) cancelAnimationFrame(pendingFrame);
   stopShadow();
+  clearTimeout(shadowTimeout);
   const epoch = ++shadowEpoch;
   const timeKey = `${state.date}/${state.minutes}`;
   pendingFrame = requestAnimationFrame(() => {
@@ -123,7 +134,11 @@ function updateSolar() {
     if (activeMap) {
       activeMap.setSun?.(sun);
       const map = activeMap, bounds = viewportBounds(view.shadowBounds);
-      const keepPrevious = lastShadowFrame && lastShadowFrame.map === map && lastShadowFrame.timeKey === timeKey;
+      const keepPrevious = lastShadowFrame && lastShadowFrame.map === map && (
+        lastShadowFrame.timeKey === timeKey ||
+        (playback && currentDirection && lastShadowFrame.buildings === buildings &&
+          lastShadowFrame.timeKey.startsWith(`${state.date}/`) && boundsCover(lastShadowFrame.bounds, view.bounds))
+      );
       if (canReuseWebShadow(lastShadowFrame, { map, timeKey, buildings, visibleBounds: view.bounds, daylight: currentDirection })) {
         shadowPending = false; shadowError = ''; updateShadowStatus(); return;
       }
@@ -135,8 +150,17 @@ function updateSolar() {
         return;
       }
       shadowPending = true; shadowError = ''; updateShadowStatus();
+      // Do not leave a previous time's shadows visible indefinitely if the
+      // calculation cannot finish. Fail visibly and clear the outdated mask.
+      shadowTimeout = setTimeout(() => {
+        if (epoch !== shadowEpoch || map !== activeMap) return;
+        stopShadow(); ++shadowEpoch;
+        shadowPending = false; shadowError = 'failed';
+        map.setShadows(empty, bounds); lastShadowFrame = null; updateShadowStatus();
+      }, 12000);
       stopShadow = startShadowGeometry(buildings, sun, bounds, (result) => {
         if (epoch !== shadowEpoch || map !== activeMap) return;
+        clearTimeout(shadowTimeout);
         shadowPending = false;
         if (result.limitExceeded) {
           shadowError = 'limit'; map.setShadows(empty, bounds); lastShadowFrame = null;
@@ -146,6 +170,7 @@ function updateSolar() {
         updateShadowStatus();
       }, () => {
         if (epoch !== shadowEpoch || map !== activeMap) return;
+        clearTimeout(shadowTimeout);
         shadowPending = false; shadowError = 'failed'; map.setShadows(empty, bounds); lastShadowFrame = null; updateShadowStatus();
       });
     }
@@ -175,6 +200,8 @@ function loadBuildings(force = false) {
   updateShadowStatus();
   buildingTimer = setTimeout(async () => {
     try {
+      await webShadowData.ready();
+      if (request !== buildingRequest) return;
       const result = await viewportLoader.get(bounds);
       if (request !== buildingRequest) return;
       buildings = result;
@@ -194,7 +221,11 @@ function loadBuildings(force = false) {
 function onViewChange(next) {
   view = next;
   updateShadowStatus();
-  if (next.settled && activeMap) { loadBuildings(); updateSolar(); }
+  if (next.settled && activeMap) {
+    rememberMapCenter(next.center);
+    loadBuildings();
+    updateSolar();
+  }
 }
 
 function activateMap(map, isCity) {
@@ -207,6 +238,7 @@ function activateMap(map, isCity) {
   $('#select-map-center').disabled = false;
   $('#use-location').disabled = false;
   $('#city-select').disabled = false;
+  rememberMapCenter(view.center);
   if (searchPins) activeMap.showPlaces(searchPins.places, searchPins.onSelect);
   activeMap.setSelectedPoint(explorer.getSelected());
   if (buildings) activeMap.setBuildings(buildings);
@@ -224,7 +256,7 @@ async function loadOpenMap() {
       $('#map-message').hidden = available;
       $('#map-retry').hidden = available;
       if (!available) message($('#map-message-text'), 'No hemos podido cargar el mapa. Puedes buscar lugares o volver a intentarlo.', 'Could not load the map. You can search for places or try again.');
-    }, onViewChange, () => {}, (point) => explorer.selectPoint(point));
+    }, onViewChange, () => {}, (point) => explorer.selectPoint(point), { center: view.center });
     activateMap(map, false);
     $('#map-message').hidden = tilesAvailable;
     $('#map-provider-status').hidden = false;
@@ -239,7 +271,13 @@ async function loadOpenMap() {
 async function loadMap() {
   if (mapStarted || mapLoading) return;
   mapStarted = true; mapLoading = true;
-  try { activateMap(await createCityMap($('#city-map'), onViewChange, () => {}, (point) => explorer.selectPoint(point)), true); }
+  const center = await startupMapCenter({
+    fallback: view.center,
+    getPermission: () => navigator.permissions?.query({ name: 'geolocation' }),
+    geolocation: () => navigator.geolocation,
+  });
+  view.center = center;
+  try { activateMap(await createCityMap($('#city-map'), onViewChange, () => {}, (point) => explorer.selectPoint(point), { center }), true); }
   catch { await loadOpenMap(); }
   finally { mapLoading = false; }
 }
@@ -258,6 +296,7 @@ function moveToDestination(destination) {
   clearTimeout(buildingTimer);
   buildingKey = ''; buildings = null; buildingsLoading = false; buildingsError = '';
   stopShadow(); ++shadowEpoch;
+  clearTimeout(shadowTimeout);
   if (pendingFrame) cancelAnimationFrame(pendingFrame);
   pendingFrame = null; shadowPending = false; shadowError = ''; lastShadowFrame = null;
   activeMap.setBuildings(null);
@@ -283,7 +322,6 @@ $('#date').addEventListener('change', (event) => {
 });
 $('#play-day').addEventListener('click', () => {
   if (playback) return stopPlayback();
-  if (state.minutes >= TIME_END) state.minutes = TIME_START;
   updateSolar();
   $('#play-day').setAttribute('aria-pressed', 'true');
   message($('#play-day'), '❚❚ Pausar', '❚❚ Pause');

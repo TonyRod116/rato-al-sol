@@ -6,7 +6,7 @@ import { AYALA_BOUNDS } from './madrid-buildings.mjs';
 import { AERIAL_TILES, AERIAL_ATTRIBUTION } from './map-basemap.mjs';
 import { DEFAULT_LOCATION } from './shared/default-location.mjs';
 
-export async function createOpenMap(element, onTileStatus, onViewChange = () => {}, onBasemapError = () => {}, onPick = () => {}) {
+export async function createOpenMap(element, onTileStatus, onViewChange = () => {}, onBasemapError = () => {}, onPick = () => {}, options = {}) {
   const version = 'https://cdn.jsdelivr.net/npm/leaflet@1.9.4/dist/leaflet';
   const css = document.createElement('link');
   css.rel = 'stylesheet'; css.href = `${version}.css`;
@@ -26,7 +26,8 @@ export async function createOpenMap(element, onTileStatus, onViewChange = () => 
   } finally { clearTimeout(timeout); }
   if (!window.L?.map) throw new Error('Map unavailable');
   const L = window.L;
-  const map = L.map(element, { zoomControl: false, scrollWheelZoom: false }).setView([DEFAULT_LOCATION.latitude, DEFAULT_LOCATION.longitude], 17);
+  const center = options.center ?? { lat: DEFAULT_LOCATION.latitude, lng: DEFAULT_LOCATION.longitude };
+  const map = L.map(element, { zoomControl: false, scrollWheelZoom: false }).setView([center.lat, center.lng], 17);
   L.control.zoom({ position: 'bottomright' }).addTo(map);
   map.attributionControl.setPrefix(false);
   const tiles = L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', {

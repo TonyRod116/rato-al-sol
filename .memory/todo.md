@@ -10,6 +10,15 @@ Esta lista es la fuente inicial del trabajo. Beads no está configurado. No mant
 - Hay [pruebas de cobertura](../tests/shadow-coverage.test.mjs) y de [cálculo de franjas sin bloquear la interfaz](../tests/light-at-task.test.mjs). La rama de partida ya reproduce desde la hora elegida y vuelve al inicio al acabar el día.
 - Falta verificar la capa incluida y el tiempo de carga en un iPhone y un Android con la compilación firmada. Contrastar Calàbria y Sol sobre el terreno antes de dar por comprobada la precisión.
 
+## Misma cobertura de sombras en la web · 2026-11-11
+
+- Publicada en [tony-r.com/rato-al-sol](https://tony-r.com/rato-al-sol/) con los archivos de la versión `2d3674abe84a1cb0`. El índice anterior está guardado para revertir el despliegue.
+- La versión web parte de los archivos publicados con el selector de ciudad y los tres idiomas. Comparte con móvil el lector y las huellas de Madrid y Barcelona.
+- La web pide rangos de las teselas visibles y reutiliza las recientes al mover el mapa. Las pruebas comprueban ambos municipios y el caso de un servidor que devuelve un archivo completo.
+- En producción se comprobaron las respuestas HTTP 206 de ambas ciudades, las sombras visibles, la selección de un punto, los tres idiomas y la reproducción en bucle desde la hora elegida.
+- El inicio usa la ubicación si el permiso está concedido y recupera el último centro guardado cuando no está disponible. Se comprobó en navegador que Barcelona se mantiene tras recargar. La prueba automatizada usa una ubicación simulada para verificar que se prioriza la posición del dispositivo.
+- Resultado de la comprobación de código y datos: 331 pruebas sin fallos.
+
 ## BASE-001 — Preparar fundamentos específicos
 
 - Estado: `done` — verificado el 2026-10-30 en la carpeta definitiva.
