@@ -1,8 +1,8 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { createLightAtBuilder, lightAt } from '../frontend/shared/estimate.mjs';
+import { createLightAtBuilder, lightAt, solarWindows } from '../frontend/shared/estimate.mjs';
 import { sunPosition } from '../frontend/solar.mjs';
-import { startLightAtTask } from '../mobile/src/light-at-task.mjs';
+import { startLightAtTask, startSolarWindowsTask } from '../mobile/src/light-at-task.mjs';
 
 const point = { latitude: 40.417, longitude: -3.704 };
 const instant = new Date('2026-06-21T11:00:00Z');
@@ -58,4 +58,17 @@ test('native calculation yields and cancellation discards a stale result', () =>
   stop();
   assert.equal(timers.size, 0);
   assert.equal(result, undefined);
+});
+
+test('the native timeline yields while producing the same intervals as the shared engine', () => {
+  const scene = { point, radius: 400, buildings: [obstacle(x, y, 30)] };
+  const pending = [];
+  let clock = 0, result;
+  startSolarWindowsTask(scene, instant, (value) => { result = value; }, assert.fail, {
+    schedule: (fn) => pending.push(fn), now: () => clock += 10,
+  });
+  pending.shift()();
+  assert.equal(result, undefined);
+  while (pending.length) pending.shift()();
+  assert.deepEqual(result, solarWindows(scene, instant));
 });

@@ -44,6 +44,19 @@ test('failed and incomplete requests are not cached and can be retried', async (
   assert.ok(loader.find(area));
 });
 
+test('a wider saved view cannot replace local data at the edge of its coverage', async () => {
+  const area = [-3.705, 40.414, -3.701, 40.418];
+  const wider = [-3.706, 40.413, -3.700, 40.419];
+  const requests = [];
+  const loader = createViewportLoader(async (bounds) => {
+    requests.push(bounds);
+    return { bounds, features: [], source: 'madrid-local' };
+  }, Date.now, () => wider, (bounds) => bounds[2] <= area[2]);
+  loader.prime({ bounds: wider, features: [], source: 'madrid' });
+  assert.equal((await loader.get(area)).source, 'madrid-local');
+  assert.deepEqual(requests, [area]);
+});
+
 test('a realistic Madrid pan reuses the directional margin without increasing the initial request', async () => {
   const a = [-3.706, 40.414, -3.702, 40.418];
   const b = [-3.705, 40.414, -3.701, 40.418];

@@ -16,7 +16,7 @@ import { atMinutes, formatTime, lightAt, lightForInterval, nearbyOutdoorScenes, 
 import { sunPosition } from '../frontend/solar.mjs';
 import { buildingShadows, shadowDirection } from '../frontend/map-shadows.mjs';
 import { startShadowGeometry, startShadowGeometryWithFallback } from './src/shadow-geometry-task.mjs';
-import { startLightAtTask } from './src/light-at-task.mjs';
+import { startLightAtTask, startSolarWindowsTask } from './src/light-at-task.mjs';
 import { clearViewportBuildingMemoryCache, getViewportBuildings, viewportBounds } from '../frontend/viewport-buildings.mjs';
 import { DEFAULT_LOCATION } from '../frontend/shared/default-location.mjs';
 import { createViewportLoader, expandedMadridViewport, stableMapBounds, stableMapCenter, stableShadowViewport } from './src/viewport.mjs';
@@ -26,6 +26,7 @@ import { ShadowNative } from './src/ShadowNative';
 import { shadowSunStatus } from './src/shadow-status.mjs';
 import { buildingCache, sceneCache, searchCache, shadowCache, clearOfflineData, cacheGeneration } from './src/offline-data';
 import { createCachedServices } from './src/cached-services.mjs';
+import { localShadowData } from './src/local-shadow-data';
 import { firstWithResults } from './src/first-results.mjs';
 import { initialSelectedTime } from '../frontend/shared/time-selection.mjs';
 import { isLanguage, languageKey, translate, translateDirection } from '../frontend/shared/i18n.mjs';
@@ -47,6 +48,22 @@ import { NATIVE_NOTICES } from './src/native-third-party-notices.mjs';
 
 const msg = (es, en) => ({ es, en });
 const cachedServices = createCachedServices({ scenes: getScenes, sceneCache, searchCache, generation: cacheGeneration });
+const CATASTRO_URL = 'https://www.catastro.hacienda.gob.es/webinspire/index.html';
+
+async function loadShadowViewport(bounds, fetchFn, options) {
+  const geometry = await localShadowData.get(bounds).catch((error) => {
+    if (error?.message?.startsWith('Acerca el mapa')) throw error;
+    return null;
+  });
+  return geometry ?? getViewportBuildings(bounds, fetchFn, options);
+}
+
+async function loadShadowScenes(points, options) {
+  return (await localShadowData.scenes(points).catch(() => null)) ?? cachedServices.cachedScenes(points, options);
+}
+
+const createMapLoader = () => createViewportLoader(loadShadowViewport, Date.now,
+  Platform.OS === 'web' ? undefined : expandedMadridViewport, localShadowData.has);
 const knownErrors = {
   'No se ha dado permiso. Puedes mover el mapa y buscar desde ahí.': 'Location permission was not granted. You can move the map and search from there.',
   'No hemos podido localizarte.': 'Could not find your location.',
@@ -189,8 +206,7 @@ function Main() {
   const forceSearch = useRef(false);
   const refreshMap = useRef(false), skipMapLoad = useRef(false), saveMapTimers = useRef(new Set());
   const viewportLoader = useRef(null);
-  if (!viewportLoader.current) viewportLoader.current = createViewportLoader(getViewportBuildings, Date.now,
-    Platform.OS === 'web' ? undefined : expandedMadridViewport);
+  if (!viewportLoader.current) viewportLoader.current = createMapLoader();
   const zoomPrefetch = useRef(null);
   if (!zoomPrefetch.current) zoomPrefetch.current = createZoomPrefetch({ loader: () => viewportLoader.current, buildingCache, generation: cacheGeneration });
 
@@ -201,8 +217,7 @@ function Main() {
     zoomPrefetch.current.cancel();
     refreshMap.current = true;
     clearViewportBuildingMemoryCache(); clearPlacesMemoryCache();
-    viewportLoader.current = createViewportLoader(getViewportBuildings, Date.now,
-      Platform.OS === 'web' ? undefined : expandedMadridViewport);
+    viewportLoader.current = createMapLoader();
     setMapRetry((value) => value + 1);
   }
 
@@ -220,8 +235,8 @@ function Main() {
     request.current++; setBusy('');
     refreshMap.current = false; skipMapLoad.current = true; setMapRetry((value) => value + 1);
     clearViewportBuildingMemoryCache(); clearPlacesMemoryCache(); clearMadridSearchMemoryCache(); clearBarcelonaSearchMemoryCache();
-    viewportLoader.current = createViewportLoader(getViewportBuildings, Date.now,
-      Platform.OS === 'web' ? undefined : expandedMadridViewport);
+    localShadowData.clear();
+    viewportLoader.current = createMapLoader();
     if (mapBuildings) {
       const stale = Number.isFinite(mapBuildings.fetchedAt) && Date.now() - mapBuildings.fetchedAt >= 30 * 86400000;
       setMapStale(stale); setMapIssue(Boolean(mapBuildings.omitted) || stale); setMapFailed(false);
@@ -314,7 +329,7 @@ function Main() {
         viewportLoader.current.get(mapBounds).then((geometry) => {
           if (!cancelled && cacheGeneration() === generation) {
             applyGeometry(geometry);
-            if (Platform.OS !== 'web') {
+            if (Platform.OS !== 'web' && !geometry.source.endsWith('-local')) {
               const saveTimer = setTimeout(() => {
                 saveMapTimers.current.delete(saveTimer);
                 if (cacheEnabledRef.current && cacheGeneration() === generation) void buildingCache.save(geometry, { fetchedAt: geometry.fetchedAt ?? Date.now() });
@@ -336,6 +351,7 @@ function Main() {
         });
     };
     const load = async () => {
+      if (localShadowData.has(mapBounds)) { loadFromProvider(); return; }
       // A nearby area already in memory can be completed incrementally. Do
       // not wait for a disk scan and a second debounce before starting it.
       if (!force && Platform.OS !== 'web' && viewportLoader.current.hasIncremental(mapBounds) &&
@@ -380,7 +396,18 @@ function Main() {
   }, [scene, instant]);
   const state = Platform.OS === 'web' ? webLight
     : calculatedLight?.scene === scene && calculatedLight?.instant === instant ? calculatedLight.value : 'unknown';
-  const windows = useMemo(() => scene ? solarWindows(scene, day) : [], [scene, day]);
+  const [calculatedWindows, setCalculatedWindows] = useState(null);
+  useEffect(() => {
+    if (Platform.OS === 'web' || !scene) return;
+    return startSolarWindowsTask(scene, day,
+      (value) => setCalculatedWindows({ scene, day, value }),
+      () => setCalculatedWindows({ scene, day, value: [] }));
+  }, [scene, day]);
+  const windows = useMemo(() => {
+    if (!scene) return [];
+    if (Platform.OS === 'web') return solarWindows(scene, day);
+    return calculatedWindows?.scene === scene && calculatedWindows.day === day ? calculatedWindows.value : [];
+  }, [scene, day, calculatedWindows]);
   const daylightWindows = useMemo(() => clipDaylightWindows(windows, PLAYBACK_START, PLAYBACK_END), [windows]);
   const mapSun = useMemo(() => {
     return sunPosition(instant, center.latitude, center.longitude);
@@ -412,6 +439,7 @@ function Main() {
   const [playbackDwellFrame, setPlaybackDwellFrame] = useState(null);
   const [shadowGeometrySignature, setShadowGeometrySignature] = useState(null);
   const activeGeometrySignature = shadowGeometrySignature?.buildings === mapBuildings ? shadowGeometrySignature.value : null;
+  const renderSource = mapBuildings?.source === 'madrid-local' ? 'madrid' : mapBuildings?.source;
   const baseContext = { timeKey: shadowTimeKey, area: candidateArea, buildings: mapBuildings, retryToken: mapRetry,
     latitude: shadowAnchor.latitude, longitude: shadowAnchor.longitude, generation: cacheGeneration() };
   const [preparedGeometry, setPreparedGeometry] = useState(null);
@@ -476,7 +504,7 @@ function Main() {
   const frameContext = { ...baseContext, area: shadowArea };
   const shadows = Platform.OS === 'web' ? webShadows : adopted?.source || prepared?.source || emptyShadows;
   const shadowContext = useRef(null);
-  shadowContext.current = { ...frameContext, source: shadows, geometrySource: mapBuildings?.source };
+  shadowContext.current = { ...frameContext, source: shadows, geometrySource: renderSource };
   function acceptShadowResult(result) {
     const current = shadowContext.current;
     if (result.source === current.source && result.area === current.area && result.retryToken === current.retryToken && current.generation === cacheGeneration()) {
@@ -557,7 +585,7 @@ function Main() {
     const nextSun = sunPosition(nextInstant, shadowAnchor.latitude, shadowAnchor.longitude);
     const context = { area: shadowArea, buildings: mapBuildings, retryToken: mapRetry,
       timeKey: nextInstant.getTime(), latitude: shadowAnchor.latitude, longitude: shadowAnchor.longitude,
-      geometrySource: mapBuildings?.source, generation: cacheGeneration() };
+      geometrySource: renderSource, generation: cacheGeneration() };
     let cancelled = false, timer, stop = () => {}, stopProbe = () => {};
     playbackFrames.current.get(context, emptyShadows).then((hit) => {
       if (cancelled) return;
@@ -793,8 +821,8 @@ function Main() {
         };
         const available = mapped?.flatMap((item, index) => item ? [{ point: points[index], ...item }] : []) || [];
         if (available.length) publishMadridScenes(available);
-        const geometry = useMadridBuildings ? await Promise.allSettled(points.map((point, index) => mapped?.[index] || cachedServices.cachedScenes([point]))) : null;
-        const combined = useMadridBuildings ? null : await cachedServices.cachedScenes(points);
+        const geometry = useMadridBuildings ? await Promise.allSettled(points.map((point, index) => mapped?.[index] || loadShadowScenes([point]))) : null;
+        const combined = useMadridBuildings ? null : await loadShadowScenes(points);
         if (request.current !== seq) return;
         const usable = geometry?.flatMap((result, index) => result.status === 'fulfilled' ? [{ point: points[index], ...result.value }] : []);
         if (combined) {
@@ -830,7 +858,7 @@ function Main() {
     const previous = force ? { buildings, coverage } : null;
     setBusy(msg('Consultando edificios para este punto…', 'Checking buildings around this point…')); if (!previous) { setBuildings([]); setCoverage([]); }
     try {
-      const geometry = await cachedServices.cachedScenes([point], { force });
+      const geometry = await loadShadowScenes([point], { force });
       if (request.current !== seq) return;
       setBuildings(geometry.buildings); setCoverage([{ ...point, radius: geometry.radius, source: geometry.source, stale: Boolean(geometry.cacheInfo?.stale), limited: Boolean(geometry.cacheInfo?.limited) }]);
       const old = geometry.cacheInfo?.stale;
@@ -1024,11 +1052,15 @@ function Main() {
           setVisibleBounds((previous) => stableMapBounds(previous, point.visibleBounds || null));
           setOriginLabel(myLocation.current && distanceMetres(myLocation.current, point) < 25 ? 'Tu ubicación' : 'Zona del mapa');
         }} onPick={choosePoint} onPlace={choosePoint} />
-        <Text accessibilityRole="link" onPress={() => Linking.openURL('https://www.openstreetmap.org/copyright')} style={styles.mapAttribution}>© OpenStreetMap contributors</Text>
+        <Text style={styles.mapAttribution}>
+          <Text accessibilityRole="link" onPress={() => Linking.openURL('https://www.openstreetmap.org/copyright')}>© OpenStreetMap contributors</Text>
+          {mapBuildings?.source.endsWith('-local') && <Text accessibilityRole="link" onPress={() => Linking.openURL(CATASTRO_URL)}>{'\nCatastro'}</Text>}
+          {mapBuildings?.source === 'madrid-local' && <Text accessibilityRole="link" onPress={() => Linking.openURL('https://datos.madrid.es/dataset/300750-0-servicio-mapas')}>{t(' · Ayto. de Madrid', ' · Madrid City Council')}</Text>}
+        </Text>
         {!map3DAvailable && <Text style={styles.mapFallback}>{t('3D no disponible · mapa en 2D', '3D unavailable · showing 2D map')}</Text>}
         {(mapIssue || shadows.limitExceeded || shadowPending || shadowFailed || sunStatus || partialShadow) && <Text accessibilityRole={mapAction ? 'button' : undefined} onPress={mapAction} style={[styles.mapFallback, { top: map3DAvailable ? 115 : 150 }]}>{shadows.limitExceeded ? t('Acerca el mapa para ver las sombras.', 'Zoom in to see the shadows.') : shadowFailed ? t('No se han podido dibujar las sombras. Toca para reintentar.', 'Could not draw shadows. Tap to retry.') : mapFailed ? localized(mapStatus) : partialShadow ? t('Actualizando sombras.', 'Updating shadows.') : shadowPending ? t('Calculando sombras de la zona…', 'Calculating shadows in this area…') : mapStale || (mapIssue && !mapBuildings) ? localized(mapStatus) : sunStatus === 'night' ? t('Es de noche a esta hora. Cambia la hora para ver sombras.', 'It is night at this time. Change the time to see shadows.') : sunStatus === 'low' ? t('El sol está muy bajo. Cambia la hora para ver sombras.', 'The sun is too low. Change the time to see shadows.') : localized(mapStatus)}</Text>}
       </View>
-      {Platform.OS !== 'web' && (Platform.OS === 'ios' && mapBuildings?.source === 'madrid'
+      {Platform.OS !== 'web' && (Platform.OS === 'ios' && renderSource === 'madrid'
         ? <ShadowNative fallback={ShadowBitmap} shadows={currentShadowResult?.uri ? emptyShadows : shadows} bounds={shadowArea} retryToken={mapRetry} onReady={acceptShadowResult} onError={(failure) => acceptShadowResult({ ...failure, failed: true })} />
         : <ShadowRasterizer shadows={currentShadowResult?.uri ? emptyShadows : shadows} bounds={shadowArea} retryToken={mapRetry} onReady={acceptShadowResult} onError={(failure) => acceptShadowResult({ ...failure, failed: true })} />)}
       {Platform.OS !== 'web' && futureJob?.source?.features?.length > 0 && !futureShadow && (Platform.OS === 'ios' && futureJob.geometrySource === 'madrid'
@@ -1118,6 +1150,7 @@ function Main() {
           <Text style={[styles.body, styles.licenseBody]}>{t('Consulta las fechas de actualización en las páginas de cada fuente. Pueden diferir de los datos guardados en este dispositivo.', 'See each source page for update dates. They may differ from data saved on this device.')}</Text>
           <SourceCredits t={t} />
           <Text accessibilityRole="link" style={styles.link} onPress={() => Linking.openURL('https://datos.madrid.es/dataset/300750-0-servicio-mapas')}>{t('Alturas de edificios del Ayuntamiento de Madrid · CC BY 4.0', 'Madrid City Council building heights · CC BY 4.0')}</Text>
+          <Text accessibilityRole="link" style={styles.link} onPress={() => Linking.openURL('https://www.catastro.hacienda.gob.es/webinspire/documentos/Licencia.pdf')}>{t('Geometría de sombras derivada de la cartografía INSPIRE de la Dirección General del Catastro', 'Shadow geometry derived from INSPIRE mapping by the Spanish Directorate General for the Cadastre')}</Text>
           <Text accessibilityRole="link" style={styles.link} onPress={() => Linking.openURL('https://datos.madrid.es/dataset/200761-0-parques-jardines/information')}>{t('Parques y jardines del Ayuntamiento de Madrid · CC BY 4.0', 'Madrid City Council parks and gardens · CC BY 4.0')}</Text>
           <Text accessibilityRole="header" style={styles.sectionTitle}>SunCalc · BSD 2-Clause</Text>
           <Text style={[styles.body, styles.licenseBody]}>{SUNCALC_LICENSE}</Text>

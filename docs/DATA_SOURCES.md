@@ -52,6 +52,26 @@ Tony eligió Madrid para la primera prueba. La cobertura suficiente para calcula
 
 ## Cálculo solar
 
+### Geometría de sombras incluida en iOS y Android · 2026-11-11
+
+- En las zonas cubiertas de Barcelona, se utilizan las partes de edificio de la [Dirección General del Catastro](https://www.catastro.hacienda.gob.es/webinspire/index.html). Cada planta sobre rasante se estima en 3 m. Esto cubre casos como Calàbria 245, 247 y 246–248, donde las huellas de OpenStreetMap estaban presentes pero carecían de altura y número de plantas.
+- En Madrid, se conservan las alturas estimadas del [Ayuntamiento de Madrid](https://datos.madrid.es/dataset/300750-0-servicio-mapas), CC BY 4.0. El proceso de preparación añade las partes de Catastro fuera de las huellas municipales con altura y descarta pequeñas diferencias entre sus contornos.
+- Los archivos incluidos son una geometría derivada para proyectar sombras. Las huellas se simplifican a 0,55 m y se indexan por zona, con alturas en décimas de metro. La app atribuye las dos fuentes. La [licencia de Catastro](https://www.catastro.hacienda.gob.es/webinspire/documentos/Licencia.pdf) permite distribuir productos transformados. El paquete contiene solo huellas generalizadas y alturas para el cálculo.
+- El mapa, el punto seleccionado y la búsqueda de sol usan la misma capa donde está disponible. El móvil lee las celdas necesarias del paquete y reutiliza las recientes en memoria. En vistas con celdas sin cobertura sigue consultando los proveedores habituales. Las búsquedas de lugares y el mapa base conservan sus propios proveedores. Los edificios posteriores a la fecha de las fuentes se incorporan al regenerar los archivos.
+- La sombra sigue siendo una estimación. La cobertura catastral y municipal, la pendiente del terreno, los patios, los árboles y los toldos limitan la precisión.
+
+Para regenerar, descarga el archivo de [Barcelona](https://www.catastro.hacienda.gob.es/INSPIRE/Buildings/08/08900-BARCELONA/A.ES.SDGC.BU.08900.zip), el de [Madrid](https://www.catastro.hacienda.gob.es/INSPIRE/Buildings/28/28900-MADRID/A.ES.SDGC.BU.28900.zip) y las [alturas municipales de Madrid](https://geoportal.madrid.es/IDEAM_WBGEOPORTAL/dataset.iam?id=ALTURAS_EDIFICIOS). Esta preparación usa los extractos catastrales del 21 de agosto de 2026 y la capa municipal de julio de 2026. Instala `pyproj==3.7.2`, `shapely==2.2.0` y `pyshp==2.3.1` en un entorno Python local.
+
+```sh
+python scripts/build-shadow-coverage.py barcelona A.ES.SDGC.BU.08900.zip
+python scripts/build-shadow-coverage.py madrid A.ES.SDGC.BU.28900.zip --municipal ALTURAS_EDIFICIOS.ZIP
+node --test tests/shadow-coverage.test.mjs
+```
+
+El script genera los índices y archivos binarios de `mobile/assets/shadow-data/`. Los ZIP originales se guardan fuera del repositorio.
+
+### Posición solar e incertidumbre
+
 - [SunCalc 2.0.2](https://github.com/mourner/suncalc/tree/v2.0.2), biblioteca JavaScript con licencia BSD-2-Clause, incluida en `frontend/vendor/` junto con su licencia, sin llamadas externas. La web usa las coordenadas consultadas y la zona `Europe/Madrid`. El prototipo nativo utiliza la zona del teléfono.
 - Se contrastó una posición con el [caso del laboratorio NLR](https://midcdmz.nlr.gov/spa/spa_tester.c) y los [resultados independientes de pvlib](https://github.com/pvlib/pvlib-python/blob/main/tests/test_solarposition.py), con tolerancia de 0,1°. Es una comprobación puntual, no una garantía de precisión global. Los casos analíticos son sintéticos y las sombras sobre edificios municipales no se han contrastado sobre el terreno; cerca del horizonte no se muestran y no se calculan nubes, árboles ni toldos.
 

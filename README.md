@@ -1,30 +1,31 @@
-# Rato al Sol
+# Rato al Sol · Sun Time
 
-**¿En qué terraza tendré sol o sombra a la hora a la que quiero sentarme?**
+Consulta cuándo habrá sol o sombra en un punto del mapa y encuentra un lugar al aire libre cerca de ti. Puedes mover el selector de hora o reproducir el día desde la hora que tengas seleccionada.
 
-Un mapa sencillo de terrazas con intervalos estimados de sol y sombra, un selector de hora y la incertidumbre visible donde cambie la decisión.
+[Probar en la web](https://tony-r.com/rato-al-sol/) · [Descargar para iPhone](https://apps.apple.com/es/app/rato-al-sol/id6830366652)
 
-## Estado real
+Android está en prueba interna. La cobertura de edificios de esta rama está preparada para la siguiente versión de iOS y Android.
 
-La web reúne un mapa 3D con sombras orientativas que se actualizan al desplazarlo, búsqueda por nombre, categoría o cercanía y una barra con los intervalos de luz para un punto elegido. Puede buscar espacios exteriores para una hora o una franja, con distancia y ubicación opcional. En `mobile/` se desarrolla la app React Native para iOS y Android: un mapa nativo, una ficha inferior ampliable, búsqueda, selección de punto y filtro por hora o franja comparten el mismo motor solar.
+## Cómo funciona
 
-Madrid aporta alturas estimadas municipales; en otras zonas la geometría y las alturas dependen de OpenStreetMap y pueden ser insuficientes. La fuente pública de búsqueda general no respondió en las pruebas de este entorno; se ha probado una alternativa con parques municipales y el censo de terrazas de Madrid, además de la selección manual de un punto. Las opciones exteriores propuestas alrededor de un local son orientativas, no ubicaciones verificadas de mesas. Las entradas de locales **no identifican las mesas** y la sombra de los árboles no está modelada. Ni las estimaciones ni las sombras se han contrastado sobre el terreno; faltan pruebas en dispositivos nativos y no hay despliegue.
+- `frontend/solar.mjs` y `frontend/shared/estimate.mjs` calculan la posición del sol y la obstrucción de los edificios. La web y las apps comparten estos cálculos.
+- `mobile/` usa React Native y Expo con Apple Maps en iOS y Google Maps en Android. La vista de sombras y las franjas de luz procesan la geometría en tandas para que el mapa siga respondiendo.
+- `mobile/assets/shadow-data/` incluye la geometría de Madrid y Barcelona indexada por zonas. Madrid combina las alturas municipales con huellas de Catastro que amplían la cobertura. Barcelona usa el número de plantas de Catastro para estimar alturas. La app lee solo las zonas que necesita. [Fuentes, licencias y regeneración](docs/DATA_SOURCES.md#geometría-de-sombras-incluida-en-ios-y-android--2026-11-11).
+- `web-release/` conserva una versión de la web y su empaquetador. `frontend/` contiene la web original y los módulos compartidos.
 
-## Orientación obligatoria
+La estimación representa la sombra de edificios. Los árboles, toldos y nubes también pueden cambiar la luz real. Para evaluar una terraza, elige en el mapa el punto donde estarían las mesas.
 
-Leer [PROYECTO_Y_DESPLIEGUE.md](PROYECTO_Y_DESPLIEGUE.md): qué construir, rutas previstas y cómo se publicaría cada parte. BuildApp está protegido; estas tres apps pueden compartir solo un backend NUEVO y dedicado de Cool Projects, todavía no creado.
+## Ejecutar en local
 
-## Empezar
-
-Para abrir la web, desde la raíz del proyecto y con el puerto libre:
+La web se puede servir con Python 3.11 o posterior.
 
 ```bash
-python3 -m http.server 5182 --bind 127.0.0.1 --directory frontend
+python3 -m http.server 5182 --bind 127.0.0.1 --directory web-release/frontend
 ```
 
-Abrir `http://127.0.0.1:5182/` y parar el servidor con `Ctrl+C`. Si el puerto está ocupado, elegir otro; no detener procesos ajenos. El frontend es estático y no necesita instalar paquetes ni ejecutar un build. El mapa, las alturas y el censo necesitan conexión a internet; las alturas se consultan al abrir el mapa y el censo cuando se buscan lugares.
+Abre [localhost:5182](http://127.0.0.1:5182/). El mapa y la búsqueda de lugares necesitan conexión.
 
-Para desarrollar la app nativa o abrir su vista web local de desarrollo:
+Para desarrollar la app móvil, usa Node.js 22 o posterior y una instalación de Expo compatible con el SDK del proyecto.
 
 ```bash
 cd mobile
@@ -32,52 +33,13 @@ npm ci
 npx expo start --host localhost
 ```
 
-Expo usa el puerto 8081 si está libre. `localhost` limita la conexión a este ordenador; para acceder desde un teléfono en la misma red se puede iniciar expresamente con `npx expo start --host lan` y escanear el QR con una versión de Expo Go compatible con el SDK del proyecto. En iPhone, la disponibilidad de versiones y el acceso a Expo Go dependen de las condiciones actuales de Expo y Apple; consultar la [guía de Expo](https://docs.expo.dev/get-started/start-developing/). Expo Go es una vista de desarrollo, no el paquete firmado de esta app. La app usa mapas nativos de Apple o Google, no una página web incrustada. El aspecto y el rendimiento en iPhone y Android todavía necesitan comprobarse en dispositivos reales; para publicar se deben configurar credenciales propias de los mapas y revisar costes y permisos. Los perfiles para pruebas internas y futuras compilaciones de tienda se explican en [preparación de publicación](docs/RELEASE.md).
+## Pruebas
 
-Para generar una carpeta web limpia y prepararla para la ruta elegida `tony-r.com/rato-al-sol/`, ejecutar `node scripts/build-web.mjs`. El resultado se guarda en `dist/web/rato-al-sol/`; el comando no sobrescribe una carpeta ya existente. La URL elegida todavía no muestra esta app y su alojamiento no se ha configurado. El procedimiento de prueba local y los pasos pendientes están en [publicación](docs/RELEASE.md).
-
-Para las comprobaciones locales se necesitan Python 3.11 o posterior y Node.js:
+Desde la raíz, después de instalar las dependencias de la app:
 
 ```bash
-node tests/demo.test.mjs
-node tests/solar.test.mjs
-node tests/madrid.test.mjs
-node tests/map-shadows.test.mjs
-node tests/map-atmosphere.test.mjs
-node tests/mobile.test.mjs
-node tests/release.test.mjs
-node --check frontend/app.mjs
-python3 scripts/repo_check.py
-bash scripts/check-ai-instructions.sh
+node --test tests/*.test.mjs tests/*.test.cjs
+PYTHONUTF8=1 python3 scripts/repo_check.py
 ```
 
-Al editar reglas, cambiar `AI_SHARED_INSTRUCTIONS.md` y ejecutar:
-
-```bash
-bash scripts/sync-ai-instructions.sh
-bash scripts/check-ai-instructions.sh
-```
-
-Los tests comprueban casos solares y geométricos concretos, no la precisión de predicciones reales. Las comprobaciones de documentación y configuración no prueban la interfaz; el alcance de las pruebas está en [calidad](docs/QUALITY.md). La biblioteca solar [SunCalc 2.0.2](https://github.com/mourner/suncalc/tree/v2.0.2) se incluye localmente con su licencia BSD-2-Clause en `frontend/vendor/`.
-
-## Guías
-
-- [Producto y primer recorrido](docs/PRODUCT.md)
-- [Diseño de la interfaz](docs/DESIGN.md)
-- [Fuentes, relojes y cobertura](docs/DATA_SOURCES.md)
-- [Criterios de calidad](docs/QUALITY.md)
-- [Fases de desarrollo](docs/ROADMAP.md)
-- [Preparación para tiendas y web](docs/RELEASE.md)
-- [Estado y siguiente paso](NOTES.md)
-- [Arquitectura](.memory/architecture.md), [decisiones](.memory/decisions.md) y [tareas](.memory/todo.md)
-- [Qué se ha aprovechado de BuildApp y MTM](docs/INHERITED_PRACTICES.md)
-
-## Configuración
-
-El mapa utiliza MapLibre y OpenFreeMap, con datos de OpenStreetMap y atribución visible; Leaflet y OpenStreetMap proporcionan un respaldo 2D. El código anterior de Google Maps se conserva, pero no aparece como opción en esta vista porque aún no está verificado con las sombras: la clave compartida rechaza el origen local y falta acceso a su cuenta de Cloud para ajustar la restricción previamente autorizada por Tony. No copiar claves privadas de servidor. Véase [fuentes y contratos](docs/DATA_SOURCES.md) antes de publicar o ampliar tráfico.
-
-`.env.example` contiene nombres internos propuestos, sin credenciales. Mantener claves privadas fuera del cliente y del repositorio.
-
-`.codex/config.toml` declara Auto Review sin cambiar modelo, red, sandbox ni directorios. Su aplicación depende del cliente, confianza del proyecto y requisitos administrados; no modifica una sesión ya iniciada.
-
-El repositorio de código es privado: [TonyRod116/rato-al-sol](https://github.com/TonyRod116/rato-al-sol). La app todavía no está publicada como sitio web.
+Las pruebas incluyen regresiones con datos reales de Calàbria y de varios barrios de Madrid, proyecciones geométricas y reproducción desde la hora seleccionada. La [guía de calidad](docs/QUALITY.md) recoge el alcance de las comprobaciones.

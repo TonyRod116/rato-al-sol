@@ -108,17 +108,34 @@ export function atMinutes(day, minutes) {
   return date.getHours() === Math.floor(minutes / 60) && date.getMinutes() === minutes % 60 ? date : null;
 }
 
+export function createSolarWindowsBuilder(scene, day, instantAt = atMinutes) {
+  const windows = [];
+  let minutes = 0;
+  let light;
+  return {
+    step(maxBuildings) {
+      if (!scene || minutes >= 1440) return true;
+      light ??= createLightAtBuilder(scene, instantAt(day, minutes));
+      if (!light.step(maxBuildings)) return false;
+      const state = light.result();
+      const last = windows.at(-1);
+      if (last?.state === state) last.to = minutes + 30;
+      else windows.push({ state, from: minutes, to: minutes + 30 });
+      light = null;
+      minutes += 30;
+      return minutes >= 1440;
+    },
+    result() {
+      if (scene && minutes < 1440) throw new Error('Solar windows calculation incomplete');
+      return windows;
+    },
+  };
+}
+
 export function solarWindows(scene, day, instantAt = atMinutes) {
-  if (!scene) return [];
-  const result = [];
-  // Approximate 30-minute samples; deliberately do not imply exact transitions.
-  for (let minutes = 0; minutes < 1440; minutes += 30) {
-    const state = lightAt(scene, instantAt(day, minutes));
-    const last = result.at(-1);
-    if (last?.state === state) last.to = minutes + 30;
-    else result.push({ state, from: minutes, to: minutes + 30 });
-  }
-  return result;
+  const builder = createSolarWindowsBuilder(scene, day, instantAt);
+  while (!builder.step(500)) {}
+  return builder.result();
 }
 
 // A range matches only when every sampled segment covering it is sunny.
