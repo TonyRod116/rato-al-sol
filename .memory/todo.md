@@ -2,6 +2,14 @@
 
 Esta lista es la fuente inicial del trabajo. Beads no está configurado. No mantener una segunda lista equivalente en NOTES o en otro servicio.
 
+## Prueba cerrada de Android · 2026-11-12
+
+- Soporte de Google Play confirmó que `com.ratoalsol.app` conserva el requisito de su cuenta personal de origen tras el traslado a la cuenta de empresa. Para pedir acceso a producción hacen falta 12 testers inscritos durante 14 días consecutivos en la prueba cerrada. La prueba interna no cuenta para ese requisito.
+- Se completaron la ficha en español, las capturas de teléfono y tableta, la seguridad de los datos y la declaración de ID de publicidad. La [política publicada](https://tonyrod116.github.io/rato-al-sol/privacidad.html) detalla también los datos técnicos de Google Maps.
+- Se verificó el manifiesto firmado de la compilación 23. Está orientada al SDK 36 y solicita ubicación en primer plano. No declara el permiso de ID de publicidad. Se reutilizó el paquete que ya estaba en la prueba interna.
+- La compilación 23 del canal cerrado Alpha está en revisión para España tras superar las comprobaciones previas del [resumen de publicación](https://play.google.com/console/u/2/developers/6550442628367492460/app/4975556757058795598/publishing). El canal tiene una lista de testers propia de Rato y el correo de soporte como canal de comentarios.
+- Tras la aprobación, confirmar que el [enlace de inscripción](https://play.google.com/apps/testing/com.ratoalsol.app) funciona para las cuentas invitadas. Incorporar testers, recoger comentarios y solicitar acceso a producción al cumplirse el plazo.
+
 ## Sombras de edificios en Barcelona y Madrid · 2026-11-11
 
 - Sigue en curso la preparación para la siguiente versión de iOS y Android.
